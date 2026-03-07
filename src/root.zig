@@ -1,14 +1,15 @@
 const std = @import("std");
 
 //utils
-const checker = @import("./helpers/utils/checkers.zig");
+const checker = @import("./core/helpers/utils/checkers.zig");
 
 // structs
-const IoHelper = @import("./helpers/structs/structs.zig").IoHelpers;
+const IoHelper = @import("./core/helpers/structs/structs.zig").IoHelpers;
+const Lexer = @import("./core/lexer/lexer.zig").Lexer;
 
 // functions
-const help = @import("./helpers/functions/help.zig").help;
-const version = @import("./helpers/functions/version.zig").version;
+const help = @import("./core/helpers/functions/help.zig").help;
+const version = @import("./core/helpers/functions/version.zig").version;
 
 pub fn bufferedPrint(alloc: std.mem.Allocator) !void {
     var args = try std.process.argsWithAllocator(alloc);
@@ -58,6 +59,40 @@ pub fn bufferedPrint(alloc: std.mem.Allocator) !void {
     if (checker.strEquals(cmd, "build")) {
         try io.stdout.print("Building\n", .{});
         _ = io.stdout.flush() catch {};
+
+        return;
+    }
+
+    if (checker.strEquals(cmd, "lex")) {
+        const file_path = args.next() orelse {
+            try io.stderr.print("Erro: Forneça o caminho do arquivo .flt\n", .{});
+            std.process.exit(1);
+        };
+
+        const source = try std.fs.cwd().readFileAlloc(alloc, file_path, 1024 * 1024);
+        defer alloc.free(source);
+
+        var lex = Lexer{
+            .alloc = alloc,
+            .io = io,
+
+            .position = 0,
+            .column = 0,
+            .line = 0,
+
+            .tokens = .empty,
+            .source = source,
+        };
+
+        var tokens = try lex.tokenize();
+        defer tokens.deinit(alloc);
+
+        for (tokens.items) |t| {
+            const a = try t.toString(alloc);
+
+            try io.stderr.print("{s}\n", .{a});
+            _ = io.stdout.flush() catch {};
+        }
 
         return;
     }

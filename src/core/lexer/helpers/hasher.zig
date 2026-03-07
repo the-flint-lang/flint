@@ -1,0 +1,18 @@
+const std = @import("std");
+const TokenType = @import("../enums/token_type.zig").TokenType;
+
+pub const tokenMap = std.StaticStringMap(TokenType).initComptime(.{
+    .{ "fn", TokenType.fn_token },
+    .{ "var", TokenType.var_token },
+    .{ "const", TokenType.const_token },
+    .{ "if", TokenType.if_token },
+    .{ "else", TokenType.else_token },
+    .{ "for", TokenType.for_token },
+    .{ "in", TokenType.in_token },
+    .{ "true", TokenType.true_literal_token },
+    .{ "false", TokenType.false_literal_token },
+    .{ "void", TokenType.void_token },
+    .{ "not", TokenType.not_token },
+    .{ "and", TokenType.and_token },
+    .{ "or", TokenType.or_token },
+});

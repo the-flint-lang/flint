@@ -1,0 +1,23 @@
+fn main() void {
+    const log_file = args()[1];
+
+    const texto_erro = `
+        teste aqui
+        aquia
+        aquia
+        aquia
+        aquia
+    `;
+
+    if not file_exists(log_file) {
+        print("Error: Provide a valid log file.");
+        exit(1);
+    }
+
+    read_file(log_file)
+        ~> lines()
+        ~> grep("ERROR")
+        ~> join("\n")
+        ~> write_file("errors_only.log");
+
+}
