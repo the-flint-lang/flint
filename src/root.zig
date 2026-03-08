@@ -6,6 +6,8 @@ const checker = @import("./core/helpers/utils/checkers.zig");
 // structs
 const IoHelper = @import("./core/helpers/structs/structs.zig").IoHelpers;
 const Lexer = @import("./core/lexer/lexer.zig").Lexer;
+const Parser = @import("./core/parser/parser.zig").Parser;
+const CEmitter = @import("./core/codegen/c_emitter.zig").CEmitter;
 
 // functions
 const help = @import("./core/helpers/functions/help.zig").help;
@@ -57,8 +59,128 @@ pub fn bufferedPrint(alloc: std.mem.Allocator) !void {
     };
 
     if (checker.strEquals(cmd, "build")) {
-        try io.stdout.print("Building\n", .{});
-        _ = io.stdout.flush() catch {};
+        const file_path = args.next() orelse {
+            try io.stderr.print("Erro: Forneça o caminho do arquivo .fl\n", .{});
+            std.process.exit(1);
+        };
+
+        const source = try std.fs.cwd().readFileAlloc(alloc, file_path, 1024 * 1024);
+        defer alloc.free(source);
+
+        var lex = Lexer{
+            .alloc = alloc,
+            .io = io,
+            .position = 0,
+            .column = 0,
+            .line = 0,
+            .tokens = .empty,
+            .source = source,
+        };
+        const tokens = try lex.tokenize();
+
+        var parse = Parser.init(alloc, tokens, io);
+        parse.allocator = parse.arena.allocator();
+        const ast = parse.parse() catch {
+            try io.stderr.print("Erro de sintaxe ao compilar.\n", .{});
+            return;
+        };
+        defer parse.deinit();
+
+        var emitter = CEmitter.init(alloc);
+        const out_filename = ".flint_temp.c";
+
+        var out_file = try std.fs.cwd().createFile(out_filename, .{});
+        var buffer: [4096]u8 = undefined;
+
+        var out_writer = out_file.writer(&buffer); // store in var
+        try emitter.generate(&out_writer.interface, ast); // pass mutable pointer
+
+        _ = out_writer.interface.flush() catch {}; // flush before close
+        out_file.close();
+
+        try io.stdout.print("Transpilado. Compilando binário nativo...\n", .{});
+        _ = try io.stdout.flush();
+
+        const basename = std.fs.path.basename(file_path);
+        const exe_name = basename[0 .. std.mem.indexOf(u8, basename, ".") orelse basename.len];
+
+        const home_dir = std.process.getEnvVarOwned(alloc, "HOME") catch |err| {
+            std.debug.print("Erro ao encontrar diretório home: {}\n", .{err});
+            return;
+        };
+        defer alloc.free(home_dir); // Sempre libere a memória
+
+        const path = try std.fmt.allocPrint(alloc, "{s}{s}", .{ home_dir, "/flint/src/core/codegen/runtime" });
+        defer alloc.free(path);
+
+        const argv = &[_][]const u8{
+            "clang",
+            out_filename,
+            "/home/lucas/flint/src/core/codegen/runtime/flint_rt.c",
+            "-I",
+            path,
+            "-o",
+            exe_name,
+            "-O3",
+        };
+
+        var child = std.process.Child.init(argv, alloc);
+        const term = try child.spawnAndWait();
+
+        switch (term) {
+            .Exited => |code| {
+                if (code == 0) {
+                    try io.stdout.print("Sucesso! Executável '{s}' gerado.\n", .{exe_name});
+                    try std.fs.cwd().deleteFile(out_filename);
+                } else {
+                    try io.stderr.print("Erro fatal no Clang (código {d}). O código C gerado falhou.\n", .{code});
+                }
+            },
+            else => {
+                try io.stderr.print("O compilador C falhou ou foi interrompido inesperadamente.\n", .{});
+            },
+        }
+
+        _ = try io.stdout.flush();
+        _ = try io.stderr.flush();
+        return;
+    }
+
+    if (checker.strEquals(cmd, "parse")) {
+        const file_path = args.next() orelse {
+            try io.stderr.print("Erro: Forneça o caminho do arquivo .flt\n", .{});
+            std.process.exit(1);
+        };
+
+        const source = try std.fs.cwd().readFileAlloc(alloc, file_path, 1024 * 1024);
+        defer alloc.free(source);
+
+        var lex = Lexer{
+            .alloc = alloc,
+            .io = io,
+
+            .position = 0,
+            .column = 0,
+            .line = 0,
+
+            .tokens = .empty,
+            .source = source,
+        };
+
+        const tokens = try lex.tokenize();
+
+        var parse = Parser.init(alloc, tokens, io);
+        parse.allocator = parse.arena.allocator();
+
+        _ = parse.parse() catch |err| {
+            try io.stderr.print("Erro ao parsear> {}\n", .{err});
+
+            _ = try io.stderr.flush();
+            return;
+        };
+
+        try io.stdout.print("tudo ok\n", .{});
+        _ = try io.stdout.flush();
 
         return;
     }
@@ -84,10 +206,9 @@ pub fn bufferedPrint(alloc: std.mem.Allocator) !void {
             .source = source,
         };
 
-        var tokens = try lex.tokenize();
-        defer tokens.deinit(alloc);
+        const tokens = try lex.tokenize();
 
-        for (tokens.items) |t| {
+        for (tokens) |t| {
             const a = try t.toString(alloc);
 
             try io.stderr.print("{s}\n", .{a});

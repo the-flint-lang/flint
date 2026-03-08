@@ -4,6 +4,7 @@ pub fn help(io: anytype) !void {
 
     // debug command
     io.stdout.print("    lex:                Lex a .flt file.\n", .{}) catch {};
+    io.stdout.print("    parse:              Parse a .flt file.\n", .{}) catch {};
 
     io.stdout.print("    build:              Compiles a .flt file.\n\n", .{}) catch {};
 

@@ -5,19 +5,21 @@ pub const TokenType = enum {
     error_token,
 
     identifier_token,
-    integer_literal_token,
+
     integer_type_token,
-    string_literal_token,
     string_type_token,
-    char_literal_token,
     char_type_token,
-    multile_string_token,
     boolean_type_token,
+
+    integer_literal_token,
+    string_literal_token,
+    char_literal_token,
+    multile_string_literal_token,
     true_literal_token,
     false_literal_token,
     void_token,
-    not_token,
 
+    not_token,
     fn_token,
     var_token,
     const_token,

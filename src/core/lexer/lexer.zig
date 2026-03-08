@@ -20,7 +20,7 @@ pub const Lexer = struct {
     alloc: std.mem.Allocator,
     io: IoHelpers,
 
-    pub fn tokenize(self: *Lexer) !std.ArrayList(Token) {
+    pub fn tokenize(self: *Lexer) ![]const Token {
         var c: u8 = 0;
 
         while (!self.isAtEnd()) {
@@ -101,7 +101,7 @@ pub const Lexer = struct {
                 const string = self.readMultilineString();
 
                 try self.tokens.append(self.alloc, Token{
-                    ._type = .multile_string_token,
+                    ._type = .multile_string_literal_token,
                     .value = string,
                     .column = self.column,
                     .line = self.line,
@@ -220,7 +220,7 @@ pub const Lexer = struct {
             .line = self.line,
         });
 
-        return self.tokens;
+        return self.tokens.toOwnedSlice(self.alloc);
     }
 
     // lexer helpers
