@@ -76,6 +76,7 @@ pub const CEmitter = struct {
             .if_stmt => try self.visitIfStmt(node, writer),
             .for_stmt => try self.visitForStmt(node, writer),
             .index_expr => try self.visitIndexExpr(node, writer),
+            .array_expr => try self.visitArrayExpr(node, writer),
 
             else => {
                 std.debug.print("Codegen not implemented for: {s}\n", .{@tagName(node.*)});
@@ -214,7 +215,7 @@ pub const CEmitter = struct {
                 if (char == '\n') {
                     try writer.print("\\n", .{});
                 } else if (char == '\r') {} else if (char == '"') {
-                    try writer.print("\\\"", .{}); // Escapa aspas internas
+                    try writer.print("\\\"", .{}); // Escape internal blades
                 } else {
                     try writer.print("{c}", .{char});
                 }
@@ -222,8 +223,47 @@ pub const CEmitter = struct {
 
             try writer.print("\"", .{});
         } else {
-            try writer.print("{s}", .{tok.value}); // Numeros, true, false
+            try writer.print("{s}", .{tok.value}); // Numbers, true, false
         }
+    }
+
+    // 8. Arrays Homogêneos (A Rota de Alta Performance)
+    fn visitArrayExpr(self: *CEmitter, node: *AstNode, writer: anytype) !void {
+        const arr = node.array_expr;
+
+        if (arr.elements.len == 0) {
+            std.debug.print("Error: Empty arrays not supported in v1.2 without explicit typing.\n", .{});
+            return error.NotImplemented;
+        }
+
+        const first = arr.elements[0];
+        var c_type: []const u8 = undefined;
+        var struct_name: []const u8 = undefined;
+
+        if (first.* == .literal) {
+            const tok = first.literal.token;
+            if (tok._type == .string_literal_token or tok._type == .multile_string_literal_token) {
+                c_type = "flint_str";
+                struct_name = "flint_str_array";
+            } else if (tok._type == .true_literal_token or tok._type == .false_literal_token) {
+                c_type = "bool";
+                struct_name = "flint_bool_array";
+            } else {
+                c_type = "long long";
+                struct_name = "flint_int_array";
+            }
+        }
+
+        try writer.print("FLINT_MAKE_ARRAY({s}, {s}, ", .{ c_type, struct_name });
+
+        for (arr.elements, 0..) |el, i| {
+            try self.visitNode(el, writer);
+            if (i < arr.elements.len - 1) {
+                try writer.print(", ", .{});
+            }
+        }
+
+        try writer.print(")", .{});
     }
 
     fn visitIndexExpr(self: *CEmitter, node: *AstNode, writer: anytype) !void {

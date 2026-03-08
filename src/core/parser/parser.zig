@@ -204,6 +204,30 @@ pub const Parser = struct {
             return expr;
         }
 
+        if (self.match(&.{.lbracket_token})) {
+            var elements = std.ArrayList(*AstNode).empty;
+
+            // if array n is empty
+            if (!self.check(.rbracket_token)) {
+                while (true) {
+                    try elements.append(self.allocator, try self.parseExpression());
+
+                    if (!self.match(&.{.comma_token})) break;
+                }
+            }
+
+            _ = try self.consume(.rbracket_token, "Expected ']' to close the array.");
+
+            const node = try self.allocator.create(AstNode);
+            node.* = .{
+                .array_expr = .{
+                    .elements = try elements.toOwnedSlice(self.allocator),
+                },
+            };
+
+            return node;
+        }
+
         return self.reportError(self.peek(), "Invalid or unrecognized expression.");
     }
 

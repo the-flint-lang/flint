@@ -12,7 +12,9 @@ pub const NodeType = enum {
     call_expr,
     binary_expr,
     unary_expr,
+
     index_expr,
+    array_expr,
 
     pipeline_expr,
     for_stmt,
@@ -64,6 +66,10 @@ pub const AstNode = union(NodeType) {
     index_expr: struct {
         left: *AstNode,
         index: *AstNode,
+    },
+
+    array_expr: struct {
+        elements: []const *AstNode,
     },
 
     pipeline_expr: struct {
