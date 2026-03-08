@@ -297,7 +297,26 @@ pub const Parser = struct {
     }
 
     fn parseExpression(self: *Parser) anyerror!*AstNode {
-        return try self.parsePipeline();
+        return try self.parseAssignment();
+    }
+
+    fn parseAssignment(self: *Parser) anyerror!*AstNode {
+        const expr = try self.parsePipeline();
+
+        if (self.match(&.{.assign_token})) {
+            const equals = self.previous();
+
+            const value = try self.parseAssignment();
+
+            if (expr.* == .identifier or expr.* == .index_expr) {
+                const node = try self.allocator.create(AstNode);
+                node.* = .{ .binary_expr = .{ .left = expr, .operator = equals, .right = value } };
+                return node;
+            }
+            return self.reportError(equals, "Invalid assignment target. You can only assign to variables or indexes.");
+        }
+
+        return expr;
     }
 
     fn parsePipeline(self: *Parser) anyerror!*AstNode {

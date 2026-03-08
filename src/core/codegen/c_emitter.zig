@@ -176,6 +176,7 @@ pub const CEmitter = struct {
         try self.visitNode(bin.left, writer);
 
         const op_str = switch (bin.operator._type) {
+            .assign_token => "=",
             .plus_token => "+",
             .minus_token => "-",
             .star_token => "*",
