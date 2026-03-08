@@ -1,0 +1,24 @@
+[build]
+optimize = "ReleaseFast"
+
+[release]
+targets = [
+    "x86_64-linux-gnu",
+    "x86_64-linux-musl",
+    "aarch64-linux-gnu",
+    "aarch64-linux-musl",
+    "arm-linux-gnueabihf",
+    "arm-linux-musleabihf",
+    "riscv64-linux-gnu",
+    "riscv64-linux-musl",
+]
+
+[dist]
+dir = "zemit/dist"
+layout = "flat"
+name_template = "{bin}-{version}-{target}{ext}"
+
+[checksums]
+enabled = true
+algorithm = "sha256"
+file = "checksums.txt"
