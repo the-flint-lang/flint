@@ -1,0 +1,53 @@
+{
+    "For Loop": {
+        "prefix": "for",
+        "body": [
+            "for ${1:item} in ${2:iterable} {",
+            "    $0",
+            "}"
+        ],
+        "description": "Iterador For..In do Flint"
+    },
+    "Function Declaration": {
+        "prefix": "fn",
+        "body": [
+            "fn ${1:nome}(${2:argumentos}) ${3:void} {",
+            "    $0",
+            "}"
+        ],
+        "description": "Declaração de função global"
+    },
+    "If Statement": {
+        "prefix": "if",
+        "body": [
+            "if ${1:condicao} {",
+            "    $0",
+            "}"
+        ],
+        "description": "Bloco condicional IF"
+    },
+    "Read File Pipeline": {
+        "prefix": "read_file",
+        "body": [
+            "read_file(${1:filepath})",
+            "    ~> lines()",
+            "    ~> grep(\"${2:padrao}\")",
+            "    ~> join(\"\\n\");$0"
+        ],
+        "description": "Reads a file and starts a processing pipeline"
+    },
+    "Print Console": {
+        "prefix": "print",
+        "body": [
+            "print(${1:data});$0"
+        ],
+        "description": "Prints data to the terminal (Strings or Integers)"
+    },
+    "Get Arguments": {
+        "prefix": "args",
+        "body": [
+            "const ${1:my_args} = args();$0"
+        ],
+        "description": "Captures the arguments passed in the terminal"
+    }
+}

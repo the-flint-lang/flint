@@ -29,7 +29,7 @@ void flint_init(int argc, char **argv)
     if (arena_buffer == NULL)
     {
 
-        flint_panic("O sistema operacional recusou a alocação do Arena na memória.");
+        flint_panic("The operating system refused to allocate the Arena in memory.");
     }
 
     arena_offset = 0;
@@ -53,7 +53,7 @@ void *flint_alloc(size_t size)
 
     if (arena_offset + aligned_size > ARENA_CAPACITY)
     {
-        flint_panic("Out of Memory (OOM): A Arena do Flint estourou o limite de 64MB.");
+        flint_panic("Out of Memory (OOM): Flint's Arena exceeded the 64MB limit.");
     }
 
     void *ptr = arena_buffer + arena_offset;
@@ -64,15 +64,19 @@ void *flint_alloc(size_t size)
     return ptr;
 }
 
-void flint_print(flint_str text)
+void flint_print_str(flint_str text)
 {
     if (text == NULL)
     {
         printf("null\n");
         return;
     }
-
     printf("%s\n", text);
+}
+
+void flint_print_int(long long num)
+{
+    printf("%lld\n", num);
 }
 
 flint_str_array flint_args()
@@ -103,7 +107,7 @@ flint_str flint_read_file(flint_str filepath)
     {
 
         char err_msg[255];
-        snprintf(err_msg, sizeof(err_msg), "Falha de I/O: Não foi possível abrir o arquivo '%s'", filepath);
+        snprintf(err_msg, sizeof(err_msg), "I/O Failure: Could not open file '%s'", filepath);
         flint_panic(err_msg);
     }
 
@@ -117,7 +121,7 @@ flint_str flint_read_file(flint_str filepath)
     if (read_size != (size_t)size)
     {
         fclose(file);
-        flint_panic("Falha de I/O: Erro ao ler conteúdo do arquivo para a memória.");
+        flint_panic("I/O Failure: Error reading file content into memory.");
     }
 
     buffer[size] = '\0';

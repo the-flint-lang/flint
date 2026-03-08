@@ -78,7 +78,7 @@ pub const CEmitter = struct {
             .index_expr => try self.visitIndexExpr(node, writer),
 
             else => {
-                std.debug.print("Codegen não implementado para: {s}\n", .{@tagName(node.*)});
+                std.debug.print("Codegen not implemented for: {s}\n", .{@tagName(node.*)});
                 return error.NotImplemented;
             },
         }
@@ -203,12 +203,26 @@ pub const CEmitter = struct {
 
     fn visitLiteral(self: *CEmitter, node: *AstNode, writer: anytype) !void {
         _ = self;
-
         const tok = node.literal.token;
+
         if (tok._type == .string_literal_token) {
             try writer.print("\"{s}\"", .{tok.value});
+        } else if (tok._type == .multile_string_literal_token) {
+            try writer.print("\"", .{});
+
+            for (tok.value) |char| {
+                if (char == '\n') {
+                    try writer.print("\\n", .{});
+                } else if (char == '\r') {} else if (char == '"') {
+                    try writer.print("\\\"", .{}); // Escapa aspas internas
+                } else {
+                    try writer.print("{c}", .{char});
+                }
+            }
+
+            try writer.print("\"", .{});
         } else {
-            try writer.print("{s}", .{tok.value});
+            try writer.print("{s}", .{tok.value}); // Numeros, true, false
         }
     }
 

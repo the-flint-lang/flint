@@ -3,10 +3,11 @@ pub fn help(io: anytype) !void {
     io.stdout.print("Available commands\n", .{}) catch {};
 
     // debug command
-    io.stdout.print("    lex:                Lex a .flt file.\n", .{}) catch {};
-    io.stdout.print("    parse:              Parse a .flt file.\n", .{}) catch {};
+    io.stdout.print("    lex:                Lex a .fl file.\n", .{}) catch {};
+    io.stdout.print("    parse:              Parse a .fl file.\n", .{}) catch {};
 
-    io.stdout.print("    build:              Compiles a .flt file.\n\n", .{}) catch {};
+    io.stdout.print("    run:                Compiles a .fl file and run it.\n", .{}) catch {};
+    io.stdout.print("    build:              Compiles a .fl file.\n\n", .{}) catch {};
 
     io.stdout.print("General Commands\n", .{}) catch {};
     io.stdout.print("    -h, --help:         Show this help log.\n", .{}) catch {};

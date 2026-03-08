@@ -1,5 +1,0 @@
-INFO: Sistema iniciado
-ERROR: Falha de conexao com o banco
-WARN: Latencia alta
-ERROR: Memoria insuficiente
-INFO: Desligando...

@@ -52,14 +52,14 @@ pub const Parser = struct {
         return self.parseStatement();
     }
 
-    fn parseIfStatement(self: *Parser) anyerror!*AstNode { // Adicionado !
+    fn parseIfStatement(self: *Parser) anyerror!*AstNode {
         const node = try self.allocator.create(AstNode);
 
         const expr = try self.parseExpression();
 
-        _ = try self.consume(.lbrace_token, "'{' esperado antes do bloco do if");
+        _ = try self.consume(.lbrace_token, "'{' expected before if block");
         const body = try self.parseBody();
-        _ = try self.consume(.rbrace_token, "'}' esperado para fechar o bloco do if");
+        _ = try self.consume(.rbrace_token, "'}' expected to close if block");
 
         node.* = .{
             .if_stmt = .{
@@ -74,17 +74,17 @@ pub const Parser = struct {
     fn parseFunctionDeclaration(self: *Parser) anyerror!*AstNode {
         const node = try self.allocator.create(AstNode);
 
-        const name = try self.consume(.identifier_token, "nome da função esperado");
+        const name = try self.consume(.identifier_token, "function name expected");
 
-        _ = try self.consume(.lparen_token, "'(' esperado após o nome da função");
+        _ = try self.consume(.lparen_token, "'(' expected after function name");
         const args = try self.parseArgs();
-        _ = try self.consume(.rparen_token, "')' esperado após os argumentos da função");
+        _ = try self.consume(.rparen_token, "')' expected after function arguments");
 
         const return_type = self.advance();
 
-        _ = try self.consume(.lbrace_token, "'{' esperado antes do corpo da função");
+        _ = try self.consume(.lbrace_token, "'{' expected before function body");
         const body = try self.parseBody();
-        _ = try self.consume(.rbrace_token, "'}' esperado para fechar o corpo da função");
+        _ = try self.consume(.rbrace_token, "'}' expected to close function body");
 
         node.* = .{
             .function_decl = .{
@@ -107,8 +107,8 @@ pub const Parser = struct {
 
         if (!self.check(.rparen_token)) {
             while (true) {
-                const name_token = try self.consume(.identifier_token, "nome do argumento esperado");
-                _ = try self.consume(.colon_token, "esperado ':' apos o nome do argumento");
+                const name_token = try self.consume(.identifier_token, "argument name expected");
+                _ = try self.consume(.colon_token, "expected ':' after argument name");
                 const type_token = self.advance();
 
                 const arg_node = try self.allocator.create(AstNode);
@@ -157,11 +157,11 @@ pub const Parser = struct {
                         if (!self.match(&.{.comma_token})) break;
                     }
                 }
-                _ = try self.consume(.rparen_token, "Esperado ')' após argumentos.");
+                _ = try self.consume(.rparen_token, "Expected ')' after arguments.");
 
-                // Blindagem v1: Garante que a função chamada é um nome válido
+                // Shielding v1: Ensures that the called function is a valid name
                 if (expr.* != .identifier) {
-                    return self.reportError(self.previous(), "Chamada de função inválida.");
+                    return self.reportError(self.previous(), "Invalid function call.");
                 }
 
                 const callee_name = expr.identifier.name;
@@ -171,7 +171,7 @@ pub const Parser = struct {
                 expr = node;
             } else if (self.match(&.{.lbracket_token})) {
                 const index_expr = try self.parseExpression();
-                _ = try self.consume(.rbracket_token, "Esperado ']' após o índice.");
+                _ = try self.consume(.rbracket_token, "Expected ']' after index.");
 
                 const node = try self.allocator.create(AstNode);
                 node.* = .{ .index_expr = .{ .left = expr, .index = index_expr } };
@@ -200,11 +200,11 @@ pub const Parser = struct {
 
         if (self.match(&.{.lparen_token})) {
             const expr = try self.parseExpression();
-            _ = try self.consume(.rparen_token, "Esperado ')' após a expressão.");
+            _ = try self.consume(.rparen_token, "Expected ')' after expression.");
             return expr;
         }
 
-        return self.reportError(self.peek(), "Expressão inválida ou não reconhecida.");
+        return self.reportError(self.peek(), "Invalid or unrecognized expression.");
     }
 
     fn parseStatement(self: *Parser) anyerror!*AstNode {
@@ -217,22 +217,22 @@ pub const Parser = struct {
 
     fn parseExpressionStatement(self: *Parser) anyerror!*AstNode {
         const expr = try self.parseExpression();
-        _ = try self.consume(.semicolon_token, "Esperado ';' após a expressão.");
+        _ = try self.consume(.semicolon_token, "Expected ';' after expression.");
         return expr;
     }
 
     fn parseForStatement(self: *Parser) anyerror!*AstNode {
         const node = try self.allocator.create(AstNode);
 
-        const iterator_token = try self.consume(.identifier_token, "Esperado nome da variável iteradora após 'for'.");
+        const iterator_token = try self.consume(.identifier_token, "Expected iterator variable name after 'for'.");
 
-        _ = try self.consume(.in_token, "Esperado 'in' após a variável iteradora.");
+        _ = try self.consume(.in_token, "Expected 'in' after iterator variable.");
 
         const iterable_expr = try self.parseExpression();
 
-        _ = try self.consume(.lbrace_token, "Esperado '{' antes do bloco do for.");
+        _ = try self.consume(.lbrace_token, "Expected '{' before for block.");
         const body = try self.parseBody();
-        _ = try self.consume(.rbrace_token, "Esperado '}' para fechar o bloco do for.");
+        _ = try self.consume(.rbrace_token, "Expected '}' to close for block.");
 
         node.* = .{ .for_stmt = .{
             .iterator_name = iterator_token.value,
@@ -248,19 +248,19 @@ pub const Parser = struct {
 
         const is_const = self.previous()._type == .const_token;
 
-        const name_token = try self.consume(.identifier_token, "Esperado nome da variável.");
+        const name_token = try self.consume(.identifier_token, "Expected variable name.");
 
         if (self.match(&.{.colon_token})) {
             if (!self.match(&.{ .integer_type_token, .string_type_token, .char_type_token, .boolean_type_token, .identifier_token })) {
-                return self.reportError(self.peek(), "Tipo inválido ou desconhecido.");
+                return self.reportError(self.peek(), "Invalid or unknown type.");
             }
         }
 
-        _ = try self.consume(.assign_token, "Esperado '=' após o nome da variável.");
+        _ = try self.consume(.assign_token, "Expected '=' after variable name.");
 
         const value_expr = try self.parseExpression();
 
-        _ = try self.consume(.semicolon_token, "Esperado ';' após a declaração da variável.");
+        _ = try self.consume(.semicolon_token, "Expected ';' after variable declaration.");
 
         node.* = .{ .var_decl = .{
             ._type = null,
@@ -398,7 +398,7 @@ pub const Parser = struct {
 
     fn reportError(self: *Parser, token: Token, message: []const u8) anyerror!*AstNode {
         self.had_error = true;
-        try self.io.stderr.print("[Linha {d}] Erro em '{d}': {s}\n", .{ token.line, token.column, message });
+        try self.io.stderr.print("[Line {d}] {s}\n", .{ token.line + 1, message });
         _ = try self.io.stderr.flush();
 
         return error.ParseError;
@@ -406,7 +406,7 @@ pub const Parser = struct {
 
     fn reportErrorT(self: *Parser, token: Token, message: []const u8) anyerror!Token {
         self.had_error = true;
-        try self.io.stderr.print("[Linha {d}] Erro em '{d}': {s}\n", .{ token.line, token.column, message });
+        try self.io.stderr.print("[Line {d}] {s}\n", .{ token.line + 1, message });
         _ = try self.io.stderr.flush();
 
         return error.ParseError;

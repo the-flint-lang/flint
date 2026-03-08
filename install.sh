@@ -15,7 +15,8 @@ fi
 
 echo "Compiling flint..."
 cd "$SCRIPT_DIR"
-zig build -Doptimize=ReleaseFast 
+zig build -Doptimize=ReleaseFast
+
 echo "Binary compiled: $BIN_SRC"
 
 echo "Installing to $DEST_BIN"

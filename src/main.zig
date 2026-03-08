@@ -7,5 +7,5 @@ pub fn main() !void {
 
     const alloc = gpa.allocator();
 
-    try flint.bufferedPrint(alloc);
+    try flint.runCli(alloc);
 }

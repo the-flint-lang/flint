@@ -28,7 +28,23 @@ bool flint_file_exists(flint_str filepath);
 
 void flint_exit(int code);
 
-void flint_print(flint_str text);
+// ============================================================================
+// 3. A BIBLIOTECA PADRÃO (I/O & Utilitários)
+// ============================================================================
+
+// Funções reais ocultas do usuário
+void flint_print_str(flint_str text);
+void flint_print_int(long long num);
+
+// A Mágica do C11 (Polimorfismo em Tempo de Compilação)
+// Se X for inteiro, chama print_int. Caso contrário (default), assume que é string.
+#define flint_print(X) _Generic((X), \
+    int: flint_print_int,            \
+    long: flint_print_int,           \
+    long long: flint_print_int,      \
+    default: flint_print_str)(X)
+
+// ... resto do seu flint_rt.h (read_file, write_file, etc)
 
 flint_str_array flint_lines(flint_str text);
 

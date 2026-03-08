@@ -5,7 +5,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const opts = b.addOptions();
-    opts.addOption([]const u8, "zemit_version", "0.2.0");
+    opts.addOption([]const u8, "zemit_version", "1.0.0");
 
     const mod = b.addModule("flint", .{
         .root_source_file = b.path("src/root.zig"),
@@ -26,6 +26,10 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
+
+    exe.root_module.strip = true;
+    exe.link_gc_sections = true;
+    exe.want_lto = true;
 
     b.installArtifact(exe);
 

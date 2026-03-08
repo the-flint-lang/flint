@@ -1,6 +1,0 @@
-const argumentos = args();
-
-for arg in argumentos {
-    print(arg);
-}
-

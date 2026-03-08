@@ -1,0 +1,41 @@
+{
+    "name": "flint-lang",
+    "displayName": "Flint Language",
+    "description": "Suporte oficial para a linguagem Flint",
+    "version": "1.0.0",
+    "engines": {
+        "vscode": "^1.80.0"
+    },
+    "categories": [
+        "Programming Languages",
+        "Snippets"
+    ],
+    "contributes": {
+        "languages": [
+            {
+                "id": "flint",
+                "aliases": [
+                    "Flint",
+                    "flint"
+                ],
+                "extensions": [
+                    ".fl",
+                    ".flt"
+                ]
+            }
+        ],
+        "grammars": [
+            {
+                "language": "flint",
+                "scopeName": "source.flint",
+                "path": "./syntaxes/flint.tmLanguage.json"
+            }
+        ],
+        "snippets": [
+            {
+                "language": "flint",
+                "path": "./snippets/flint.json"
+            }
+        ]
+    }
+}

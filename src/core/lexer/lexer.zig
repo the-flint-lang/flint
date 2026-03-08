@@ -161,6 +161,14 @@ pub const Lexer = struct {
                     _type = .rbracket_token;
                 },
 
+                ':' => {
+                    _type = .colon_token;
+                },
+
+                ',' => {
+                    _type = .comma_token;
+                },
+
                 // multi-char
                 '=' => {
                     if (self.match('=')) {
