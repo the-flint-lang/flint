@@ -243,7 +243,20 @@ pub const CEmitter = struct {
 
     fn writeMappedIdentifier(self: *CEmitter, name: []const u8, writer: anytype) !void {
         _ = self;
-        const stdlibs = [_][]const u8{ "print", "read_file", "write_file", "lines", "grep", "join", "args", "file_exists", "exit" };
+        const stdlibs = [_][]const u8{
+            "print",
+            "read_file",
+            "write_file",
+            "lines",
+            "grep",
+            "join",
+            "args",
+            "file_exists",
+            "exit",
+            "env",
+            "exec",
+        };
+
         for (stdlibs) |lib| {
             if (std.mem.eql(u8, name, lib)) {
                 try writer.print("flint_{s}", .{name});

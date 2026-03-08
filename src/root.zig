@@ -189,6 +189,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
         rt_c_file,
         "-I",
         rt_dir,
+        "-s",
         "-o",
         exe_name,
         "-O3",
@@ -197,46 +198,49 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
     var child = std.process.Child.init(argv, alloc);
     const term = try child.spawnAndWait();
 
-    if (!is_run) {
-        switch (term) {
-            .Exited => |code| {
-                if (code == 0) {
+    switch (term) {
+        .Exited => |code| {
+            if (code == 0) {
+                if (!is_run) {
                     try io.stdout.print("Success! Executable '{s}' generated.\n", .{exe_name});
-                    try std.fs.cwd().deleteFile(out_filename);
-                } else {
-                    try io.stderr.print("Fatal error in Clang (code {d}).\n", .{code});
                 }
-            },
-            else => try io.stderr.print("The C compiler failed unexpectedly.\n", .{}),
-        }
+                // Sempre apaga o rastro do transpilador, independente de ser build ou run
+                std.fs.cwd().deleteFile(out_filename) catch {};
+            } else {
+                try io.stderr.print("Fatal error in Clang (code {d}).\n", .{code});
+                return;
+            }
+        },
+        else => {
+            try io.stderr.print("The C compiler failed unexpectedly.\n", .{});
+            return;
+        },
     }
 
     if (is_run) {
-        const exec = try std.fmt.allocPrint(alloc, "./{s}", .{exe_name});
+        const exec_path = try std.fmt.allocPrint(alloc, "./{s}", .{exe_name});
+        defer alloc.free(exec_path);
 
-        defer alloc.free(exec);
+        var run_args = std.ArrayList([]const u8).empty;
+        defer run_args.deinit(alloc);
 
-        var args_ = std.ArrayList([]const u8).empty;
-        defer args.deinit();
-
-        try args_.append(alloc, exec);
+        try run_args.append(alloc, exec_path);
 
         while (args.next()) |arg| {
-            try args_.append(alloc, arg);
+            try run_args.append(alloc, arg);
         }
 
-        const argv_run = try args_.toOwnedSlice(alloc);
-
-        var child_run = std.process.Child.init(argv_run, alloc);
+        var child_run = std.process.Child.init(run_args.items, alloc);
         const term_run = try child_run.spawnAndWait();
 
         switch (term_run) {
             .Exited => |code| {
                 if (code != 0) {
-                    try io.stderr.print("Fatal running '{s}' (code {d}).\n", .{ file_path, code });
+                    // Script falhou, o usuário deve saber o código de saída
+                    try io.stderr.print("Process exited with code {d}.\n", .{code});
                 }
             },
-            else => try io.stderr.print("Unexpected error.\n", .{}),
+            else => try io.stderr.print("Unexpected execution error.\n", .{}),
         }
     }
 

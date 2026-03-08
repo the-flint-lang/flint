@@ -1,0 +1,6 @@
+const processos = exec("curl google.com")
+	~> lines()
+	~> grep("H1")
+	~> join("\n");
+
+print(processos);

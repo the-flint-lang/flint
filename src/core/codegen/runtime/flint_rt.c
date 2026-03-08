@@ -196,9 +196,16 @@ flint_str_array flint_grep(flint_str_array lines, flint_str pattern)
 flint_str flint_join(flint_str_array lines, flint_str separator)
 {
     if (lines.count == 0)
+    {
+
         return (flint_str)flint_alloc(1);
+    }
+
     if (!separator)
+    {
+
         separator = "";
+    }
 
     size_t sep_len = strlen(separator);
     size_t total_len = 0;
@@ -228,5 +235,68 @@ flint_str flint_join(flint_str_array lines, flint_str separator)
     }
 
     *current_pos = '\0';
+    return result;
+}
+
+// ============================================================================
+// ENVIRONMENTAL VARIABLES AND PROCESS EXECUTION (v1.1)
+// ============================================================================
+flint_str flint_env(flint_str name)
+{
+
+    if (!name)
+    {
+
+        return "";
+    }
+
+    char *val = getenv(name);
+    // If the variable does not exist, we return empty string instead of NULL.
+    return val ? (flint_str)val : "";
+}
+
+void flint_exit(int code)
+{
+
+    flint_deinit(); // clean arena
+    exit(code);
+}
+
+flint_str flint_exec(flint_str cmd)
+{
+    if (!cmd)
+        return "";
+
+    FILE *pipe = popen(cmd, "r");
+    if (!pipe)
+    {
+        fprintf(stderr, "Erro fatal: Falha ao executar comando '%s'\n", cmd);
+        flint_exit(1);
+    }
+
+    size_t capacity = 2 * 1024 * 1024;
+    char *temp_buf = (char *)malloc(capacity);
+    if (!temp_buf)
+    {
+        fprintf(stderr, "Erro fatal: Sem memória no Sistema Operacional para o exec.\n");
+        flint_exit(1);
+    }
+
+    size_t total_read = 0;
+    size_t bytes_read = 0;
+
+    while ((bytes_read = fread(temp_buf + total_read, 1, capacity - total_read - 1, pipe)) > 0)
+    {
+        total_read += bytes_read;
+    }
+
+    temp_buf[total_read] = '\0';
+    pclose(pipe);
+
+    flint_str result = (flint_str)flint_alloc(total_read + 1);
+    memcpy(result, temp_buf, total_read + 1);
+
+    free(temp_buf);
+
     return result;
 }
