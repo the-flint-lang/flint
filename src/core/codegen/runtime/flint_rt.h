@@ -4,13 +4,28 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+// ============================================================================
+// BASE TYPES AND DATA STRUCTURES (The Array Power Plant)
+// ============================================================================
+
 typedef char *flint_str;
 
-typedef struct
-{
-    flint_str *items;
-    size_t count;
-} flint_str_array;
+// MACRO: Make magically typed Array Structs
+#define DECLARE_FLINT_ARRAY(Type, Name) \
+    typedef struct                      \
+    {                                   \
+        Type *items;                    \
+        size_t count;                   \
+    } Name;
+
+// The C compiler generates the three structs at compile time
+DECLARE_FLINT_ARRAY(long long, flint_int_array)
+DECLARE_FLINT_ARRAY(flint_str, flint_str_array)
+DECLARE_FLINT_ARRAY(bool, flint_bool_array)
+
+// sizeof calculates the exact size of the list at compile time. Zero CPU cost.
+#define FLINT_MAKE_ARRAY(Type, StructName, ...) \
+    (StructName) { .items = (Type[]){__VA_ARGS__}, .count = sizeof((Type[]){__VA_ARGS__}) / sizeof(Type) }
 
 void flint_init(int argc, char **argv);
 
