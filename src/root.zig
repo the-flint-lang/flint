@@ -94,6 +94,12 @@ pub fn runCli(alloc: std.mem.Allocator) !void {
         return;
     };
 
+    // COMMAND: test
+    if (checker.strEquals(cmd, "test")) {
+        try runTests(alloc, io);
+        return;
+    }
+
     // Get the file path (used by all commands below)
     const file_path = args.next() orelse {
         try io.stderr.print("Error: Provide the path of the .fl file\n", .{});
@@ -245,4 +251,100 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
     }
 
     return;
+}
+
+// --- REGRESSION TESTING ENGINE ---
+fn runTests(alloc: std.mem.Allocator, io: IoHelper) !void {
+    var test_dir = std.fs.cwd().openDir("tests", .{ .iterate = true }) catch |err| {
+        try io.stderr.print("Fatal error: Unable to open 'tests' folder ({any}).\n", .{err});
+        return;
+    };
+    defer test_dir.close();
+
+    var iter = test_dir.iterate();
+    var pass_count: usize = 0;
+    var fail_count: usize = 0;
+
+    try io.stdout.print("\x1b[36m=== STARTING FLINT TEST BATTERY ===\x1b[0m\n\n", .{});
+    _ = try io.stdout.flush();
+
+    while (try iter.next()) |entry| {
+        if (entry.kind == .file and std.mem.endsWith(u8, entry.name, ".fl")) {
+            const file_path = try std.fmt.allocPrint(alloc, "tests/{s}", .{entry.name});
+            defer alloc.free(file_path);
+
+            const passed = try testSingleFile(alloc, file_path, io);
+
+            if (passed) {
+                try io.stdout.print("\x1b[32m[PASS]\x1b[0m {s}\n", .{entry.name});
+                pass_count += 1;
+            } else {
+                try io.stdout.print("\x1b[31m[FAIL]\x1b[0m {s}\n", .{entry.name});
+                fail_count += 1;
+            }
+            _ = try io.stdout.flush();
+        }
+    }
+
+    try io.stdout.print("\n---------------------------------------\n", .{});
+    try io.stdout.print("Total: {d} | \x1b[32mPassed: {d}\x1b[0m | \x1b[31mFailed: {d}\x1b[0m\n\n", .{ pass_count + fail_count, pass_count, fail_count });
+}
+
+fn testSingleFile(alloc: std.mem.Allocator, file_path: []const u8, io: IoHelper) !bool {
+    var result = runCompilerPipeline(alloc, file_path, io) catch {
+        return false;
+    };
+    defer alloc.free(result.source);
+    defer result.parser.deinit();
+
+    var emitter = CEmitter.init(alloc);
+
+    const basename = std.fs.path.basename(file_path);
+    const name_only = basename[0 .. std.mem.indexOf(u8, basename, ".") orelse basename.len];
+
+    const out_filename = try std.fmt.allocPrint(alloc, ".temp_test_{s}.c", .{name_only});
+    defer alloc.free(out_filename);
+    const exe_name = try std.fmt.allocPrint(alloc, ".bin_test_{s}", .{name_only});
+    defer alloc.free(exe_name);
+
+    var out_file = try std.fs.cwd().createFile(out_filename, .{});
+    var buffer: [4096]u8 = undefined;
+    var out_writer = out_file.writer(&buffer);
+
+    try emitter.generate(&out_writer.interface, result.ast);
+    _ = out_writer.interface.flush() catch {};
+    out_file.close();
+
+    defer std.fs.cwd().deleteFile(out_filename) catch {};
+    defer std.fs.cwd().deleteFile(exe_name) catch {};
+
+    const cwd = try std.process.getCwdAlloc(alloc);
+    defer alloc.free(cwd);
+    const rt_dir = try std.fmt.allocPrint(alloc, "{s}/src/core/codegen/runtime", .{cwd});
+    defer alloc.free(rt_dir);
+    const rt_c_file = try std.fmt.allocPrint(alloc, "{s}/flint_rt.c", .{rt_dir});
+    defer alloc.free(rt_c_file);
+
+    // 2. Invoca o Clang (Totalmente Silencioso)
+    const clang_argv = &[_][]const u8{ "clang", out_filename, rt_c_file, "-I", rt_dir, "-o", exe_name, "-O3" };
+    var child_clang = std.process.Child.init(clang_argv, alloc);
+    child_clang.stdout_behavior = .Ignore; // Motivo: Não poluir o terminal de testes
+    child_clang.stderr_behavior = .Ignore;
+
+    const clang_term = try child_clang.spawnAndWait();
+    if (clang_term != .Exited or clang_term.Exited != 0) return false;
+
+    // 3. Invoca o Executável Nativo do Flint (Totalmente Silencioso)
+    const exec_path = try std.fmt.allocPrint(alloc, "./{s}", .{exe_name});
+    defer alloc.free(exec_path);
+
+    const run_argv = &[_][]const u8{exec_path};
+
+    var child_run = std.process.Child.init(run_argv, alloc);
+    child_run.stdout_behavior = .Ignore;
+    child_run.stderr_behavior = .Ignore;
+
+    const run_term = try child_run.spawnAndWait();
+
+    return run_term == .Exited and run_term.Exited == 0;
 }
