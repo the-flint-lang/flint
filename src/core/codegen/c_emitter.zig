@@ -77,7 +77,7 @@ pub const CEmitter = struct {
             .for_stmt => try self.visitForStmt(node, writer),
             .index_expr => try self.visitIndexExpr(node, writer),
             .array_expr => try self.visitArrayExpr(node, writer),
-            .dict_expr => try self.emitBoxedValue(node, writer),
+            .dict_expr => try self.visitDictExpr(node, writer),
 
             else => {
                 std.debug.print("Codegen not implemented for: {s}\n", .{@tagName(node.*)});
