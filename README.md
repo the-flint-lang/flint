@@ -65,7 +65,7 @@ Flint brings modern data structures to raw C performance:
 
 ## Getting Started (Building from Source)
 
-The Flint compiler is written in Zig. You need Zig `0.15.2` and `clang` (or `gcc`) installed on your system.
+The Flint compiler is written in Zig. You need Zig `0.15.2` (to compile flint locally) and `clang` (or `gcc`) installed on your system (to compile your .fl).
 
 ```bash
 git clone   https://codeberg.org/lucaas-d3v/flint.git
