@@ -5,47 +5,49 @@
 #include <stddef.h>
 #include <string.h>
 
-// ============================================================================
-// BASE TYPES// ============================================================================
+typedef const char *flint_str;
 
-typedef char *flint_str;
+typedef struct FlintDict FlintDict;
 
 typedef enum
 {
     FLINT_VAL_NULL,
     FLINT_VAL_INT,
-    FLINT_VAL_STR,
     FLINT_VAL_BOOL,
+    FLINT_VAL_STR,
+    FLINT_VAL_DICT
 } FlintValType;
 
 typedef struct
 {
     FlintValType type;
+
     union
     {
         long long i;
-        flint_str s;
         bool b;
+        flint_str s;
+        FlintDict *d;
     } as;
+
 } FlintValue;
 
-typedef struct
-{
-    flint_str key;
-    FlintValue value;
-    bool occupied;
-} FlintDictEntry;
+/* =========================
+   MEMORY
+   ========================= */
 
-typedef struct
-{
-    FlintDictEntry *entries;
-    size_t capacity;
-    size_t count;
-} FlintDict;
+void flint_init(int argc, char **argv);
+void flint_deinit();
 
-// ============================================================================
-// ARRAYS
-// ============================================================================
+void *flint_alloc(size_t size);
+void flint_arena_reset();
+
+void flint_panic(const char *msg);
+void flint_exit(int code);
+
+/* =========================
+   ARRAYS
+   ========================= */
 
 #define DECLARE_FLINT_ARRAY(Type, Name) \
     typedef struct                      \
@@ -57,68 +59,98 @@ typedef struct
 
 DECLARE_FLINT_ARRAY(long long, flint_int_array)
 DECLARE_FLINT_ARRAY(flint_str, flint_str_array)
-DECLARE_FLINT_ARRAY(bool, flint_bool_array)
 
-#define FLINT_MAKE_ARRAY(Type, StructName, ...)                \
-    ({                                                         \
-        Type _temp[] = {__VA_ARGS__};                          \
-        size_t _c = sizeof(_temp) / sizeof(Type);              \
-        size_t _cap = _c < 8 ? 8 : _c * 2;                     \
-        StructName _arr;                                       \
-        _arr.count = _c;                                       \
-        _arr.capacity = _cap;                                  \
-        _arr.items = (Type *)flint_alloc(_cap * sizeof(Type)); \
-        if (_c > 0)                                            \
-            memcpy(_arr.items, _temp, _c * sizeof(Type));      \
-        _arr;                                                  \
-    })
-
-#define flint_push(arr, val)                                                         \
-    do                                                                               \
-    {                                                                                \
-        if ((arr).count >= (arr).capacity)                                           \
-        {                                                                            \
-            size_t _new_cap = (arr).capacity == 0 ? 8 : (arr).capacity * 2;          \
-            void *_new_items = flint_alloc(_new_cap * sizeof(*(arr).items));         \
-            if ((arr).count > 0)                                                     \
-                memcpy(_new_items, (arr).items, (arr).count * sizeof(*(arr).items)); \
-            (arr).items = _new_items;                                                \
-            (arr).capacity = _new_cap;                                               \
-        }                                                                            \
-        (arr).items[(arr).count++] = (val);                                          \
+#define flint_array_init(a) \
+    do                      \
+    {                       \
+        (a).items = NULL;   \
+        (a).count = 0;      \
+        (a).capacity = 0;   \
     } while (0)
 
-#define flint_len(arr) (long long)((arr).count)
+#define FLINT_MAKE_ARRAY(ItemType, ArrayType, ...)                   \
+    ({                                                               \
+        ItemType _tmp[] = {__VA_ARGS__};                             \
+        size_t _cnt = sizeof(_tmp) / sizeof(ItemType);               \
+        ItemType *_arr = flint_alloc(_cnt * sizeof(ItemType));       \
+        memcpy(_arr, _tmp, sizeof(_tmp));                            \
+        (ArrayType){.items = _arr, .count = _cnt, .capacity = _cnt}; \
+    })
 
-// ============================================================================
-// RUNTIME
-// ============================================================================
+#define flint_array_push(arr, val)                                                  \
+    do                                                                              \
+    {                                                                               \
+        if ((arr).count >= (arr).capacity)                                          \
+        {                                                                           \
+            size_t newcap = (arr).capacity == 0 ? 8 : (arr).capacity * 2;           \
+            void *new_items = flint_alloc(newcap * sizeof(*(arr).items));           \
+            if ((arr).items)                                                        \
+                memcpy(new_items, (arr).items, (arr).count * sizeof(*(arr).items)); \
+            (arr).items = new_items;                                                \
+            (arr).capacity = newcap;                                                \
+        }                                                                           \
+        (arr).items[(arr).count++] = val;                                           \
+    } while (0)
 
-void flint_init(int argc, char **argv);
-void flint_deinit();
-void *flint_alloc(size_t size);
-void flint_panic(const char *message);
-void flint_exit(int code);
+#define flint_push(arr, val) flint_array_push(arr, val)
 
-// ============================================================================
-// DICTIONARY
-// ============================================================================
+#define flint_len(arr) ((long long)((arr).count))
+
+/* =========================
+   DICTIONARY
+   ========================= */
+
+typedef struct
+{
+    flint_str key;
+    FlintValue value;
+    bool occupied;
+
+} FlintDictEntry;
+
+struct FlintDict
+{
+    FlintDictEntry *entries;
+    size_t capacity;
+    size_t count;
+};
 
 FlintDict *flint_dict_new(size_t capacity);
 void flint_dict_set(FlintDict *dict, flint_str key, FlintValue value);
 FlintValue flint_dict_get(FlintDict *dict, flint_str key);
 
-// ============================================================================
-// BOXING
-// ============================================================================
+/* =========================
+   VALUE CONSTRUCTORS
+   ========================= */
 
-FlintValue flint_make_int(long long val);
-FlintValue flint_make_str(flint_str val);
-FlintValue flint_make_bool(bool val);
+FlintValue flint_make_int(long long v);
+FlintValue flint_make_bool(bool v);
+FlintValue flint_make_str(flint_str v);
 
-// ============================================================================
-// I/O AND STDLIB
-// ============================================================================
+/* =========================
+   VALUE CONSTRUCTORS E BOXING
+   ========================= */
+
+FlintValue flint_make_int(long long v);
+FlintValue flint_make_bool(bool v);
+FlintValue flint_make_str(flint_str v);
+
+static inline FlintValue flint_identity(FlintValue v) { return v; }
+
+#define FLINT_BOX(X) _Generic((X), \
+    int: flint_make_int,           \
+    long: flint_make_int,          \
+    long long: flint_make_int,     \
+    bool: flint_make_bool,         \
+    char *: flint_make_str,        \
+    const char *: flint_make_str,  \
+    FlintValue: flint_identity)(X)
+
+#define FLINT_SET(dict, key, val) flint_dict_set((dict), (key), FLINT_BOX(val))
+
+/* =========================
+   PRINT
+   ========================= */
 
 void flint_print_str(flint_str text);
 void flint_print_int(long long num);
@@ -133,17 +165,59 @@ void flint_print_dict(FlintDict *dict);
     FlintDict *: flint_print_dict,   \
     default: flint_print_str)(X)
 
-flint_str flint_env(flint_str name);
-flint_str flint_exec(flint_str cmd);
+/* =========================
+   FILESYSTEM
+   ========================= */
+
 flint_str flint_read_file(flint_str filepath);
 void flint_write_file(flint_str text, flint_str filepath);
 bool flint_file_exists(flint_str filepath);
+
+/* =========================
+   PROCESS
+   ========================= */
+
+flint_str flint_exec(flint_str cmd);
+
+/* =========================
+   ENV
+   ========================= */
+
+flint_str flint_env(flint_str name);
 flint_str_array flint_args();
+
+/* =========================
+   STRINGS
+   ========================= */
+
 flint_str_array flint_lines(flint_str text);
-flint_str_array flint_grep(flint_str_array lines, flint_str pattern);
-flint_str flint_join(flint_str_array lines, flint_str separator);
-flint_int_array flint_range(long long start, long long end);
-flint_str flint_trim(flint_str text);
-flint_str flint_replace(flint_str text, flint_str target, flint_str replacement);
 flint_str_array flint_split(flint_str text, flint_str delimiter);
+flint_str flint_join(flint_str_array arr, flint_str sep);
+
+flint_str flint_trim(flint_str text);
+flint_str_array flint_grep(flint_str_array lines, flint_str pattern);
+flint_str flint_replace(flint_str text, flint_str target, flint_str repl);
+
+flint_str flint_int_to_str(long long num);
+flint_str flint_concat(flint_str a, flint_str b);
+
+/* =========================
+   UTIL
+   ========================= */
+
+flint_int_array flint_range(long long start, long long end);
+
+/* =========================
+   NETWORK
+   ========================= */
+
+flint_str flint_fetch(flint_str url);
+
+/* =========================
+   JSON
+   ========================= */
+
+FlintDict *flint_parse_json(flint_str text);
+FlintValue flint_dict_get(FlintDict *d, flint_str key);
+
 #endif

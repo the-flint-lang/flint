@@ -30,6 +30,7 @@ pub const TokenType = enum {
     true_token,
     false_token,
     return_token,
+    import_token,
 
     and_token,
     or_token,

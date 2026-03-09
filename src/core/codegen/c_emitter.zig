@@ -42,12 +42,26 @@ pub const CEmitter = struct {
     fn visitFunctionDecl(self: *CEmitter, node: *AstNode, writer: anytype) !void {
         const func = node.function_decl;
 
-        const ret_type = if (func.return_type._type == .void_token) "void" else "flint_str";
+        const ret_type = switch (func.return_type._type) {
+            .void_token => "void",
+            .integer_type_token => "long long",
+            .boolean_type_token => "bool",
+            else => "flint_str", // Default fallback
+        };
 
         try writer.print("{s} {s}(", .{ ret_type, func.name });
 
         for (func.arguments, 0..) |arg, i| {
-            try writer.print("flint_str {s}", .{arg.identifier.name});
+            const arg_type_tok = arg.identifier._type._type;
+
+            const c_type = switch (arg_type_tok) {
+                .integer_type_token => "long long",
+                .boolean_type_token => "bool",
+                else => "flint_str",
+            };
+
+            try writer.print("{s} {s}", .{ c_type, arg.identifier.name });
+
             if (i < func.arguments.len - 1) {
                 try writer.print(", ", .{});
             }
@@ -329,6 +343,17 @@ pub const CEmitter = struct {
 
     fn writeMappedIdentifier(self: *CEmitter, name: []const u8, writer: anytype) !void {
         _ = self;
+
+        if (std.mem.eql(u8, name, "get")) {
+            try writer.print("flint_dict_get", .{});
+            return;
+        }
+
+        if (std.mem.eql(u8, name, "set")) {
+            try writer.print("FLINT_SET", .{});
+            return;
+        }
+
         const stdlibs = [_][]const u8{
             "print",
             "read_file",
@@ -347,6 +372,10 @@ pub const CEmitter = struct {
             "trim",
             "split",
             "replace",
+            "fetch",
+            "parse_json",
+            "int_to_str",
+            "concat",
         };
 
         for (stdlibs) |lib| {

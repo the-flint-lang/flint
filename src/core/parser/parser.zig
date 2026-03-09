@@ -8,19 +8,22 @@ const DictEntry = @import("./ast.zig").DictEntry;
 pub const Parser = struct {
     tokens: []const Token,
     current: usize = 0,
-
+    source: []const u8,
+    file_path: []const u8,
     arena: std.heap.ArenaAllocator,
     allocator: std.mem.Allocator,
 
     io: IoHelpers,
     had_error: bool = false,
 
-    pub fn init(allocator: std.mem.Allocator, tokens: []const Token, io: IoHelpers) Parser {
+    pub fn init(allocator: std.mem.Allocator, tokens: []const Token, source: []const u8, file_path: []const u8, io: IoHelpers) Parser {
         return .{
             .tokens = tokens,
+            .source = source,
+            .file_path = file_path,
             .current = 0,
             .arena = std.heap.ArenaAllocator.init(allocator),
-            .allocator = undefined, // preenchido pelo caller
+            .allocator = undefined,
             .io = io,
             .had_error = false,
         };
@@ -47,10 +50,22 @@ pub const Parser = struct {
     }
 
     fn parseDeclaration(self: *Parser) anyerror!*AstNode {
+        if (self.match(&.{.import_token})) return self.parseImport();
         if (self.match(&.{.fn_token})) return self.parseFunctionDeclaration();
         if (self.match(&.{ .var_token, .const_token })) return self.parseVarDecl();
 
         return self.parseStatement();
+    }
+
+    fn parseImport(self: *Parser) anyerror!*AstNode {
+        const path_token = try self.consume(.string_literal_token, "Expected file path in quotes after 'import'.");
+
+        _ = try self.consume(.semicolon_token, "Expected ';' after the import path.");
+
+        const node = try self.allocator.create(AstNode);
+        node.* = .{ .import_stmt = .{ .path = path_token.value } };
+
+        return node;
     }
 
     fn parseIfStatement(self: *Parser) anyerror!*AstNode {
@@ -269,7 +284,13 @@ pub const Parser = struct {
 
     fn parseExpressionStatement(self: *Parser) anyerror!*AstNode {
         const expr = try self.parseExpression();
-        _ = try self.consume(.semicolon_token, "Expected ';' after expression.");
+        const last_token = self.previous(); // token logo após a expressão completa
+
+        if (!self.check(.semicolon_token)) {
+            return self.reportError(last_token, "Expected ';' after expression.");
+        }
+        _ = self.advance();
+
         return expr;
     }
 
@@ -467,19 +488,50 @@ pub const Parser = struct {
         return self.reportErrorT(self.peek(), message);
     }
 
-    fn reportError(self: *Parser, token: Token, message: []const u8) anyerror!*AstNode {
+    fn printErrorContext(self: *Parser, token: Token, message: []const u8) anyerror!void {
         self.had_error = true;
-        try self.io.stderr.print("[Line {d}] {s}\n", .{ token.line + 1, message });
-        _ = try self.io.stderr.flush();
 
+        var lines = std.mem.splitScalar(u8, self.source, '\n');
+        var current_line: u32 = 0;
+        var target_line_text: []const u8 = "";
+
+        while (lines.next()) |line| : (current_line += 1) {
+            if (current_line == token.line) {
+                target_line_text = line;
+                break;
+            }
+        }
+
+        const raw_len: u32 = switch (token._type) {
+            .string_literal_token => @intCast(token.value.len + 2), // +2 para as aspas
+            .char_literal_token => @intCast(token.value.len + 2), // +2 para as aspas
+            else => @intCast(if (token.value.len > 0) token.value.len else 1),
+        };
+
+        const token_len = raw_len;
+        const start_col = if (token.column >= raw_len) token.column - raw_len else 0;
+
+        try self.io.stderr.print("\n\x1b[1;31m[Erro de Sintaxe]\x1b[0m {s}:{d}:{d}\n", .{ self.file_path, token.line + 1, start_col + 1 });
+        try self.io.stderr.print("    |\n", .{});
+        try self.io.stderr.print("{d:3} | {s}\n", .{ token.line + 1, target_line_text });
+        try self.io.stderr.print("    | ", .{});
+
+        for (0..start_col) |_| try self.io.stderr.print(" ", .{});
+
+        try self.io.stderr.print("\x1b[1;31m^\x1b[0m", .{});
+        for (1..token_len) |_| try self.io.stderr.print("\x1b[1;31m~\x1b[0m", .{});
+
+        try self.io.stderr.print("\n    | \x1b[1;31m{s}\x1b[0m\n\n", .{message});
+        _ = try self.io.stderr.flush();
+    }
+
+    fn reportError(self: *Parser, token: Token, message: []const u8) anyerror!*AstNode {
+        try self.printErrorContext(token, message);
         return error.ParseError;
     }
 
     fn reportErrorT(self: *Parser, token: Token, message: []const u8) anyerror!Token {
-        self.had_error = true;
-        try self.io.stderr.print("[Line {d}] {s}\n", .{ token.line + 1, message });
-        _ = try self.io.stderr.flush();
-
+        try self.printErrorContext(token, message);
         return error.ParseError;
     }
 };

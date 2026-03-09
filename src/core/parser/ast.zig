@@ -7,6 +7,7 @@ pub const NodeType = enum {
 
     function_decl,
     var_decl,
+    import_stmt,
     if_stmt,
 
     call_expr,
@@ -41,6 +42,10 @@ pub const AstNode = union(NodeType) {
         is_const: bool,
         name: []const u8,
         value: *AstNode,
+    },
+
+    import_stmt: struct {
+        path: []const u8,
     },
 
     if_stmt: struct {

@@ -1,21 +1,15 @@
 const std = @import("std");
 
-//utils
 const checker = @import("./core/helpers/utils/checkers.zig");
-
-// structs
-const IoHelper = @import("./core/helpers/structs/structs.zig").IoHelpers;
+pub const IoHelper = @import("./core/helpers/structs/structs.zig").IoHelpers;
 const Lexer = @import("./core/lexer/lexer.zig").Lexer;
 const Parser = @import("./core/parser/parser.zig").Parser;
 const CEmitter = @import("./core/codegen/c_emitter.zig").CEmitter;
 const AstNode = @import("./core/parser/ast.zig").AstNode;
 const Token = @import("./core/lexer/structs/token.zig").Token;
-
-// functions
 const help = @import("./core/helpers/functions/help.zig").help;
 const version = @import("./core/helpers/functions/version.zig").version;
 
-// --- AUXILIARY STRUCTURE FOR THE PIPELINE ---
 const PipelineResult = struct {
     source: []const u8,
     tokens: []const Token,
@@ -23,7 +17,6 @@ const PipelineResult = struct {
     ast: *AstNode,
 };
 
-// --- THE FUNCTION THAT CENTRALIZES READING, LEXER AND PARSER ---
 fn runCompilerPipeline(alloc: std.mem.Allocator, file_path: []const u8, io: IoHelper) !PipelineResult {
     const source = try std.fs.cwd().readFileAlloc(alloc, file_path, 1024 * 1024);
     errdefer alloc.free(source);
@@ -39,7 +32,7 @@ fn runCompilerPipeline(alloc: std.mem.Allocator, file_path: []const u8, io: IoHe
     };
     const tokens = try lex.tokenize();
 
-    var parse = Parser.init(alloc, tokens, io);
+    var parse = Parser.init(alloc, tokens, source, file_path, io);
     parse.allocator = parse.arena.allocator();
 
     const ast = parse.parse() catch {
@@ -54,26 +47,89 @@ fn runCompilerPipeline(alloc: std.mem.Allocator, file_path: []const u8, io: IoHe
     };
 }
 
-pub fn runCli(alloc: std.mem.Allocator) !void {
+const Linker = struct {
+    allocator: std.mem.Allocator,
+    visited: std.StringHashMap(void),
+    statements: std.ArrayList(*AstNode),
+    results: std.ArrayList(*PipelineResult),
+    io: IoHelper,
+    has_error: bool = false,
+
+    pub fn init(alloc: std.mem.Allocator, io: IoHelper) Linker {
+        return .{
+            .allocator = alloc,
+            .visited = std.StringHashMap(void).init(alloc),
+            .statements = std.ArrayList(*AstNode).empty,
+            .results = std.ArrayList(*PipelineResult).empty,
+            .io = io,
+        };
+    }
+
+    pub fn deinit(self: *Linker) void {
+        var it = self.visited.keyIterator();
+        while (it.next()) |key| {
+            self.allocator.free(key.*);
+        }
+        self.visited.deinit();
+
+        for (self.results.items) |res_ptr| {
+            self.allocator.free(res_ptr.source);
+            self.allocator.free(res_ptr.tokens);
+            res_ptr.parser.deinit();
+            self.allocator.destroy(res_ptr);
+        }
+        self.results.deinit(self.allocator);
+        self.statements.deinit(self.allocator);
+    }
+
+    pub fn linkFile(self: *Linker, file_path: []const u8) !void {
+        const abs_path = std.fs.cwd().realpathAlloc(self.allocator, file_path) catch {
+            try self.io.stderr.print("Erro Fatal: Nao foi possivel importar o arquivo '{s}'.\n", .{file_path});
+            self.has_error = true;
+            return;
+        };
+        defer self.allocator.free(abs_path);
+
+        if (self.visited.contains(abs_path)) return;
+
+        const path_dup = try self.allocator.dupe(u8, abs_path);
+        try self.visited.put(path_dup, {});
+
+        const result_ptr = try self.allocator.create(PipelineResult);
+        result_ptr.* = runCompilerPipeline(self.allocator, file_path, self.io) catch {
+            self.has_error = true;
+            return;
+        };
+        try self.results.append(self.allocator, result_ptr);
+
+        if (result_ptr.parser.had_error) {
+            self.has_error = true;
+            return;
+        }
+
+        const base_dir = std.fs.path.dirname(file_path) orelse ".";
+
+        for (result_ptr.ast.program.statements) |stmt| {
+            if (stmt.* == .import_stmt) {
+                const import_raw = stmt.import_stmt.path;
+                const clean_path = import_raw[0..import_raw.len];
+
+                const next_file = try std.fs.path.join(self.allocator, &.{ base_dir, clean_path });
+                defer self.allocator.free(next_file);
+
+                try self.linkFile(next_file);
+            } else {
+                try self.statements.append(self.allocator, stmt);
+            }
+        }
+    }
+};
+
+pub fn runCli(alloc: std.mem.Allocator, io: IoHelper) !void {
     var args = try std.process.argsWithAllocator(alloc);
     defer args.deinit();
 
-    _ = args.next(); // bin name
-
-    var stdout_buffer: [4096]u8 = undefined;
-    var stderr_buffer: [4096]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
-    var stderr_writer = std.fs.File.stderr().writer(&stderr_buffer);
-
-    defer {
-        _ = stdout_writer.interface.flush() catch {};
-        _ = stderr_writer.interface.flush() catch {};
-    }
-
-    const io = IoHelper{
-        .stdout = &stdout_writer.interface,
-        .stderr = &stderr_writer.interface,
-    };
+    _ = args.next();
 
     var command: ?[]const u8 = null;
     while (args.next()) |arg| {
@@ -94,13 +150,11 @@ pub fn runCli(alloc: std.mem.Allocator) !void {
         return;
     };
 
-    // COMMAND: test
     if (checker.strEquals(cmd, "test")) {
         try runTests(alloc, io);
         return;
     }
 
-    // Get the file path (used by all commands below)
     const file_path = args.next() orelse {
         try io.stderr.print("Error: Provide the path of the .fl file\n", .{});
         return;
@@ -108,37 +162,36 @@ pub fn runCli(alloc: std.mem.Allocator) !void {
 
     if (std.mem.lastIndexOfScalar(u8, file_path, '.')) |idx| {
         const ext = file_path[idx..];
-
         if (!std.mem.eql(u8, ext, ".fl")) {
             try io.stderr.print("Error: Provide a .fl file\n", .{});
             return;
         }
     }
 
-    // COMMAND: LEX
     if (checker.strEquals(cmd, "lex")) {
         var result = runCompilerPipeline(alloc, file_path, io) catch return;
         defer alloc.free(result.source);
         defer result.parser.deinit();
+        defer alloc.free(result.tokens);
 
         for (result.tokens) |t| {
             const a = try t.toString(alloc);
+            defer alloc.free(a);
             try io.stdout.print("{s}\n", .{a});
         }
         return;
     }
 
-    // COMMAND: PARSE
     if (checker.strEquals(cmd, "parse")) {
         var result = runCompilerPipeline(alloc, file_path, io) catch return;
         defer alloc.free(result.source);
         defer result.parser.deinit();
+        defer alloc.free(result.tokens);
 
         try io.stdout.print("Parser finished. AST generated successfully.\n", .{});
         return;
     }
 
-    // COMMAND: BUILD
     if (checker.strEquals(cmd, "build")) {
         try runner(alloc, &args, file_path, io, false);
         return;
@@ -154,12 +207,16 @@ pub fn runCli(alloc: std.mem.Allocator) !void {
 }
 
 fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: []const u8, io: anytype, is_run: bool) !void {
-    var result = runCompilerPipeline(alloc, file_path, io) catch {
-        try io.stderr.print("Syntax error while compiling. Aborting build.\n", .{});
+    var linker = Linker.init(alloc, io);
+    defer linker.deinit();
+
+    linker.linkFile(file_path) catch {};
+    if (linker.has_error) {
+        try io.stderr.print("Syntax error while linking modules. Aborting build.\n", .{});
         return;
-    };
-    defer alloc.free(result.source);
-    defer result.parser.deinit();
+    }
+
+    var merged_ast = AstNode{ .program = .{ .statements = linker.statements.items } };
 
     var emitter = CEmitter.init(alloc);
     const out_filename = ".flint_temp.c";
@@ -168,7 +225,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
     var buffer: [4096]u8 = undefined;
     var out_writer = out_file.writer(&buffer);
 
-    try emitter.generate(&out_writer.interface, result.ast);
+    try emitter.generate(&out_writer.interface, &merged_ast);
     _ = out_writer.interface.flush() catch {};
     out_file.close();
 
@@ -195,6 +252,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
         rt_c_file,
         "-I",
         rt_dir,
+        "-lcurl",
         "-s",
         "-o",
         exe_name,
@@ -210,7 +268,6 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
                 if (!is_run) {
                     try io.stdout.print("Success! Executable '{s}' generated.\n", .{exe_name});
                 }
-                // Sempre apaga o rastro do transpilador, independente de ser build ou run
                 std.fs.cwd().deleteFile(out_filename) catch {};
             } else {
                 try io.stderr.print("Fatal error in Clang (code {d}).\n", .{code});
@@ -242,18 +299,14 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
         switch (term_run) {
             .Exited => |code| {
                 if (code != 0) {
-                    // Script falhou, o usuário deve saber o código de saída
                     try io.stderr.print("Process exited with code {d}.\n", .{code});
                 }
             },
             else => try io.stderr.print("Unexpected execution error.\n", .{}),
         }
     }
-
-    return;
 }
 
-// --- REGRESSION TESTING ENGINE ---
 fn runTests(alloc: std.mem.Allocator, io: IoHelper) !void {
     var test_dir = std.fs.cwd().openDir("tests", .{ .iterate = true }) catch |err| {
         try io.stderr.print("Fatal error: Unable to open 'tests' folder ({any}).\n", .{err});
@@ -291,11 +344,13 @@ fn runTests(alloc: std.mem.Allocator, io: IoHelper) !void {
 }
 
 fn testSingleFile(alloc: std.mem.Allocator, file_path: []const u8, io: IoHelper) !bool {
-    var result = runCompilerPipeline(alloc, file_path, io) catch {
-        return false;
-    };
-    defer alloc.free(result.source);
-    defer result.parser.deinit();
+    var linker = Linker.init(alloc, io);
+    defer linker.deinit();
+
+    linker.linkFile(file_path) catch {};
+    if (linker.has_error) return false;
+
+    var merged_ast = AstNode{ .program = .{ .statements = linker.statements.items } };
 
     var emitter = CEmitter.init(alloc);
 
@@ -311,7 +366,7 @@ fn testSingleFile(alloc: std.mem.Allocator, file_path: []const u8, io: IoHelper)
     var buffer: [4096]u8 = undefined;
     var out_writer = out_file.writer(&buffer);
 
-    try emitter.generate(&out_writer.interface, result.ast);
+    try emitter.generate(&out_writer.interface, &merged_ast);
     _ = out_writer.interface.flush() catch {};
     out_file.close();
 
@@ -325,26 +380,34 @@ fn testSingleFile(alloc: std.mem.Allocator, file_path: []const u8, io: IoHelper)
     const rt_c_file = try std.fmt.allocPrint(alloc, "{s}/flint_rt.c", .{rt_dir});
     defer alloc.free(rt_c_file);
 
-    // 2. Invoca o Clang (Totalmente Silencioso)
-    const clang_argv = &[_][]const u8{ "clang", out_filename, rt_c_file, "-I", rt_dir, "-o", exe_name, "-O3" };
+    const clang_argv = &[_][]const u8{
+        "clang",
+        out_filename,
+        rt_c_file,
+        "-I",
+        rt_dir,
+        "-lcurl",
+        "-s",
+        "-o",
+        exe_name,
+        "-O3",
+    };
+
     var child_clang = std.process.Child.init(clang_argv, alloc);
-    child_clang.stdout_behavior = .Ignore; // Motivo: Não poluir o terminal de testes
+    child_clang.stdout_behavior = .Ignore;
     child_clang.stderr_behavior = .Ignore;
 
     const clang_term = try child_clang.spawnAndWait();
     if (clang_term != .Exited or clang_term.Exited != 0) return false;
 
-    // 3. Invoca o Executável Nativo do Flint (Totalmente Silencioso)
     const exec_path = try std.fmt.allocPrint(alloc, "./{s}", .{exe_name});
     defer alloc.free(exec_path);
 
     const run_argv = &[_][]const u8{exec_path};
-
     var child_run = std.process.Child.init(run_argv, alloc);
     child_run.stdout_behavior = .Ignore;
     child_run.stderr_behavior = .Ignore;
 
     const run_term = try child_run.spawnAndWait();
-
     return run_term == .Exited and run_term.Exited == 0;
 }
