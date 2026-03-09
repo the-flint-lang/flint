@@ -7,6 +7,7 @@ pub const NodeType = enum {
 
     function_decl,
     var_decl,
+    import_stmt,
     if_stmt,
 
     call_expr,
@@ -19,6 +20,7 @@ pub const NodeType = enum {
 
     pipeline_expr,
     for_stmt,
+    catch_expr,
 
     identifier,
     literal,
@@ -41,6 +43,10 @@ pub const AstNode = union(NodeType) {
         is_const: bool,
         name: []const u8,
         value: *AstNode,
+    },
+
+    import_stmt: struct {
+        path: []const u8,
     },
 
     if_stmt: struct {
@@ -88,6 +94,8 @@ pub const AstNode = union(NodeType) {
         body: []const *AstNode,
     },
 
+    catch_expr: CatchExpr,
+
     identifier: struct {
         _type: Token,
         name: []const u8,
@@ -101,4 +109,10 @@ pub const AstNode = union(NodeType) {
 pub const DictEntry = struct {
     key: *AstNode,
     value: *AstNode,
+};
+
+pub const CatchExpr = struct {
+    expression: *AstNode,
+    error_identifier: []const u8,
+    body: []*AstNode,
 };

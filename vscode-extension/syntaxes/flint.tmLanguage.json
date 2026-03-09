@@ -13,6 +13,9 @@
             "include": "#keywords"
         },
         {
+            "include": "#error_handling"
+        },
+        {
             "include": "#operators"
         },
         {
@@ -55,7 +58,7 @@
             "patterns": [
                 {
                     "name": "keyword.control.flint",
-                    "match": "\\b(if|else|for|in|return)\\b"
+                    "match": "\\b(if|else|for|in|return|import|catch)\\b"
                 },
                 {
                     "name": "storage.type.flint",
@@ -63,14 +66,33 @@
                 },
                 {
                     "name": "constant.language.boolean.flint",
-                    "match": "\\b(true|false)\\b"
+                    "match": "\\b(true|false|null)\\b"
+                }
+            ]
+        },
+        "error_handling": {
+            "patterns": [
+                {
+                    "name": "meta.catch.flint",
+                    "match": "(\\|)([a-zA-Z_][a-zA-Z0-9_]*)(\\|)",
+                    "captures": {
+                        "1": {
+                            "name": "punctuation.definition.parameters.begin.flint"
+                        },
+                        "2": {
+                            "name": "variable.parameter.error.flint"
+                        },
+                        "3": {
+                            "name": "punctuation.definition.parameters.end.flint"
+                        }
+                    }
                 }
             ]
         },
         "operators": {
             "patterns": [
                 {
-                    "name": "keyword.operator.pipeline.flint",
+                    "name": "keyword.control.flow.pipeline.flint",
                     "match": "~>"
                 },
                 {
@@ -78,8 +100,20 @@
                     "match": "\\b(not|and|or)\\b"
                 },
                 {
-                    "name": "keyword.operator.flint",
-                    "match": "(==|!=|<=|>=|\\+|-|\\*|/|%|<|>|=)"
+                    "name": "keyword.operator.comparison.flint",
+                    "match": "(==|!=|<=|>=|<|>)"
+                },
+                {
+                    "name": "keyword.operator.assignment.flint",
+                    "match": "="
+                },
+                {
+                    "name": "keyword.operator.math.flint",
+                    "match": "(\\+|-|\\*|/|%)"
+                },
+                {
+                    "name": "keyword.operator.bitwise.flint",
+                    "match": "\\|"
                 }
             ]
         },

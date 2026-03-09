@@ -1,0 +1,12 @@
+print("Filtering only Login via Pipeline:");
+
+fetch("https://api.github.com/users/lucaas-d3v") 
+    ~> split(",")
+    ~> grep("\"login\":")
+    ~> join("")
+    ~> replace("{", "")
+    ~> replace("\"", "")
+    ~> replace(":", " -> ")
+    ~> trim()
+    ~> print();
+    

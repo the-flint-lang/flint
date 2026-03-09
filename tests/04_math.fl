@@ -1,0 +1,9 @@
+fn calculate() void {
+    const a = 10;
+    const b = 20;
+    const c = a + b;
+    
+    print(c);
+}
+
+calculate();

@@ -36,10 +36,9 @@ pub const Lexer = struct {
             if (std.ascii.isWhitespace(c)) continue;
 
             if (c == '#') {
-                while (!self.isAtEnd() and c != '\n') {
-                    c = self.consume().?;
+                while (!self.isAtEnd() and self.peek(0) != '\n') {
+                    _ = self.consume();
                 }
-
                 continue;
             }
 
@@ -169,6 +168,10 @@ pub const Lexer = struct {
                     _type = .comma_token;
                 },
 
+                '|' => {
+                    _type = .pipe_token;
+                },
+
                 // multi-char
                 '=' => {
                     if (self.match('=')) {
@@ -245,11 +248,19 @@ pub const Lexer = struct {
     fn readString(self: *Lexer) []const u8 {
         const init = self.position;
 
-        while (!self.isAtEnd() and self.source[self.position] != '"') {
+        while (!self.isAtEnd()) {
+            const char = self.source[self.position];
+
+            if (char == '"') break;
+
+            if (char == '\\' and self.position + 1 < self.source.len) {
+                self.advance();
+            }
             self.advance();
         }
 
         if (!self.isAtEnd()) self.advance();
+
         return self.source[init .. self.position - 1];
     }
 

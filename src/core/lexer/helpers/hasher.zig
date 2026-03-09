@@ -15,4 +15,9 @@ pub const tokenMap = std.StaticStringMap(TokenType).initComptime(.{
     .{ "not", TokenType.not_token },
     .{ "and", TokenType.and_token },
     .{ "or", TokenType.or_token },
+    .{ "import", TokenType.import_token },
+    .{ "int", TokenType.integer_type_token },
+    .{ "bool", TokenType.boolean_type_token },
+    .{ "string", TokenType.string_type_token },
+    .{ "catch", TokenType.catch_token },
 });

@@ -1,0 +1,8 @@
+const config = {
+    "port": 8080,
+    "host": "localhost",
+    "secure": true
+};
+
+print("The dictionary was built. Reading keys:");
+print(config);

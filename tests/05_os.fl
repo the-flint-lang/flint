@@ -1,0 +1,13 @@
+const user = env("USER");
+
+print("Starting script as:");
+print(user);
+
+print("\nProcesses running on this machine: ");
+
+const processes = exec("ps aux")
+    ~> lines()
+    ~> grep(user)
+    ~> join("\n");
+
+print(processes);

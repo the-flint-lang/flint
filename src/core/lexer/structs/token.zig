@@ -11,7 +11,7 @@ pub const Token = struct {
 
     pub fn toString(self: Token, alloc: std.mem.Allocator) ![]const u8 {
         if (self.value.len == 0) {
-            return @tagName(self._type);
+            return try std.fmt.allocPrint(alloc, "{s}", .{@tagName(self._type)});
         }
 
         const r = try std.fmt.allocPrint(alloc, "{s}({s})", .{ @tagName(self._type), self.value });

@@ -1,0 +1,18 @@
+print("Fetching data from GitHub...");
+
+# 1. Fetch the raw data from the Internet
+const raw_payload = fetch("https://api.github.com/users/lucaas-d3v");
+
+# 2. Converts text to native Memoria structure (FlintDict)
+const my_profile = parse_json(raw_payload);
+
+# 3. Access properties with elegant dynamic typing
+print("\n=== DEVELOPER PROFILE ===");
+print("Login:");
+print(get(my_profile, "login"));
+
+print("Account ID:");
+print(get(my_profile, "id"));
+
+print("Hireable Developer?");
+print(get(my_profile, "hireable"));
