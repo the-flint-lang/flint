@@ -15,7 +15,8 @@ typedef enum
     FLINT_VAL_INT,
     FLINT_VAL_BOOL,
     FLINT_VAL_STR,
-    FLINT_VAL_DICT
+    FLINT_VAL_DICT,
+    FLINT_VAL_ERROR
 } FlintValType;
 
 typedef struct
@@ -126,6 +127,10 @@ FlintValue flint_dict_get(FlintDict *dict, flint_str key);
 FlintValue flint_make_int(long long v);
 FlintValue flint_make_bool(bool v);
 FlintValue flint_make_str(flint_str v);
+FlintValue flint_make_error(flint_str msg);
+
+bool flint_is_err(FlintValue v);
+flint_str flint_get_err(FlintValue v);
 
 /* =========================
    VALUE CONSTRUCTORS E BOXING
@@ -212,7 +217,7 @@ flint_int_array flint_range(long long start, long long end);
    NETWORK
    ========================= */
 
-flint_str flint_fetch(flint_str url);
+FlintValue flint_fetch(flint_str url);
 
 /* =========================
    JSON

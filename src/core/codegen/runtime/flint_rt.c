@@ -71,6 +71,10 @@ FlintValue flint_make_int(long long v) { return (FlintValue){FLINT_VAL_INT, .as.
 FlintValue flint_make_bool(bool v) { return (FlintValue){FLINT_VAL_BOOL, .as.b = v}; }
 FlintValue flint_make_str(flint_str v) { return (FlintValue){FLINT_VAL_STR, .as.s = v}; }
 
+FlintValue flint_make_error(flint_str msg) { return (FlintValue){FLINT_VAL_ERROR, .as.s = msg}; }
+bool flint_is_err(FlintValue v) { return v.type == FLINT_VAL_ERROR; }
+flint_str flint_get_err(FlintValue v) { return v.type == FLINT_VAL_ERROR ? v.as.s : ""; }
+
 /* =========================
    PRINT
    ========================= */
@@ -97,6 +101,9 @@ void flint_print_val(FlintValue v)
         break;
     case FLINT_VAL_DICT:
         flint_print_dict(v.as.d);
+        break;
+    case FLINT_VAL_ERROR:
+        printf("\033[1;31m[Caught Error]\033[0m %s\n", v.as.s);
         break;
     }
 }
@@ -361,6 +368,8 @@ flint_str flint_to_str(FlintValue v)
         return "null";
     case FLINT_VAL_DICT:
         return "[Flint Dictionary]";
+    case FLINT_VAL_ERROR:
+        return "[Error]";
     }
 
     return "";
@@ -497,10 +506,10 @@ static size_t flint_fetch_callback(void *contents, size_t size, size_t nmemb, vo
     return realsize;
 }
 
-flint_str flint_fetch(flint_str url)
+FlintValue flint_fetch(flint_str url)
 {
     if (!url)
-        return "";
+        return flint_make_error("Null or invalid URL provided to fetch");
     CURL *curl_handle;
     CURLcode res;
     struct FetchMemoryStruct chunk;
@@ -513,18 +522,29 @@ flint_str flint_fetch(flint_str url)
         curl_easy_setopt(curl_handle, CURLOPT_URL, url);
         curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, flint_fetch_callback);
         curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)&chunk);
-        curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "Flint-Lang-v1.4");
+        curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "Flint-Lang-v1.5");
         curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1L);
+
+        // 5-second timeout to prevent the program from freezing indefinitely.
+        curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 5L);
+
         res = curl_easy_perform(curl_handle);
+
         if (res != CURLE_OK)
-            flint_panic("Falha na conexao de rede");
+        {
+            curl_easy_cleanup(curl_handle);
+            free(chunk.memory);
+
+            return flint_make_error((flint_str)curl_easy_strerror(res));
+        }
         curl_easy_cleanup(curl_handle);
     }
 
     flint_str result = (flint_str)flint_alloc(chunk.size + 1);
     memcpy((void *)result, chunk.memory, chunk.size + 1);
     free(chunk.memory);
-    return result;
+
+    return flint_make_str(result);
 }
 
 /* =========================

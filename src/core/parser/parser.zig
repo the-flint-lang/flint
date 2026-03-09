@@ -352,6 +352,31 @@ pub const Parser = struct {
     fn parseAssignment(self: *Parser) anyerror!*AstNode {
         const expr = try self.parsePipeline();
 
+        if (self.match(&.{.catch_token})) {
+            _ = try self.consume(.pipe_token, "Expected '|' after the 'catch' keyword.");
+            const err_token = try self.consume(.identifier_token, "Expected error variable name.");
+            _ = try self.consume(.pipe_token, "Expected '|' to close the error variable.");
+
+            _ = try self.consume(.lbrace_token, "Expected '{' to start the catch block.");
+
+            var body = std.ArrayList(*AstNode).empty;
+            while (!self.check(.rbrace_token) and !self.isAtEnd()) {
+                const stmt = try self.parseStatement();
+                try body.append(self.allocator, stmt);
+            }
+
+            _ = try self.consume(.rbrace_token, "Expected '}' to close the catch block.");
+
+            const catch_node = try self.allocator.create(AstNode);
+            catch_node.* = .{ .catch_expr = .{
+                .expression = expr,
+                .error_identifier = err_token.value,
+                .body = try body.toOwnedSlice(self.allocator),
+            } };
+
+            return catch_node;
+        }
+
         if (self.match(&.{.assign_token})) {
             const equals = self.previous();
 

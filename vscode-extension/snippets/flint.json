@@ -49,5 +49,25 @@
             "const ${1:my_args} = args();$0"
         ],
         "description": "Captures the arguments passed in the terminal"
+    },
+    "Fetch with Catch": {
+        "prefix": "fetch",
+        "body": [
+            "const ${1:data} = fetch(\"${2:https://api.example.com}\") catch |${3:err}| {",
+            "    print(\"Falha na requisicao: \");",
+            "    print(${3:err});",
+            "    exit(1);",
+            "};$0"
+        ],
+        "description": "Dispara uma requisição HTTP segura com tratamento de erro nativo"
+    },
+    "Catch Block": {
+        "prefix": "catch",
+        "body": [
+            "catch |${1:err}| {",
+            "    $0",
+            "}"
+        ],
+        "description": "Injeta um bloco de interceptação de erro (estilo Zig)"
     }
 }

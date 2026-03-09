@@ -168,6 +168,10 @@ pub const Lexer = struct {
                     _type = .comma_token;
                 },
 
+                '|' => {
+                    _type = .pipe_token;
+                },
+
                 // multi-char
                 '=' => {
                     if (self.match('=')) {

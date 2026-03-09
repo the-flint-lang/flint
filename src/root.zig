@@ -10,6 +10,10 @@ const Token = @import("./core/lexer/structs/token.zig").Token;
 const help = @import("./core/helpers/functions/help.zig").help;
 const version = @import("./core/helpers/functions/version.zig").version;
 
+// Injetando o código C diretamente no executável do Zig!
+const flint_rt_c_content = @embedFile("core/codegen/runtime/flint_rt.c");
+const flint_rt_h_content = @embedFile("core/codegen/runtime/flint_rt.h");
+
 const PipelineResult = struct {
     source: []const u8,
     tokens: []const Token,
@@ -237,21 +241,22 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
     const basename = std.fs.path.basename(file_path);
     const exe_name = basename[0 .. std.mem.indexOf(u8, basename, ".") orelse basename.len];
 
-    const cwd = try std.process.getCwdAlloc(alloc);
-    defer alloc.free(cwd);
+    var h_file = try std.fs.cwd().createFile("flint_rt.h", .{});
+    try h_file.writeAll(flint_rt_h_content);
+    h_file.close();
 
-    const rt_dir = try std.fmt.allocPrint(alloc, "{s}/src/core/codegen/runtime", .{cwd});
-    defer alloc.free(rt_dir);
+    var c_file = try std.fs.cwd().createFile("flint_rt.c", .{});
+    try c_file.writeAll(flint_rt_c_content);
+    c_file.close();
 
-    const rt_c_file = try std.fmt.allocPrint(alloc, "{s}/flint_rt.c", .{rt_dir});
-    defer alloc.free(rt_c_file);
+    defer std.fs.cwd().deleteFile("flint_rt.h") catch {};
+    defer std.fs.cwd().deleteFile("flint_rt.c") catch {};
 
     const argv = &[_][]const u8{
         "clang",
         out_filename,
-        rt_c_file,
-        "-I",
-        rt_dir,
+        "flint_rt.c",
+        "-I.",
         "-lcurl",
         "-s",
         "-o",
@@ -373,19 +378,22 @@ fn testSingleFile(alloc: std.mem.Allocator, file_path: []const u8, io: IoHelper)
     defer std.fs.cwd().deleteFile(out_filename) catch {};
     defer std.fs.cwd().deleteFile(exe_name) catch {};
 
-    const cwd = try std.process.getCwdAlloc(alloc);
-    defer alloc.free(cwd);
-    const rt_dir = try std.fmt.allocPrint(alloc, "{s}/src/core/codegen/runtime", .{cwd});
-    defer alloc.free(rt_dir);
-    const rt_c_file = try std.fmt.allocPrint(alloc, "{s}/flint_rt.c", .{rt_dir});
-    defer alloc.free(rt_c_file);
+    var h_file = try std.fs.cwd().createFile("flint_rt.h", .{});
+    try h_file.writeAll(flint_rt_h_content);
+    h_file.close();
+
+    var c_file = try std.fs.cwd().createFile("flint_rt.c", .{});
+    try c_file.writeAll(flint_rt_c_content);
+    c_file.close();
+
+    defer std.fs.cwd().deleteFile("flint_rt.h") catch {};
+    defer std.fs.cwd().deleteFile("flint_rt.c") catch {};
 
     const clang_argv = &[_][]const u8{
         "clang",
         out_filename,
-        rt_c_file,
-        "-I",
-        rt_dir,
+        "flint_rt.c",
+        "-I.",
         "-lcurl",
         "-s",
         "-o",

@@ -31,10 +31,12 @@ pub const TokenType = enum {
     false_token,
     return_token,
     import_token,
+    catch_token,
 
     and_token,
     or_token,
-    pipeline_token,
+    pipeline_token, // ~>
+    pipe_token, // |
     assign_token,
     equal_token,
     bang_equal_token,

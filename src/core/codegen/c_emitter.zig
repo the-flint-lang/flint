@@ -92,6 +92,7 @@ pub const CEmitter = struct {
             .index_expr => try self.visitIndexExpr(node, writer),
             .array_expr => try self.visitArrayExpr(node, writer),
             .dict_expr => try self.visitDictExpr(node, writer),
+            .catch_expr => try self.visitCatchExpr(node, writer),
 
             else => {
                 std.debug.print("Codegen not implemented for: {s}\n", .{@tagName(node.*)});
@@ -316,6 +317,31 @@ pub const CEmitter = struct {
         }
     }
 
+    fn visitCatchExpr(self: *CEmitter, node: *AstNode, writer: anytype) !void {
+        const catch_node = node.catch_expr;
+
+        try writer.print("({{\n", .{});
+
+        try writer.print("    FlintValue _catch_val = ", .{});
+        try self.visitNode(catch_node.expression, writer);
+        try writer.print(";\n", .{});
+
+        try writer.print("    if (flint_is_err(_catch_val)) {{\n", .{});
+
+        try writer.print("        flint_str {s} = flint_get_err(_catch_val);\n", .{catch_node.error_identifier});
+
+        for (catch_node.body) |stmt| {
+            try writer.print("        ", .{});
+            try self.visitNode(stmt, writer);
+            try writer.print(";\n", .{});
+        }
+
+        try writer.print("    }}\n", .{});
+
+        try writer.print("    _catch_val;\n", .{});
+        try writer.print("}})", .{});
+    }
+
     fn visitDictExpr(self: *CEmitter, node: *AstNode, writer: anytype) !void {
         const dict = node.dict_expr;
 
@@ -377,6 +403,8 @@ pub const CEmitter = struct {
             "int_to_str",
             "concat",
             "to_str",
+            "is_err",
+            "get_err",
         };
 
         for (stdlibs) |lib| {
