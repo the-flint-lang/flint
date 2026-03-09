@@ -347,6 +347,25 @@ flint_str flint_int_to_str(long long num)
     return res;
 }
 
+flint_str flint_to_str(FlintValue v)
+{
+    switch (v.type)
+    {
+    case FLINT_VAL_STR:
+        return v.as.s;
+    case FLINT_VAL_INT:
+        return flint_int_to_str(v.as.i);
+    case FLINT_VAL_BOOL:
+        return v.as.b ? "true" : "false";
+    case FLINT_VAL_NULL:
+        return "null";
+    case FLINT_VAL_DICT:
+        return "[Flint Dictionary]";
+    }
+
+    return "";
+}
+
 flint_str flint_concat(flint_str a, flint_str b)
 {
     if (!a)

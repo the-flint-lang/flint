@@ -376,6 +376,7 @@ pub const CEmitter = struct {
             "parse_json",
             "int_to_str",
             "concat",
+            "to_str",
         };
 
         for (stdlibs) |lib| {
