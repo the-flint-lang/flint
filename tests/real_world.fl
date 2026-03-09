@@ -6,8 +6,11 @@ print("================================================");
 
 print("1. Connecting with servers...");
 
-const json_str = fetch("https://dummyjson.com/quotes/random");
-const data = parse_json(json_str);
+const req = fetch("https://dummyjson.com/quotes/random") catch |e| {
+    print(e);
+    exit(1);
+};
+const data = parse_json(to_str(req));
 
 const quote = to_str(get(data, "quote"));
 const author = to_str(get(data, "author"));
