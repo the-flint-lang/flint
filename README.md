@@ -71,8 +71,8 @@ The Flint compiler is written in Zig. You need Zig `0.15.2` (to compile flint lo
 git clone   https://codeberg.org/lucaas-d3v/flint.git
 cd flint
 zig build -Doptimize=ReleaseFast
-sudo ./install.sh
-
+sudo chmod +x install.sh
+./install.sh
 ```
 
 Compile and run your first script:
