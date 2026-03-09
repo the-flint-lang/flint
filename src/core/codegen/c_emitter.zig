@@ -76,6 +76,8 @@ pub const CEmitter = struct {
             .if_stmt => try self.visitIfStmt(node, writer),
             .for_stmt => try self.visitForStmt(node, writer),
             .index_expr => try self.visitIndexExpr(node, writer),
+            .array_expr => try self.visitArrayExpr(node, writer),
+            .dict_expr => try self.visitDictExpr(node, writer),
 
             else => {
                 std.debug.print("Codegen not implemented for: {s}\n", .{@tagName(node.*)});
@@ -175,6 +177,7 @@ pub const CEmitter = struct {
         try self.visitNode(bin.left, writer);
 
         const op_str = switch (bin.operator._type) {
+            .assign_token => "=",
             .plus_token => "+",
             .minus_token => "-",
             .star_token => "*",
@@ -214,7 +217,7 @@ pub const CEmitter = struct {
                 if (char == '\n') {
                     try writer.print("\\n", .{});
                 } else if (char == '\r') {} else if (char == '"') {
-                    try writer.print("\\\"", .{}); // Escapa aspas internas
+                    try writer.print("\\\"", .{}); // Escape internal blades
                 } else {
                     try writer.print("{c}", .{char});
                 }
@@ -222,8 +225,46 @@ pub const CEmitter = struct {
 
             try writer.print("\"", .{});
         } else {
-            try writer.print("{s}", .{tok.value}); // Numeros, true, false
+            try writer.print("{s}", .{tok.value}); // Numbers, true, false
         }
+    }
+
+    fn visitArrayExpr(self: *CEmitter, node: *AstNode, writer: anytype) !void {
+        const arr = node.array_expr;
+
+        if (arr.elements.len == 0) {
+            std.debug.print("Error: Empty arrays not supported in v1.2 without explicit typing.\n", .{});
+            return error.NotImplemented;
+        }
+
+        const first = arr.elements[0];
+        var c_type: []const u8 = undefined;
+        var struct_name: []const u8 = undefined;
+
+        if (first.* == .literal) {
+            const tok = first.literal.token;
+            if (tok._type == .string_literal_token or tok._type == .multile_string_literal_token) {
+                c_type = "flint_str";
+                struct_name = "flint_str_array";
+            } else if (tok._type == .true_literal_token or tok._type == .false_literal_token) {
+                c_type = "bool";
+                struct_name = "flint_bool_array";
+            } else {
+                c_type = "long long";
+                struct_name = "flint_int_array";
+            }
+        }
+
+        try writer.print("FLINT_MAKE_ARRAY({s}, {s}, ", .{ c_type, struct_name });
+
+        for (arr.elements, 0..) |el, i| {
+            try self.visitNode(el, writer);
+            if (i < arr.elements.len - 1) {
+                try writer.print(", ", .{});
+            }
+        }
+
+        try writer.print(")", .{});
     }
 
     fn visitIndexExpr(self: *CEmitter, node: *AstNode, writer: anytype) !void {
@@ -237,13 +278,77 @@ pub const CEmitter = struct {
 
         try writer.print("]", .{});
     }
+
+    fn emitBoxedValue(self: *CEmitter, node: *AstNode, writer: anytype) !void {
+        if (node.* == .literal) {
+            const tok = node.literal.token;
+            if (tok._type == .string_literal_token or tok._type == .multile_string_literal_token) {
+                try writer.print("flint_make_str(", .{});
+                try self.visitNode(node, writer);
+                try writer.print(")", .{});
+            } else if (tok._type == .true_literal_token or tok._type == .false_literal_token) {
+                try writer.print("flint_make_bool(", .{});
+                try self.visitNode(node, writer);
+                try writer.print(")", .{});
+            } else {
+                try writer.print("flint_make_int(", .{});
+                try self.visitNode(node, writer);
+                try writer.print(")", .{});
+            }
+        } else {
+            try writer.print("flint_make_int(", .{});
+            try self.visitNode(node, writer);
+            try writer.print(")", .{});
+        }
+    }
+
+    fn visitDictExpr(self: *CEmitter, node: *AstNode, writer: anytype) !void {
+        const dict = node.dict_expr;
+
+        try writer.print("({{\n", .{});
+
+        const capacity = @max(16, dict.entries.len * 2);
+        try writer.print("    FlintDict* _d = flint_dict_new({d});\n", .{capacity});
+
+        for (dict.entries) |entry| {
+            try writer.print("    flint_dict_set(_d, ", .{});
+            try self.visitNode(entry.key, writer);
+            try writer.print(", ", .{});
+
+            try self.emitBoxedValue(entry.value, writer);
+            try writer.print(");\n", .{});
+        }
+
+        try writer.print("    _d;\n", .{});
+        try writer.print("}})", .{});
+    }
+
     fn visitIdentifier(self: *CEmitter, node: *AstNode, writer: anytype) !void {
         try self.writeMappedIdentifier(node.identifier.name, writer);
     }
 
     fn writeMappedIdentifier(self: *CEmitter, name: []const u8, writer: anytype) !void {
         _ = self;
-        const stdlibs = [_][]const u8{ "print", "read_file", "write_file", "lines", "grep", "join", "args", "file_exists", "exit" };
+        const stdlibs = [_][]const u8{
+            "print",
+            "read_file",
+            "write_file",
+            "lines",
+            "grep",
+            "join",
+            "args",
+            "file_exists",
+            "exit",
+            "env",
+            "exec",
+            "len",
+            "range",
+            "push",
+            "trim",
+            "split",
+            "replace",
+        };
+
         for (stdlibs) |lib| {
             if (std.mem.eql(u8, name, lib)) {
                 try writer.print("flint_{s}", .{name});

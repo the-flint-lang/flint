@@ -1,76 +1,94 @@
 <div align="center">
-    <img src="assets/favicon_transparent_bg.png" alt="Texto Alternativo" width="100">
+    <img src="assets/favicon_transparent_bg.png" alt="Flint Logo" width="120">
 </div>
 
 # > flint
 
-**A compiled, pipeline-oriented language for robust CLI tools.**
+**A pipeline-oriented system language for robust CLI tools.** *Stop writing fragile Bash. Stop waiting for Python to boot.*
 
-Flint replaces fragile shell scripts and slow-starting interpreted languages (Python/Node) with small, dependency-free native binaries. It is built for developers who need to process text, chain commands, and build reliable infrastructure tooling without the friction of C or Rust.
+Flint is a statically-typed, ahead-of-time (AOT) compiled language designed specifically to replace complex shell scripts and slow-starting interpreted languages in DevOps and infrastructure environments. It transpiles to pure C99, yielding dependency-free native binaries that execute in milliseconds.
 
-## The Problem It Solves
+## The Engineering Dilemma
 
-* **Bash is fragile:** Whitespace errors, silent failures, and string-typing make complex scripts a maintenance nightmare.
-* **General-purpose languages are heavy:** Bootstrapping a Python or Node.js environment for a simple text-processing CLI adds unacceptable latency (startup time).
-* **Verbose pipelines:** Chaining operations in traditional compiled languages requires excessive boilerplate.
+If you are writing infrastructure tooling, you face a miserable trilemma today:
+1. **Bash is a minefield:** Silent failures, whitespace explosions, and everything-is-a-string typing make scripts unmaintainable past 50 lines.
+2. **Python/Node.js are bloated:** Bootstrapping a VM/Interpreter just to parse a text file or invoke an OS command adds unacceptable latency to fast-moving CLI workflows.
+3. **Go/Rust are verbose:** General-purpose systems languages require massive boilerplate for simple I/O, regex, and process invocation.
 
-## The Solution: Native Pipelines
+## The Flint Architecture (v1.2)
 
-Flint introduces a first-class pipeline operator (`~>`) that passes the result of the left expression as the first argument to the right function. 
+Flint takes the expressiveness of functional data pipelines and brutally enforces it at the C-memory level. 
 
-**Example: Parsing an error log**
-```flint
-# filter_logs.fl
+* **The Pipeline Operator (`~>`):** Data flows forward. No nested function hell. The result of the left expression becomes the first argument of the right function.
+* **C99 Transpilation:** Flint does not reinvent the wheel. The compiler (written in Zig) transpiles your code to strict C99 and uses your host's `clang`/`gcc` to heavily optimize it.
+* **Arena Allocator (Zero GC Pauses):** Memory is managed via a monolithic 64MB bump allocator. Scripts run fast, allocate continuously, and rely on the OS to reap the memory upon exit. Zero garbage collection cycles. Maximum cache locality.
+* **Fail-Fast Philosophy:** No silent failures. If an I/O operation fails or an array goes out of bounds, the Flint runtime panics, prints a clean error, and exits. 
 
-fn main() void {
-    const log_file = args()[1];
+## Show, Don't Tell
 
-    if not file_exists(log_file) {
-        print("Error: Provide a valid log file.");
-        exit(1);
-    }
-
-    read_file(log_file)
-        ~> lines()
-        ~> grep("ERROR")
-        ~> join("\n")
-        ~> write_file("errors_only.log");
-
-}
-```
-
-Compile it to a fast, standalone binary:
-
+**The Bash Way:**
 ```bash
-flint build filter_logs.fl -o filter_logs ./filter_logs /var/log/syslog
+#!/bin/bash
+USER=$(whoami)
+ps aux | grep "$USER" | awk '{print $2, $11}' > user_procs.log
+
 ```
 
-## Core Philosophy (v1)
+*Fragile, relies on external binaries, fails silently if pipes break.*
 
-1. **Ahead-of-Time (AOT) Compilation:** Flint transpiles to C99 and uses your system's `clang` or `gcc` to generate highly optimized, static binaries.
-2. **Fail-Fast I/O:** No complex `try/catch` or monads in v1. If a standard library I/O operation fails without prior validation, the runtime panics cleanly and exits.
-3. **Static Typing with Inference:** Types (`int`, `string`, `bool`, `list<T>`) are checked at compile time. Use `const` and `var` without verbosity.
-4. **Zero Garbage Collection:** Memory is managed via a minimal arena/bump allocator tailored for short-lived CLI executions.
+**The Flint Way:**
+
+```flint
+const usuario = env("USER");
+
+print("Coletando processos...");
+
+exec("ps aux")
+    ~> lines()
+    ~> grep(usuario)
+    ~> join("\n")
+    ~> write_file("user_procs.log");
+
+print("Concluido em 0.001s.");
+
+```
+
+*Compiled to native machine code. Statically typed. Memory-safe via Arena.*
+
+## Advanced Primitives (Available in v1.2)
+
+Flint brings modern data structures to raw C performance:
+
+* **Dynamic Arrays:** `const ports = [80, 443]; push(ports, 8080);`
+* **HashMaps (djb2 Engine):** `const config = { "host": "aws", "secure": true };`
+* **Native String Manipulation:** Zero-copy slicing, `trim()`, `split()`, and `replace()`.
 
 ## Getting Started (Building from Source)
 
-The Flint compiler is written in Zig. To build the compiler itself:
+The Flint compiler is written in Zig. You need Zig `0.15.2` and `clang` (or `gcc`) installed on your system.
 
 ```bash
-git clone https://codeberg.org/lucaas-d3v/flint.git
+git clone   https://codeberg.org/lucaas-d3v/flint.git
 cd flint
 zig build -Doptimize=ReleaseFast
+sudo ./install.sh
+
 ```
 
-*Note: Flint requires `clang` or `gcc` installed on the host system to compile `.fl` files into final executables.*
+Compile and run your first script:
 
-## Status: Pre-Alpha (v1 Roadmap)
+```bash
+flint run my_script.fl
 
-Flint is currently in early development. The v1 scope is strictly locked to:
+```
 
-* [ ] Lexer & AST parser (In progress)
-* [ ] C transpiler backend
-* [ ] Core standard library (`args`, `read_file`, `lines`, `grep`)
-* [ ] Linux (POSIX) support only
+*(Use `flint build my_script.fl` to generate the standalone binary).*
 
-Contributions are welcome, but please read the [Architecture Guidelines](https://www.google.com/search?q=link) before proposing major syntax changes.
+## Status: V1.2 (Foundation Complete)
+
+Flint is not a toy, but it is currently in strict development. The v1.2 architecture establishes the core transpiler, OS interop, dynamic arrays, and memory arena.
+Upcoming milestones (v1.3+):
+
+* Module System (`import`)
+* Native HTTP Client (`fetch`)
+* Custom Structs
