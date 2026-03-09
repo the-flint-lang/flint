@@ -3,6 +3,7 @@ const Token = @import("../lexer/structs/token.zig").Token;
 const TokenType = @import("../lexer/enums/token_type.zig").TokenType;
 const AstNode = @import("./ast.zig").AstNode;
 const IoHelpers = @import("../helpers/structs/structs.zig").IoHelpers;
+const DictEntry = @import("./ast.zig").DictEntry;
 
 pub const Parser = struct {
     tokens: []const Token,
@@ -228,6 +229,33 @@ pub const Parser = struct {
             return node;
         }
 
+        if (self.match(&.{.lbrace_token})) {
+            var entries = std.ArrayList(*DictEntry).empty;
+
+            if (!self.check(.rbrace_token)) {
+                while (true) {
+                    const key_code = try self.parseExpression();
+                    _ = try self.consume(.colon_token, "Expected ':' after the dictionary key.");
+                    const val_node = try self.parseExpression();
+
+                    const entry = try self.allocator.create(DictEntry);
+                    entry.* = .{ .key = key_code, .value = val_node };
+                    try entries.append(self.allocator, entry);
+
+                    if (!self.match(&.{.comma_token})) break;
+                }
+            }
+
+            _ = try self.consume(.rbrace_token, "Expected '}' to close the dictionary.");
+
+            const node = try self.allocator.create(AstNode);
+            node.* = .{
+                .dict_expr = .{ .entries = try entries.toOwnedSlice(self.allocator) },
+            };
+
+            return node;
+        }
+
         return self.reportError(self.peek(), "Invalid or unrecognized expression.");
     }
 
@@ -297,7 +325,26 @@ pub const Parser = struct {
     }
 
     fn parseExpression(self: *Parser) anyerror!*AstNode {
-        return try self.parsePipeline();
+        return try self.parseAssignment();
+    }
+
+    fn parseAssignment(self: *Parser) anyerror!*AstNode {
+        const expr = try self.parsePipeline();
+
+        if (self.match(&.{.assign_token})) {
+            const equals = self.previous();
+
+            const value = try self.parseAssignment();
+
+            if (expr.* == .identifier or expr.* == .index_expr) {
+                const node = try self.allocator.create(AstNode);
+                node.* = .{ .binary_expr = .{ .left = expr, .operator = equals, .right = value } };
+                return node;
+            }
+            return self.reportError(equals, "Invalid assignment target. You can only assign to variables or indexes.");
+        }
+
+        return expr;
     }
 
     fn parsePipeline(self: *Parser) anyerror!*AstNode {

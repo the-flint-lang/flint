@@ -15,6 +15,7 @@ pub const NodeType = enum {
 
     index_expr,
     array_expr,
+    dict_expr,
 
     pipeline_expr,
     for_stmt,
@@ -72,6 +73,10 @@ pub const AstNode = union(NodeType) {
         elements: []const *AstNode,
     },
 
+    dict_expr: struct {
+        entries: []const *DictEntry,
+    },
+
     pipeline_expr: struct {
         left: *AstNode,
         right_call: *AstNode,
@@ -91,4 +96,9 @@ pub const AstNode = union(NodeType) {
     literal: struct {
         token: Token,
     },
+};
+
+pub const DictEntry = struct {
+    key: *AstNode,
+    value: *AstNode,
 };

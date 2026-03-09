@@ -64,14 +64,23 @@ void *flint_alloc(size_t size)
     return ptr;
 }
 
-void flint_print_str(flint_str text)
+void flint_print_val(FlintValue val)
 {
-    if (text == NULL)
+    switch (val.type)
     {
+    case FLINT_VAL_INT:
+        printf("%lld\n", val.as.i);
+        break;
+    case FLINT_VAL_STR:
+        printf("%s\n", val.as.s);
+        break;
+    case FLINT_VAL_BOOL:
+        printf("%s\n", val.as.b ? "true" : "false");
+        break;
+    case FLINT_VAL_NULL:
         printf("null\n");
-        return;
+        break;
     }
-    printf("%s\n", text);
 }
 
 void flint_print_int(long long num)
@@ -299,4 +308,108 @@ flint_str flint_exec(flint_str cmd)
     free(temp_buf);
 
     return result;
+}
+
+// ============================================================================
+// ARRAY UTILITIES AND ITERATORS
+// ============================================================================
+
+flint_int_array flint_range(long long start, long long end)
+{
+    if (start >= end)
+    {
+        return (flint_int_array){0}; // Returns empty array if parameters are illogical
+    }
+
+    size_t count = (size_t)(end - start);
+
+    long long *items = (long long *)flint_alloc(count * sizeof(long long));
+
+    for (size_t i = 0; i < count; i++)
+    {
+        items[i] = start + (long long)i;
+    }
+
+    return (flint_int_array){.items = items, .count = count};
+}
+
+// ============================================================================
+// MOTOR DE HASHMAP E TIPAGEM DINÂMICA
+// ============================================================================
+
+// Empacotadores (Boxing)
+FlintValue flint_make_int(long long val) { return (FlintValue){FLINT_VAL_INT, .as.i = val}; }
+FlintValue flint_make_str(flint_str val) { return (FlintValue){FLINT_VAL_STR, .as.s = val}; }
+FlintValue flint_make_bool(bool val) { return (FlintValue){FLINT_VAL_BOOL, .as.b = val}; }
+
+// Algoritmo djb2 (Dan Bernstein) - Extremamente rápido para strings
+static unsigned long flint_hash_djb2(flint_str str)
+{
+    unsigned long hash = 5381;
+    int c;
+    while ((c = *str++))
+    {
+        hash = ((hash << 5) + hash) + c; // hash * 33 + c
+    }
+    return hash;
+}
+
+// Cria um Dicionário na nossa Arena
+FlintDict *flint_dict_new(size_t capacity)
+{
+    // Forçamos um tamanho mínimo para evitar divisões por zero e muitas colisões
+    if (capacity < 16)
+        capacity = 16;
+
+    FlintDict *dict = (FlintDict *)flint_alloc(sizeof(FlintDict));
+    dict->capacity = capacity;
+    dict->count = 0;
+    // flint_alloc já zera a memória, então occupied começará como false automaticamente
+    dict->entries = (FlintDictEntry *)flint_alloc(sizeof(FlintDictEntry) * capacity);
+    return dict;
+}
+
+// Insere ou atualiza um valor (Linear Probing)
+void flint_dict_set(FlintDict *dict, flint_str key, FlintValue value)
+{
+    // Na v1.2 não faremos redimensionamento automático para manter a simplicidade da Arena.
+    // Dicionários com mais chaves que a capacidade original vão degradar a performance.
+
+    unsigned long index = flint_hash_djb2(key) % dict->capacity;
+
+    // Procura um slot vazio ou a mesma chave para sobrescrever
+    while (dict->entries[index].occupied)
+    {
+        if (strcmp(dict->entries[index].key, key) == 0)
+        {
+            break; // Achou a chave, vai sobrescrever
+        }
+        index = (index + 1) % dict->capacity; // Dá um passo à frente (Linear Probing)
+    }
+
+    if (!dict->entries[index].occupied)
+    {
+        dict->count++;
+        dict->entries[index].occupied = true;
+        dict->entries[index].key = key;
+    }
+    dict->entries[index].value = value;
+}
+
+// Busca um valor de forma segura
+FlintValue flint_dict_get(FlintDict *dict, flint_str key)
+{
+    unsigned long index = flint_hash_djb2(key) % dict->capacity;
+
+    while (dict->entries[index].occupied)
+    {
+        if (strcmp(dict->entries[index].key, key) == 0)
+        {
+            return dict->entries[index].value;
+        }
+        index = (index + 1) % dict->capacity;
+    }
+
+    // Retorna Nulo se não encontrar
+    return (FlintValue){FLINT_VAL_NULL, .as.i = 0};
 }

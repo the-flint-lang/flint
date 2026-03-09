@@ -77,6 +77,7 @@ pub const CEmitter = struct {
             .for_stmt => try self.visitForStmt(node, writer),
             .index_expr => try self.visitIndexExpr(node, writer),
             .array_expr => try self.visitArrayExpr(node, writer),
+            .dict_expr => try self.emitBoxedValue(node, writer),
 
             else => {
                 std.debug.print("Codegen not implemented for: {s}\n", .{@tagName(node.*)});
@@ -176,6 +177,7 @@ pub const CEmitter = struct {
         try self.visitNode(bin.left, writer);
 
         const op_str = switch (bin.operator._type) {
+            .assign_token => "=",
             .plus_token => "+",
             .minus_token => "-",
             .star_token => "*",
@@ -277,6 +279,51 @@ pub const CEmitter = struct {
 
         try writer.print("]", .{});
     }
+
+    fn emitBoxedValue(self: *CEmitter, node: *AstNode, writer: anytype) !void {
+        if (node.* == .literal) {
+            const tok = node.literal.token;
+            if (tok._type == .string_literal_token or tok._type == .multile_string_literal_token) {
+                try writer.print("flint_make_str(", .{});
+                try self.visitNode(node, writer);
+                try writer.print(")", .{});
+            } else if (tok._type == .true_literal_token or tok._type == .false_literal_token) {
+                try writer.print("flint_make_bool(", .{});
+                try self.visitNode(node, writer);
+                try writer.print(")", .{});
+            } else {
+                try writer.print("flint_make_int(", .{});
+                try self.visitNode(node, writer);
+                try writer.print(")", .{});
+            }
+        } else {
+            try writer.print("flint_make_int(", .{});
+            try self.visitNode(node, writer);
+            try writer.print(")", .{});
+        }
+    }
+
+    fn visitDictExpr(self: *CEmitter, node: *AstNode, writer: anytype) !void {
+        const dict = node.dict_expr;
+
+        try writer.print("({{\n", .{});
+
+        const capacity = @max(16, dict.entries.len * 2);
+        try writer.print("    FlintDict* _d = flint_dict_new({d});\n", .{capacity});
+
+        for (dict.entries) |entry| {
+            try writer.print("    flint_dict_set(_d, ", .{});
+            try self.visitNode(entry.key, writer);
+            try writer.print(", ", .{});
+
+            try self.emitBoxedValue(entry.value, writer);
+            try writer.print(");\n", .{});
+        }
+
+        try writer.print("    _d;\n", .{});
+        try writer.print("}})", .{});
+    }
+
     fn visitIdentifier(self: *CEmitter, node: *AstNode, writer: anytype) !void {
         try self.writeMappedIdentifier(node.identifier.name, writer);
     }
@@ -295,6 +342,8 @@ pub const CEmitter = struct {
             "exit",
             "env",
             "exec",
+            "len",
+            "range",
         };
 
         for (stdlibs) |lib| {
