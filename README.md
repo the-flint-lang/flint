@@ -41,7 +41,7 @@ ps aux | grep "$USER" | awk '{print $2, $11}' > user_procs.log
 ```flint
 const usuario = env("USER");
 
-print("Coletando processos...");
+print("Collecting processes...");
 
 exec("ps aux")
     ~> lines()
@@ -49,7 +49,7 @@ exec("ps aux")
     ~> join("\n")
     ~> write_file("user_procs.log");
 
-print("Concluido em 0.001s.");
+print("Completed in 0.001s.");
 
 ```
 
