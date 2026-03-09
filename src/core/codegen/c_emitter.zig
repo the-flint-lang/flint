@@ -77,7 +77,7 @@ pub const CEmitter = struct {
             .for_stmt => try self.visitForStmt(node, writer),
             .index_expr => try self.visitIndexExpr(node, writer),
             .array_expr => try self.visitArrayExpr(node, writer),
-            .dict_expr => try self.emitBoxedValue(node, writer),
+            .dict_expr => try self.visitDictExpr(node, writer),
 
             else => {
                 std.debug.print("Codegen not implemented for: {s}\n", .{@tagName(node.*)});
@@ -229,7 +229,6 @@ pub const CEmitter = struct {
         }
     }
 
-    // 8. Arrays Homogêneos (A Rota de Alta Performance)
     fn visitArrayExpr(self: *CEmitter, node: *AstNode, writer: anytype) !void {
         const arr = node.array_expr;
 
@@ -344,6 +343,7 @@ pub const CEmitter = struct {
             "exec",
             "len",
             "range",
+            "push",
         };
 
         for (stdlibs) |lib| {

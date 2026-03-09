@@ -64,6 +64,11 @@ void *flint_alloc(size_t size)
     return ptr;
 }
 
+void flint_print_str(flint_str text)
+{
+    printf("%s\n", text ? text : "");
+}
+
 void flint_print_val(FlintValue val)
 {
     switch (val.type)
@@ -139,6 +144,16 @@ flint_str flint_read_file(flint_str filepath)
     return buffer;
 }
 
+void flint_print_dict(FlintDict *dict)
+{
+    if (!dict)
+    {
+        printf("null\n");
+        return;
+    }
+    printf("[Flint Dictionary: %zu keys]\n", dict->count);
+}
+
 flint_str_array flint_lines(flint_str text)
 {
     if (!text)
@@ -146,15 +161,13 @@ flint_str_array flint_lines(flint_str text)
         return (flint_str_array){0};
     }
 
-    size_t count = 1;
+    size_t count = 0;
     for (size_t i = 0; text[i] != '\0'; i++)
     {
-        if (text[i] == '\n')
-        {
-
+        if (text[i] == '\n' && text[i + 1] != '\0')
             count++;
-        }
     }
+    count++;
 
     flint_str_array arr;
     arr.count = count;
@@ -248,7 +261,7 @@ flint_str flint_join(flint_str_array lines, flint_str separator)
 }
 
 // ============================================================================
-// ENVIRONMENTAL VARIABLES AND PROCESS EXECUTION (v1.1)
+// ENVIRONMENTAL VARIABLES AND PROCESS EXECUTION
 // ============================================================================
 flint_str flint_env(flint_str name)
 {
@@ -297,6 +310,17 @@ flint_str flint_exec(flint_str cmd)
     while ((bytes_read = fread(temp_buf + total_read, 1, capacity - total_read - 1, pipe)) > 0)
     {
         total_read += bytes_read;
+        if (total_read >= capacity - 1024)
+        {
+            capacity *= 2;
+            char *new_buf = (char *)realloc(temp_buf, capacity);
+            if (!new_buf)
+            {
+                free(temp_buf);
+                flint_exit(1);
+            }
+            temp_buf = new_buf;
+        }
     }
 
     temp_buf[total_read] = '\0';
@@ -330,19 +354,18 @@ flint_int_array flint_range(long long start, long long end)
         items[i] = start + (long long)i;
     }
 
-    return (flint_int_array){.items = items, .count = count};
+    // Atualize o return no final da função flint_range
+    return (flint_int_array){.items = items, .count = count, .capacity = count};
 }
 
 // ============================================================================
-// MOTOR DE HASHMAP E TIPAGEM DINÂMICA
+// HASHMAP ENGINE AND DYNAMIC TYPING
 // ============================================================================
 
-// Empacotadores (Boxing)
 FlintValue flint_make_int(long long val) { return (FlintValue){FLINT_VAL_INT, .as.i = val}; }
 FlintValue flint_make_str(flint_str val) { return (FlintValue){FLINT_VAL_STR, .as.s = val}; }
 FlintValue flint_make_bool(bool val) { return (FlintValue){FLINT_VAL_BOOL, .as.b = val}; }
 
-// Algoritmo djb2 (Dan Bernstein) - Extremamente rápido para strings
 static unsigned long flint_hash_djb2(flint_str str)
 {
     unsigned long hash = 5381;
@@ -354,37 +377,33 @@ static unsigned long flint_hash_djb2(flint_str str)
     return hash;
 }
 
-// Cria um Dicionário na nossa Arena
 FlintDict *flint_dict_new(size_t capacity)
 {
-    // Forçamos um tamanho mínimo para evitar divisões por zero e muitas colisões
     if (capacity < 16)
         capacity = 16;
 
     FlintDict *dict = (FlintDict *)flint_alloc(sizeof(FlintDict));
     dict->capacity = capacity;
     dict->count = 0;
-    // flint_alloc já zera a memória, então occupied começará como false automaticamente
     dict->entries = (FlintDictEntry *)flint_alloc(sizeof(FlintDictEntry) * capacity);
     return dict;
 }
 
-// Insere ou atualiza um valor (Linear Probing)
 void flint_dict_set(FlintDict *dict, flint_str key, FlintValue value)
 {
-    // Na v1.2 não faremos redimensionamento automático para manter a simplicidade da Arena.
-    // Dicionários com mais chaves que a capacidade original vão degradar a performance.
 
     unsigned long index = flint_hash_djb2(key) % dict->capacity;
 
-    // Procura um slot vazio ou a mesma chave para sobrescrever
+    size_t probes = 0;
     while (dict->entries[index].occupied)
     {
         if (strcmp(dict->entries[index].key, key) == 0)
+            break;
+        index = (index + 1) % dict->capacity;
+        if (++probes >= dict->capacity)
         {
-            break; // Achou a chave, vai sobrescrever
+            flint_panic("Dictionary is full: cannot insert new key.");
         }
-        index = (index + 1) % dict->capacity; // Dá um passo à frente (Linear Probing)
     }
 
     if (!dict->entries[index].occupied)
@@ -396,7 +415,28 @@ void flint_dict_set(FlintDict *dict, flint_str key, FlintValue value)
     dict->entries[index].value = value;
 }
 
-// Busca um valor de forma segura
+void flint_write_file(flint_str text, flint_str filepath)
+{
+    FILE *file = fopen(filepath, "wb");
+    if (!file)
+    {
+        char err_msg[255];
+        snprintf(err_msg, sizeof(err_msg), "I/O Failure: Could not open file '%s' for writing", filepath);
+        flint_panic(err_msg);
+    }
+    fputs(text, file);
+    fclose(file);
+}
+
+bool flint_file_exists(flint_str filepath)
+{
+    FILE *file = fopen(filepath, "r");
+    if (!file)
+        return false;
+    fclose(file);
+    return true;
+}
+
 FlintValue flint_dict_get(FlintDict *dict, flint_str key)
 {
     unsigned long index = flint_hash_djb2(key) % dict->capacity;
@@ -410,6 +450,5 @@ FlintValue flint_dict_get(FlintDict *dict, flint_str key)
         index = (index + 1) % dict->capacity;
     }
 
-    // Retorna Nulo se não encontrar
     return (FlintValue){FLINT_VAL_NULL, .as.i = 0};
 }
