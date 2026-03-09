@@ -3,6 +3,7 @@ const Token = @import("../lexer/structs/token.zig").Token;
 const TokenType = @import("../lexer/enums/token_type.zig").TokenType;
 const AstNode = @import("./ast.zig").AstNode;
 const IoHelpers = @import("../helpers/structs/structs.zig").IoHelpers;
+const DictEntry = @import("./ast.zig").DictEntry;
 
 pub const Parser = struct {
     tokens: []const Token,
@@ -223,6 +224,33 @@ pub const Parser = struct {
                 .array_expr = .{
                     .elements = try elements.toOwnedSlice(self.allocator),
                 },
+            };
+
+            return node;
+        }
+
+        if (self.match(&.{.lbrace_token})) {
+            var entries = std.ArrayList(*DictEntry).empty;
+
+            if (!self.check(.rbrace_token)) {
+                while (true) {
+                    const key_code = try self.parseExpression();
+                    _ = try self.consume(.colon_token, "Expected ':' after the dictionary key.");
+                    const val_node = try self.parseExpression();
+
+                    const entry = try self.allocator.create(DictEntry);
+                    entry.* = .{ .key = key_code, .value = val_node };
+                    try entries.append(self.allocator, entry);
+
+                    if (!self.match(&.{.comma_token})) break;
+                }
+            }
+
+            _ = try self.consume(.rbrace_token, "Expected '}' to close the dictionary.");
+
+            const node = try self.allocator.create(AstNode);
+            node.* = .{
+                .dict_expr = .{ .entries = try entries.toOwnedSlice(self.allocator) },
             };
 
             return node;
