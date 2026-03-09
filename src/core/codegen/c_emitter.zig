@@ -229,7 +229,6 @@ pub const CEmitter = struct {
         }
     }
 
-    // 8. Arrays Homogêneos (A Rota de Alta Performance)
     fn visitArrayExpr(self: *CEmitter, node: *AstNode, writer: anytype) !void {
         const arr = node.array_expr;
 
@@ -344,6 +343,7 @@ pub const CEmitter = struct {
             "exec",
             "len",
             "range",
+            "push",
         };
 
         for (stdlibs) |lib| {

@@ -3,12 +3,12 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <string.h>
 
 // ============================================================================
-// TIPOS BASE
-// ============================================================================
+// BASE TYPES// ============================================================================
 
-typedef char *flint_str; // Precisa vir primeiro — usado em tudo abaixo
+typedef char *flint_str;
 
 typedef enum
 {
@@ -52,14 +52,41 @@ typedef struct
     {                                   \
         Type *items;                    \
         size_t count;                   \
+        size_t capacity;                \
     } Name;
 
 DECLARE_FLINT_ARRAY(long long, flint_int_array)
 DECLARE_FLINT_ARRAY(flint_str, flint_str_array)
 DECLARE_FLINT_ARRAY(bool, flint_bool_array)
 
-#define FLINT_MAKE_ARRAY(Type, StructName, ...) \
-    (StructName) { .items = (Type[]){__VA_ARGS__}, .count = sizeof((Type[]){__VA_ARGS__}) / sizeof(Type) }
+#define FLINT_MAKE_ARRAY(Type, StructName, ...)                \
+    ({                                                         \
+        Type _temp[] = {__VA_ARGS__};                          \
+        size_t _c = sizeof(_temp) / sizeof(Type);              \
+        size_t _cap = _c < 8 ? 8 : _c * 2;                     \
+        StructName _arr;                                       \
+        _arr.count = _c;                                       \
+        _arr.capacity = _cap;                                  \
+        _arr.items = (Type *)flint_alloc(_cap * sizeof(Type)); \
+        if (_c > 0)                                            \
+            memcpy(_arr.items, _temp, _c * sizeof(Type));      \
+        _arr;                                                  \
+    })
+
+#define flint_push(arr, val)                                                         \
+    do                                                                               \
+    {                                                                                \
+        if ((arr).count >= (arr).capacity)                                           \
+        {                                                                            \
+            size_t _new_cap = (arr).capacity == 0 ? 8 : (arr).capacity * 2;          \
+            void *_new_items = flint_alloc(_new_cap * sizeof(*(arr).items));         \
+            if ((arr).count > 0)                                                     \
+                memcpy(_new_items, (arr).items, (arr).count * sizeof(*(arr).items)); \
+            (arr).items = _new_items;                                                \
+            (arr).capacity = _new_cap;                                               \
+        }                                                                            \
+        (arr).items[(arr).count++] = (val);                                          \
+    } while (0)
 
 #define flint_len(arr) (long long)((arr).count)
 
@@ -74,7 +101,7 @@ void flint_panic(const char *message);
 void flint_exit(int code);
 
 // ============================================================================
-// DICIONÁRIO
+// DICTIONARY
 // ============================================================================
 
 FlintDict *flint_dict_new(size_t capacity);
@@ -90,7 +117,7 @@ FlintValue flint_make_str(flint_str val);
 FlintValue flint_make_bool(bool val);
 
 // ============================================================================
-// I/O E STDLIB
+// I/O AND STDLIB
 // ============================================================================
 
 void flint_print_str(flint_str text);
