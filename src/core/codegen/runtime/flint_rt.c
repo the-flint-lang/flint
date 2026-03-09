@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include "flint_rt.h"
 
 #define ARENA_CAPACITY (64 * 1024 * 1024)
@@ -451,4 +452,123 @@ FlintValue flint_dict_get(FlintDict *dict, flint_str key)
     }
 
     return (FlintValue){FLINT_VAL_NULL, .as.i = 0};
+}
+
+// ============================================================================
+// NATIVE STRING MANIPULATION MODULE
+// ============================================================================
+
+flint_str flint_trim(flint_str text)
+{
+    if (!text)
+        return "";
+
+    while (isspace((unsigned char)*text))
+        text++;
+
+    if (*text == '\0')
+        return "";
+
+    char *end = text + strlen(text) - 1;
+    while (end > text && isspace((unsigned char)*end))
+        end--;
+
+    size_t len = end - text + 1;
+
+    flint_str result = (flint_str)flint_alloc(len + 1);
+    memcpy(result, text, len);
+    result[len] = '\0';
+
+    return result;
+}
+
+flint_str flint_replace(flint_str text, flint_str target, flint_str replacement)
+{
+    if (!text || !target || !replacement)
+        return text ? text : "";
+
+    size_t target_len = strlen(target);
+    if (target_len == 0)
+        return text;
+
+    size_t repl_len = strlen(replacement);
+    size_t text_len = strlen(text);
+
+    size_t count = 0;
+    const char *tmp = text;
+    while ((tmp = strstr(tmp, target)))
+    {
+        count++;
+        tmp += target_len;
+    }
+
+    if (count == 0)
+        return text;
+
+    size_t final_len = text_len - (count * target_len) + (count * repl_len);
+    flint_str result = (flint_str)flint_alloc(final_len + 1);
+
+    char *dest = result;
+    const char *src = text;
+    const char *match;
+
+    while ((match = strstr(src, target)))
+    {
+        size_t chunk_len = match - src;
+        memcpy(dest, src, chunk_len);
+        dest += chunk_len;
+
+        memcpy(dest, replacement, repl_len);
+        dest += repl_len;
+
+        src = match + target_len;
+    }
+    strcpy(dest, src);
+
+    return result;
+}
+
+flint_str_array flint_split(flint_str text, flint_str delimiter)
+{
+    if (!text || !delimiter)
+        return (flint_str_array){0};
+
+    size_t delim_len = strlen(delimiter);
+    if (delim_len == 0)
+        return (flint_str_array){0};
+
+    size_t count = 1;
+    const char *tmp = text;
+    while ((tmp = strstr(tmp, delimiter)))
+    {
+        count++;
+        tmp += delim_len;
+    }
+
+    flint_str_array arr;
+    arr.count = count;
+    arr.capacity = count;
+    arr.items = (flint_str *)flint_alloc(count * sizeof(flint_str));
+
+    size_t idx = 0;
+    const char *start = text;
+    const char *end;
+
+    while ((end = strstr(start, delimiter)))
+    {
+        size_t chunk_len = end - start;
+        flint_str chunk = (flint_str)flint_alloc(chunk_len + 1);
+        memcpy(chunk, start, chunk_len);
+        chunk[chunk_len] = '\0';
+
+        arr.items[idx++] = chunk;
+        start = end + delim_len;
+    }
+
+    size_t last_len = strlen(start);
+    flint_str last_chunk = (flint_str)flint_alloc(last_len + 1);
+    strcpy(last_chunk, start);
+    arr.items[idx] = last_chunk;
+
+    return arr;
 }

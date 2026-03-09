@@ -143,5 +143,7 @@ flint_str_array flint_lines(flint_str text);
 flint_str_array flint_grep(flint_str_array lines, flint_str pattern);
 flint_str flint_join(flint_str_array lines, flint_str separator);
 flint_int_array flint_range(long long start, long long end);
-
+flint_str flint_trim(flint_str text);
+flint_str flint_replace(flint_str text, flint_str target, flint_str replacement);
+flint_str_array flint_split(flint_str text, flint_str delimiter);
 #endif

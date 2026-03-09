@@ -344,6 +344,9 @@ pub const CEmitter = struct {
             "len",
             "range",
             "push",
+            "trim",
+            "split",
+            "replace",
         };
 
         for (stdlibs) |lib| {
