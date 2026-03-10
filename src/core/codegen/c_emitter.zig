@@ -1,6 +1,7 @@
 const std = @import("std");
 const AstNode = @import("../parser/ast.zig").AstNode;
 const TokenType = @import("../lexer/enums/token_type.zig").TokenType;
+const Token = @import("../lexer/structs/token.zig").Token;
 
 pub const CEmitter = struct {
     allocator: std.mem.Allocator,
@@ -18,6 +19,9 @@ pub const CEmitter = struct {
                 if (stmt.* == .function_decl) {
                     try self.visitFunctionDecl(stmt, writer);
                     try writer.print("\n", .{});
+                } else if (stmt.* == .struct_decl) {
+                    try self.visitStructDecl(stmt, writer);
+                    try writer.print("\n", .{});
                 }
             }
         }
@@ -27,7 +31,7 @@ pub const CEmitter = struct {
 
         if (program.* == .program) {
             for (program.program.statements) |stmt| {
-                if (stmt.* != .function_decl) {
+                if (stmt.* != .function_decl and stmt.* != .struct_decl) {
                     try writer.print("    ", .{});
                     try self.visitNode(stmt, writer);
                     try writer.print(";\n", .{});
@@ -93,12 +97,67 @@ pub const CEmitter = struct {
             .array_expr => try self.visitArrayExpr(node, writer),
             .dict_expr => try self.visitDictExpr(node, writer),
             .catch_expr => try self.visitCatchExpr(node, writer),
+            .struct_decl => try self.visitStructDecl(node, writer),
+            .property_access_expr => try self.visitPropertyAccessExpr(node, writer),
 
             else => {
                 std.debug.print("Codegen not implemented for: {s}\n", .{@tagName(node.*)});
                 return error.NotImplemented;
             },
         }
+    }
+
+    fn getCTypeFromToken(self: *CEmitter, token: Token) []const u8 {
+        _ = self;
+        return switch (token._type) {
+            .string_type_token => "flint_str",
+            .integer_type_token => "long long",
+            .boolean_type_token => "bool",
+            .identifier_token => token.value,
+            else => "void*",
+        };
+    }
+
+    fn visitStructDecl(self: *CEmitter, node: *AstNode, writer: anytype) !void {
+        const struct_node = node.struct_decl;
+
+        try writer.print("typedef struct {{\n", .{});
+        for (struct_node.fields) |field| {
+            const c_type = self.getCTypeFromToken(field._type);
+            try writer.print("    {s} {s};\n", .{ c_type, field.name });
+        }
+        try writer.print("}} {s};\n\n", .{struct_node.name});
+
+        try writer.print("static {s} __parse_{s}_from_dict(FlintDict* d) {{\n", .{ struct_node.name, struct_node.name });
+        try writer.print("    {s} _obj;\n", .{struct_node.name});
+
+        for (struct_node.fields) |field| {
+            try writer.print("    FlintValue _v_{s} = flint_dict_get(d, FLINT_STR(\"{s}\"));\n", .{ field.name, field.name });
+
+            if (field._type._type == .string_type_token) {
+                try writer.print("    _obj.{s} = (_v_{s}.type == FLINT_VAL_STR) ? _v_{s}.as.s : FLINT_STR(\"\");\n", .{ field.name, field.name, field.name });
+            } else if (field._type._type == .integer_type_token) {
+                try writer.print("    _obj.{s} = (_v_{s}.type == FLINT_VAL_INT) ? _v_{s}.as.i : 0;\n", .{ field.name, field.name, field.name });
+            } else if (field._type._type == .boolean_type_token) {
+                try writer.print("    _obj.{s} = (_v_{s}.type == FLINT_VAL_BOOL) ? _v_{s}.as.b : false;\n", .{ field.name, field.name, field.name });
+            } else {
+                try writer.print("    // TODO: Nested structs not mapped yet\n", .{});
+            }
+        }
+
+        try writer.print("    return _obj;\n", .{});
+        try writer.print("}}\n\n", .{});
+    }
+
+    fn visitPropertyAccessExpr(self: *CEmitter, node: *AstNode, writer: anytype) !void {
+        const prop_access = node.property_access_expr;
+        try writer.print("(", .{});
+
+        try self.visitNode(prop_access.object, writer);
+
+        try writer.print(".{s}", .{prop_access.property_name});
+
+        try writer.print(")", .{});
     }
 
     fn visitVarDecl(self: *CEmitter, node: *AstNode, writer: anytype) !void {
@@ -114,6 +173,17 @@ pub const CEmitter = struct {
 
     fn visitCallExpr(self: *CEmitter, node: *AstNode, writer: anytype) !void {
         const call = node.call_expr;
+
+        if (std.mem.eql(u8, call.callee, "parse_json_as")) {
+            if (call.arguments.len != 2) return error.InvalidArgumentCount;
+
+            const struct_name = call.arguments[0].identifier.name;
+
+            try writer.print("__parse_{s}_from_dict(flint_parse_json(", .{struct_name});
+            try self.visitNode(call.arguments[1], writer);
+            try writer.print("))", .{});
+            return;
+        }
 
         try self.writeMappedIdentifier(call.callee, writer);
         try writer.print("(", .{});
@@ -234,7 +304,7 @@ pub const CEmitter = struct {
                 if (char == '\n') {
                     try writer.print("\\n", .{});
                 } else if (char == '\r') {} else if (char == '"') {
-                    try writer.print("\\\"", .{}); // Escape internal blades
+                    try writer.print("\\\"", .{});
                 } else {
                     try writer.print("{c}", .{char});
                 }

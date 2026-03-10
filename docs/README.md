@@ -95,6 +95,17 @@ Flint is designed to operate at the physical limits of your hardware, utilizing 
 
 *Verdict:* The "Interpreter Tax" is real. Flint matches the raw startup speed of native OS binaries, completing the entire network request and parsing cycle before Python finishes booting its HTTP libraries.
 
+### 3. The 17MB JSON Heavy-Load Challenge
+**Task:** Parse a massive JSON file containing 500,000 keys directly into memory and perform a dictionary lookup.
+
+| Competitor | Engine / Memory Model | Mean Time | Jitter (σ) |
+| --- | --- | --- | --- |
+| **Flint (v1.6)** | AOT Native / 4GB Virtual Arena | **~ 85.3 ms** | **± 0.5 ms** |
+| **Python 3** | CPython VM / Ref Counting | ~ 333.9 ms | ± 1.7 ms |
+| **Node.js 20** | V8 Engine / Garbage Collected | ~ 822.2 ms | ± 89.9 ms |
+
+*Verdict:* Flint's zero-copy architecture and Virtual Memory Arena completely bypass the memory fragmentation that plagues managed languages. Flint processes half a million JSON keys 4x faster than Python and nearly 10x faster than Node.js (which suffered massive GC pauses).
+
 ## Getting Started (Building from Source)
 
 The Flint compiler is written in [Zig](https://ziglang.org). You need Zig `0.15.2` and `clang` (or `gcc`) installed on your system.

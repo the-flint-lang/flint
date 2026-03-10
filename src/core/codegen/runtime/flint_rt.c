@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <ctype.h>
 #include <curl/curl.h>
 
@@ -21,97 +22,43 @@ static char **global_argv;
 ARENA E RUNTIME
 ========================= */
 
-#define ARENA_BLOCK_SIZE (8 * 1024 * 1024)
+#define ARENA_CAPACITY (4ULL * 1024 * 1024 * 1024)
 
-typedef struct ArenaBlock
-{
-    char *memory;
-    size_t capacity;
-    size_t offset;
-    struct ArenaBlock *next;
-} ArenaBlock;
-
-static ArenaBlock *arena_head = NULL;
-static ArenaBlock *arena_current = NULL;
+static char *arena_base = NULL;
+static size_t arena_offset = 0;
 
 static int global_argc;
 static char **global_argv;
-
-static ArenaBlock *create_arena_block(size_t capacity)
-{
-    ArenaBlock *block = malloc(sizeof(ArenaBlock));
-    if (!block)
-        flint_panic("Fatal error: Unable to allocate the Arena block header..");
-
-    block->memory = malloc(capacity);
-    if (!block->memory)
-        flint_panic("Fatal failure: OS refused to allocate memory for the block.");
-
-    block->capacity = capacity;
-    block->offset = 0;
-    block->next = NULL;
-    return block;
-}
 
 void flint_init(int argc, char **argv)
 {
     global_argc = argc;
     global_argv = argv;
 
-    arena_head = create_arena_block(ARENA_BLOCK_SIZE);
-    arena_current = arena_head;
+    arena_base = mmap(NULL, ARENA_CAPACITY, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+    if (arena_base == MAP_FAILED)
+        flint_panic("Fatal flaw: OS refused Virtual Arena.");
 }
 
 void flint_deinit()
 {
-    ArenaBlock *curr = arena_head;
-    while (curr)
-    {
-        ArenaBlock *next = curr->next;
-        free(curr->memory);
-        free(curr);
-        curr = next;
-    }
+    munmap(arena_base, ARENA_CAPACITY);
 }
 
 void flint_arena_reset()
 {
-    ArenaBlock *curr = arena_head;
-    while (curr)
-    {
-        curr->offset = 0;
-        curr = curr->next;
-    }
-    arena_current = arena_head;
+    arena_offset = 0;
 }
 
 void *flint_alloc_raw(size_t size)
 {
     size = (size + 7) & ~7;
-
-    if (arena_current->offset + size > arena_current->capacity)
-    {
-
-        if (arena_current->next != NULL && arena_current->next->capacity >= size)
-        {
-            arena_current = arena_current->next;
-        }
-        else
-        {
-            size_t new_cap = (size > ARENA_BLOCK_SIZE) ? size : ARENA_BLOCK_SIZE;
-            ArenaBlock *new_block = create_arena_block(new_cap);
-
-            arena_current->next = new_block;
-            arena_current = new_block;
-        }
-    }
-
-    void *ptr = arena_current->memory + arena_current->offset;
-    arena_current->offset += size;
+    void *ptr = arena_base + arena_offset;
+    arena_offset += size;
     return ptr;
 }
 
-void *flint_alloc(size_t size)
+void *flint_alloc_zero(size_t size)
 {
     void *ptr = flint_alloc_raw(size);
     memset(ptr, 0, size);
@@ -179,6 +126,11 @@ void flint_print_val(FlintValue v)
         printf("\033[1;31m[Caught Error]\033[0m %.*s\n", (int)v.as.s.len, v.as.s.ptr);
         break;
     }
+}
+
+void flint_print_bool(bool b)
+{
+    printf("%s\n", b ? "true" : "false");
 }
 
 /* =========================
@@ -331,16 +283,6 @@ static bool flint_str_eq(flint_str a, flint_str b)
     if (a.len == 0)
         return true;
     return memcmp(a.ptr, b.ptr, a.len) == 0;
-}
-
-static unsigned long flint_hash(flint_str s)
-{
-    unsigned long hash = 5381;
-    for (size_t i = 0; i < s.len; i++)
-    {
-        hash = ((hash << 5) + hash) + s.ptr[i];
-    }
-    return hash;
 }
 
 flint_str flint_trim(flint_str text)
@@ -537,7 +479,7 @@ flint_str flint_join(flint_str_array arr, flint_str sep)
 
 flint_str flint_int_to_str(long long num)
 {
-    char *buf = flint_alloc(32);
+    char *buf = flint_alloc_zero(32);
     int len = snprintf(buf, 32, "%lld", num);
     return FLINT_SLICE(buf, (size_t)len);
 }
@@ -565,12 +507,22 @@ flint_str flint_to_str(FlintValue v)
    UTIL E HASHMAP
    ========================= */
 
+static uint64_t flint_hash(flint_str s)
+{
+    uint64_t h = 1469598103934665603ULL;
+    for (size_t i = 0; i < s.len; i++)
+    {
+        h = (h ^ (unsigned char)s.ptr[i]) * 1099511628211ULL;
+    }
+    return h;
+}
+
 flint_int_array flint_range(long long start, long long end)
 {
     if (end <= start)
         return (flint_int_array){0};
     size_t n = end - start;
-    long long *items = flint_alloc(sizeof(long long) * n);
+    long long *items = flint_alloc_zero(sizeof(long long) * n);
     for (size_t i = 0; i < n; i++)
         items[i] = start + i;
     return (flint_int_array){items, n, n};
@@ -578,55 +530,56 @@ flint_int_array flint_range(long long start, long long end)
 
 FlintDict *flint_dict_new(size_t cap)
 {
-    FlintDict *d = flint_alloc(sizeof(FlintDict));
+    FlintDict *d = flint_alloc_raw(sizeof(FlintDict));
     if (cap < 16)
         cap = 16;
     d->capacity = cap;
     d->count = 0;
-    d->entries = flint_alloc(sizeof(FlintDictEntry) * cap);
+
+    d->entries = flint_alloc_zero(sizeof(FlintDictEntry) * cap);
     return d;
 }
 
 void flint_dict_set(FlintDict *d, flint_str key, FlintValue val)
 {
-
     if (d->count >= (d->capacity * 3) / 4)
     {
         size_t old_cap = d->capacity;
         FlintDictEntry *old_entries = d->entries;
 
         d->capacity = old_cap * 2;
-        d->entries = flint_alloc(sizeof(FlintDictEntry) * d->capacity);
+        d->entries = flint_alloc_zero(sizeof(FlintDictEntry) * d->capacity);
         d->count = 0;
 
         for (size_t j = 0; j < old_cap; j++)
         {
-            if (old_entries[j].occupied)
+            if (old_entries[j].hash != 0)
             {
                 flint_dict_set(d, old_entries[j].key, old_entries[j].value);
             }
         }
     }
 
-    size_t i = flint_hash(key) % d->capacity;
+    uint64_t h = flint_hash(key);
+    if (h == 0)
+        h = 1;
+
+    size_t i = h % d->capacity;
     size_t probes = 0;
 
-    while (d->entries[i].occupied)
+    while (d->entries[i].hash != 0)
     {
-        if (flint_str_eq(d->entries[i].key, key))
+        if (d->entries[i].hash == h && flint_str_eq(d->entries[i].key, key))
             break;
 
         i = (i + 1) % d->capacity;
-
         if (++probes >= d->capacity)
-        {
-            flint_panic("Colisao fatal no Dicionario (100% de carga).");
-        }
+            flint_panic("Fatal Colisao in Dictionary.");
     }
 
-    if (!d->entries[i].occupied)
+    if (d->entries[i].hash == 0)
     {
-        d->entries[i].occupied = true;
+        d->entries[i].hash = h;
         d->entries[i].key = key;
         d->count++;
     }
@@ -635,10 +588,14 @@ void flint_dict_set(FlintDict *d, flint_str key, FlintValue val)
 
 FlintValue flint_dict_get(FlintDict *d, flint_str key)
 {
-    size_t i = flint_hash(key) % d->capacity;
-    while (d->entries[i].occupied)
+    uint64_t h = flint_hash(key);
+    if (h == 0)
+        h = 1;
+
+    size_t i = h % d->capacity;
+    while (d->entries[i].hash != 0)
     {
-        if (flint_str_eq(d->entries[i].key, key))
+        if (d->entries[i].hash == h && flint_str_eq(d->entries[i].key, key))
             return d->entries[i].value;
         i = (i + 1) % d->capacity;
     }
@@ -719,38 +676,36 @@ FlintValue flint_fetch(flint_str url)
 
 static void json_skip_ws(const char **p)
 {
-    while (isspace((unsigned char)**p))
+
+    while (**p == ' ' || **p == '\n' || **p == '\t' || **p == '\r')
+    {
         (*p)++;
+    }
 }
 
 static flint_str json_parse_str(const char **p)
 {
     (*p)++;
     const char *start = *p;
-    while (**p && **p != '"')
+
+    const char *quote = memchr(start, '"', 0x7FFFFFFF);
+
+    while (quote && *(quote - 1) == '\\')
     {
-        if (**p == '\\' && *(*p + 1))
-            (*p) += 2;
-        else
-            (*p)++;
+        quote = memchr(quote + 1, '"', 0x7FFFFFFF);
     }
-    size_t len = *p - start;
 
-    char *buf = flint_alloc_raw(len + 1);
-    memcpy(buf, start, len);
-    buf[len] = '\0';
+    size_t len = quote - start;
+    *p = quote + 1;
 
-    if (**p == '"')
-        (*p)++;
-
-    return FLINT_SLICE(buf, len);
+    return FLINT_SLICE(start, len);
 }
 
 static FlintValue json_parse_value(const char **p);
-static FlintDict *json_parse_object(const char **p)
+static FlintDict *json_parse_object(const char **p, size_t estimated_cap)
 {
     (*p)++;
-    FlintDict *dict = flint_dict_new(256);
+    FlintDict *dict = flint_dict_new(estimated_cap);
     json_skip_ws(p);
     while (**p && **p != '}')
     {
@@ -784,7 +739,7 @@ static FlintValue json_parse_value(const char **p)
     }
     else if (**p == '{')
     {
-        return (FlintValue){FLINT_VAL_DICT, .as.d = json_parse_object(p)};
+        return (FlintValue){FLINT_VAL_DICT, .as.d = json_parse_object(p, 16)};
     }
     else if (**p == 't' && strncmp(*p, "true", 4) == 0)
     {
@@ -803,9 +758,11 @@ static FlintValue json_parse_value(const char **p)
     }
     else if (**p == '-' || isdigit((unsigned char)**p))
     {
-        long long val = strtoll(*p, (char **)p, 10);
+        long long val = fast_atoll(p);
+
         if (**p == '.')
         {
+            // Skip decimal places (Flint doesn't support floats natively yet)
             while (**p && (**p == '.' || isdigit((unsigned char)**p)))
                 (*p)++;
         }
@@ -834,11 +791,32 @@ FlintDict *flint_parse_json(flint_str text)
     if (text.len == 0 || !text.ptr)
         return NULL;
 
+    size_t estimated = text.len / 30;
+    if (estimated < 256)
+        estimated = 256;
+
     const char *p = text.ptr;
     json_skip_ws(&p);
     if (*p == '{')
     {
-        return json_parse_object(&p);
+        return json_parse_object(&p, estimated);
     }
     return flint_dict_new(16);
+}
+
+static long long fast_atoll(const char **p)
+{
+    long long res = 0;
+    int sign = 1;
+    if (**p == '-')
+    {
+        sign = -1;
+        (*p)++;
+    }
+    while (**p >= '0' && **p <= '9')
+    {
+        res = res * 10 + (**p - '0');
+        (*p)++;
+    }
+    return res * sign;
 }

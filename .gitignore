@@ -11,6 +11,7 @@ zemit/
 8*_*
 9*_*
 tests/teste.fl
+.c.sh
 erro
 
 !tests/*

@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
+#include <stdint.h>
 
 // ==========================================
 // STRING SLICES
@@ -50,10 +51,10 @@ typedef struct
 
 void flint_init(int argc, char **argv);
 void flint_deinit();
-
-void *flint_alloc(size_t size);
-void *flint_alloc_raw(size_t size);
 void flint_arena_reset();
+
+void *flint_alloc_raw(size_t size);
+void *flint_alloc_zero(size_t size);
 
 void flint_panic(const char *msg);
 void flint_exit(int code);
@@ -85,7 +86,7 @@ DECLARE_FLINT_ARRAY(flint_str, flint_str_array)
     ({                                                               \
         ItemType _tmp[] = {__VA_ARGS__};                             \
         size_t _cnt = sizeof(_tmp) / sizeof(ItemType);               \
-        ItemType *_arr = flint_alloc(_cnt * sizeof(ItemType));       \
+        ItemType *_arr = flint_alloc_zero(_cnt * sizeof(ItemType));  \
         memcpy(_arr, _tmp, sizeof(_tmp));                            \
         (ArrayType){.items = _arr, .count = _cnt, .capacity = _cnt}; \
     })
@@ -96,7 +97,7 @@ DECLARE_FLINT_ARRAY(flint_str, flint_str_array)
         if ((arr).count >= (arr).capacity)                                          \
         {                                                                           \
             size_t newcap = (arr).capacity == 0 ? 8 : (arr).capacity * 2;           \
-            void *new_items = flint_alloc(newcap * sizeof(*(arr).items));           \
+            void *new_items = flint_alloc_zero(newcap * sizeof(*(arr).items));      \
             if ((arr).items)                                                        \
                 memcpy(new_items, (arr).items, (arr).count * sizeof(*(arr).items)); \
             (arr).items = new_items;                                                \
@@ -113,10 +114,9 @@ DECLARE_FLINT_ARRAY(flint_str, flint_str_array)
 
 typedef struct
 {
+    uint64_t hash;
     flint_str key;
     FlintValue value;
-    bool occupied;
-
 } FlintDictEntry;
 
 struct FlintDict
@@ -170,12 +170,14 @@ static inline FlintValue flint_identity(FlintValue v) { return v; }
 void flint_print_str(flint_str text);
 void flint_print_int(long long num);
 void flint_print_val(FlintValue val);
+void flint_print_bool(bool b);
 void flint_print_dict(FlintDict *dict);
 
 #define flint_print(X) _Generic((X), \
     int: flint_print_int,            \
     long: flint_print_int,           \
     long long: flint_print_int,      \
+    bool: flint_print_bool,          \
     FlintValue: flint_print_val,     \
     FlintDict *: flint_print_dict,   \
     default: flint_print_str)(X)
@@ -236,5 +238,6 @@ FlintValue flint_fetch(flint_str url);
 
 FlintDict *flint_parse_json(flint_str text);
 FlintValue flint_dict_get(FlintDict *d, flint_str key);
+static long long fast_atoll(const char **p);
 
 #endif

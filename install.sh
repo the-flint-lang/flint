@@ -15,7 +15,8 @@ fi
 
 echo "Compiling flint..."
 cd "$SCRIPT_DIR"
-zig build -Doptimize=ReleaseFast
+# zig build -Doptimize=ReleaseFast
+zig build -Doptimize=ReleaseFast -Dcpu=native
 
 echo "Binary compiled: $BIN_SRC"
 

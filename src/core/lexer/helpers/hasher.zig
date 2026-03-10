@@ -20,4 +20,5 @@ pub const tokenMap = std.StaticStringMap(TokenType).initComptime(.{
     .{ "bool", TokenType.boolean_type_token },
     .{ "string", TokenType.string_type_token },
     .{ "catch", TokenType.catch_token },
+    .{ "struct", TokenType.struct_token },
 });
