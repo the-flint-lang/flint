@@ -16,20 +16,20 @@ If you are writing infrastructure tooling, you face a miserable trilemma today:
 2. **Python/Node.js are bloated:** Bootstrapping a VM/Interpreter just to parse a JSON or invoke an OS command adds unacceptable latency to fast-moving CLI workflows.
 3. **Go/Rust are verbose:** General-purpose systems languages require massive boilerplate for simple I/O, regex, and process invocation.
 
-## The Flint Architecture (v1.5)
+## The Flint Architecture (v1.6)
 
-Flint takes the expressiveness of functional data pipelines and brutally enforces it at the C-memory level.
+Flint takes the expressiveness of functional data pipelines and brutally enforces it at the hardware level.
 
 * **The Pipeline Operator (`~>`):** Data flows forward. No nested function hell. The result of the left expression becomes the first argument of the right function.
-* **C99 Transpilation:** Flint does not reinvent the wheel. The compiler (written in Zig) transpiles your code to strict C99 and uses your host's `clang`/`gcc` to heavily optimize it.
-* **Arena Allocator (Zero GC Pauses):** Memory is managed via a monolithic 256MB bump allocator. Scripts run fast, allocate continuously, and rely on the OS to reap the memory upon exit. Zero garbage collection cycles.
-* **Errors as Values (Zig-Style):** No silent crashes. I/O and Network failures are intercepted via a zero-cost `catch |err|` inline block, keeping your CI/CD pipelines bulletproof without the overhead of `try/catch` stack unwinding.
+* **Elastic Linked-Block Arena:** Memory is managed via a highly optimized, elastic linked-block allocator (starting at a tiny 8MB footprint). Scripts boot instantly, scale infinitely without `malloc` overhead, and rely on the OS to reap memory upon exit. Zero garbage collection pauses.
+* **Zero-Copy String Slices:** The C-string `\0` terminator overhead has been eradicated. All strings are "Fat Pointers" (`ptr` + `len`), making operations like `split()`, `trim()`, and `lines()` $O(1)$ in memory allocation.
+* **Errors as Values (Zig-Style):** No silent crashes. I/O and Network failures are intercepted via a zero-cost `catch |err|` inline block, keeping your CI/CD pipelines bulletproof without the overhead of stack unwinding.
 
 ## Show, Don't Tell
 
 ### Scenario 1: The OS Level (Killing Bash)
 
-*Fragile Bash relies on external binaries and fails silently if pipes break. Flint is native and strictly typed.*
+*Fragile Bash relies on external binaries and fails silently if pipes break. Flint is native, safe, and strictly typed.*
 
 ```flint
 const username = env("USER");
@@ -43,11 +43,12 @@ exec("ps aux")
     ~> write_file("user_procs.log");
 
 print("Done in 0.001s.");
+
 ```
 
 ### Scenario 2: The Network Level (Killing Python)
 
-*Python takes 50ms just to load the `requests` and `json` modules. Flint downloads, parses, handles errors safely, and exits in 15ms.*
+*Python takes 150ms just to load the `requests` module. Flint downloads, parses, handles errors safely, and exits before Python even boots.*
 
 ```flint
 print("Fetching data from the Cloud...");
@@ -59,41 +60,40 @@ const payload = fetch("https://dummyjson.com/quotes/random") catch |err| {
     exit(1);
 };
 
-# Native zero-copy JSON parsing into the Arena (FlintDict)
+# Native zero-copy JSON parsing into the Arena
 const data = parse_json(payload);
 
-const quote = to_str(get(data, "quote"));
-const author = to_str(get(data, "author"));
+print(concat("Quote: ", to_str(get(data, "quote"))));
 
-print(concat("Quote: ", quote));
-print(concat("By: ", author));
 ```
 
-## Performance: The 65MB Challenge
+## Performance: The v1.6 Benchmarks
 
-Flint is designed to operate at the physical limits of your hardware. By utilizing OS-level memory mapping (`mmap`), lazy initialization, and SIMD-vectorized C string operations, Flint completely eliminates the "interpreter tax".
+Flint is designed to operate at the physical limits of your hardware, utilizing OS-level memory mapping (`mmap`), lazy initialization, and AVX-vectorized C string operations.
 
-**The Benchmark:** Read a 1,000,000-line log file (65MB) from disk, scan for the word "ERROR", and count the occurrences.
+### 1. The 65MB I/O Challenge
 
-| Competitor | Language Type | Mean Time | Min Time |
-| --- | --- | --- | --- |
-| **Bash (`grep`)** | Highly Optimized C (GNU) | 30.0 ms | 24.5 ms |
-| **Flint (v1.5)** | AOT Compiled (Native C) | 34.1 ms | **23.3 ms** |
-| **Python 3** | Interpreted VM | 158.0 ms | 146.4 ms |
+**Task:** Read a 1,000,000-line log file (65MB) from disk, scan for the word "ERROR", and count occurrences.
 
-*Hardware: Standard developer machine. Measured via `hyperfine --warmup 3`.*
+| Competitor | Language Type | Mean Time |
+| --- | --- | --- |
+| **Bash (`grep`)** | Highly Optimized C (GNU) | ~ 17.4 ms |
+| **Flint (v1.6)** | AOT Compiled (Native C) | **~ 28.1 ms** |
+| **Python 3** | Interpreted VM | ~ 135.6 ms |
 
-**The Verdict:** Flint obliterates Python's throughput and cold-start latency (over 5x faster). When compared to `grep`—a 40-year-old tool written in manual Assembly/C—Flint trades blows head-to-head, occasionally beating it outright (reaching minimums of **23ms**) due to our aggressive zero-copy architecture.
+*Verdict:* Flint obliterates Python's throughput (5x faster) and approaches the physical memory bandwidth limits, trading blows with `grep`—a 40-year-old tool written in manual Assembly/C.
 
-## Advanced Primitives (v1.5)
+### 2. The Cold-Start Network Fetch
 
-Flint brings modern data structures to raw C performance:
+**Task:** Boot the runtime, establish a TLS connection, fetch a JSON payload from a remote API, parse it, and print a key.
 
-* **Native HTTP & JSON:** Built-in `fetch()` backed by `libcurl` and native JSON unpacking.
-* **Dynamic HashMaps:** `const config = parse_json("{}"); set(config, "key", "value");` (Equipped with dynamic load-factor rehashing).
-* **Dynamic Arrays:** `const ports = [80, 443]; push(ports, 8080);`
-* **Module System:** `import "utils.fl";` for scaling your scripts logically.
-* **Native String Manipulation:** Zero-copy slicing, `trim()`, `split()`, and `replace()`.
+| Competitor | Stack | Mean Time |
+| --- | --- | --- |
+| **Flint (v1.6)** | Native `libcurl` + Arena | **~ 164.7 ms** |
+| **Bash** | `curl` + `jq` | ~ 165.5 ms |
+| **Python 3** | `requests` module | ~ 324.6 ms |
+
+*Verdict:* The "Interpreter Tax" is real. Flint matches the raw startup speed of native OS binaries, completing the entire network request and parsing cycle before Python finishes booting its HTTP libraries.
 
 ## Getting Started (Building from Source)
 
@@ -104,23 +104,24 @@ git clone https://codeberg.org/lucaas-d3v/flint.git
 cd flint
 zig build -Doptimize=ReleaseFast
 sudo ./install.sh
+
 ```
 
 Compile and run your first script:
 
 ```bash
 flint run my_script.fl
+
 ```
 
 *(Use `flint build my_script.fl` to generate the standalone, dependency-free binary).*
 
-## Status: V1.5 (Resilience & Networking)
+## Status: v1.6 (Zero-Copy & Elastic Memory)
 
-Flint is not a toy, but it is currently in strict development. The v1.5 architecture established the core transpiler, OS interop, dynamic arrays, JSON parsing, HashMaps, and the Zig-style error handling system.
+Flint is not a toy, but it is currently in strict development. The v1.6 architecture established the core transpiler, zero-copy memory foundation, native OS interop, dynamic arrays, and the Zig-style error handling system.
 
-Upcoming milestones (v1.6+):
+**Upcoming Milestones (v1.7 / v2.0 Roadmap):**
 
-* Deep JSON unpacking (nested dictionaries).
-* Custom Structs.
-* String Slices (Zero-copy architectural enforcement).
-* Rethinking memory and extreme optimizations.
+* **Custom Structs:** Strict typing for deep JSON modeling.
+* **Advanced Module System:** Multi-file projects and safe imports.
+* **Lexical Error Reporting:** Precise compiler tracebacks pointing to the exact line/column of failure.
