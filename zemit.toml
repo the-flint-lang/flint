@@ -16,7 +16,7 @@ targets = [
 [dist]
 dir = "zemit/dist"
 layout = "flat"
-name_template = "{bin}-{version}-{target}{ext}"
+name_template = "{bin}-{target}{ext}"
 
 [checksums]
 enabled = true

@@ -262,6 +262,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
         "-o",
         exe_name,
         "-O3",
+        "-march=native",
     };
 
     var child = std.process.Child.init(argv, alloc);
@@ -399,6 +400,7 @@ fn testSingleFile(alloc: std.mem.Allocator, file_path: []const u8, io: IoHelper)
         "-o",
         exe_name,
         "-O3",
+        "-march=native",
     };
 
     var child_clang = std.process.Child.init(clang_argv, alloc);

@@ -107,6 +107,7 @@ pub const CEmitter = struct {
         if (decl.is_const) {
             try writer.print("const ", .{});
         }
+
         try writer.print("__auto_type {s} = ", .{decl.name});
         try self.visitNode(decl.value, writer);
     }
@@ -196,6 +197,7 @@ pub const CEmitter = struct {
             .plus_token => "+",
             .minus_token => "-",
             .star_token => "*",
+            .remainder_token => "%",
             .slash_token => "/",
             .equal_token => "==",
             .bang_equal_token => "!=",
@@ -224,7 +226,7 @@ pub const CEmitter = struct {
         const tok = node.literal.token;
 
         if (tok._type == .string_literal_token) {
-            try writer.print("\"{s}\"", .{tok.value});
+            try writer.print("FLINT_STR(\"{s}\")", .{tok.value});
         } else if (tok._type == .multile_string_literal_token) {
             try writer.print("\"", .{});
 
@@ -405,6 +407,7 @@ pub const CEmitter = struct {
             "to_str",
             "is_err",
             "get_err",
+            "count_matches",
         };
 
         for (stdlibs) |lib| {

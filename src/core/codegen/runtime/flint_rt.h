@@ -5,8 +5,19 @@
 #include <stddef.h>
 #include <string.h>
 
-typedef const char *flint_str;
+// ==========================================
+// STRING SLICES
+// ==========================================
+typedef struct
+{
+    const char *ptr;
+    size_t len;
+} flint_str;
 
+#define FLINT_STR(literal) (flint_str){.ptr = (literal), .len = sizeof(literal) - 1}
+
+#define FLINT_SLICE(pointer, length) \
+    (flint_str) { .ptr = (pointer), .len = (length) }
 typedef struct FlintDict FlintDict;
 
 typedef enum
@@ -41,6 +52,7 @@ void flint_init(int argc, char **argv);
 void flint_deinit();
 
 void *flint_alloc(size_t size);
+void *flint_alloc_raw(size_t size);
 void flint_arena_reset();
 
 void flint_panic(const char *msg);
@@ -78,7 +90,7 @@ DECLARE_FLINT_ARRAY(flint_str, flint_str_array)
         (ArrayType){.items = _arr, .count = _cnt, .capacity = _cnt}; \
     })
 
-#define flint_array_push(arr, val)                                                  \
+#define flint_push(arr, val)                                                        \
     do                                                                              \
     {                                                                               \
         if ((arr).count >= (arr).capacity)                                          \
@@ -90,10 +102,8 @@ DECLARE_FLINT_ARRAY(flint_str, flint_str_array)
             (arr).items = new_items;                                                \
             (arr).capacity = newcap;                                                \
         }                                                                           \
-        (arr).items[(arr).count++] = val;                                           \
+        (arr).items[(arr).count++] = (val);                                         \
     } while (0)
-
-#define flint_push(arr, val) flint_array_push(arr, val)
 
 #define flint_len(arr) ((long long)((arr).count))
 
@@ -201,6 +211,7 @@ flint_str flint_join(flint_str_array arr, flint_str sep);
 
 flint_str flint_trim(flint_str text);
 flint_str_array flint_grep(flint_str_array lines, flint_str pattern);
+long long flint_count_matches(flint_str text, flint_str pattern);
 flint_str flint_replace(flint_str text, flint_str target, flint_str repl);
 
 flint_str flint_to_str(FlintValue v);

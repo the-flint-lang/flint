@@ -1,52 +1,119 @@
-#include "flint_rt.h"
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 
+#include "flint_rt.h"
+#include <string.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
 #include <curl/curl.h>
 
-#define ARENA_CAPACITY (128 * 1024 * 1024)
-
-static char *arena;
-static size_t arena_offset;
-
 static int global_argc;
 static char **global_argv;
 
 /* =========================
-   ARENA E RUNTIME
-   ========================= */
+ARENA E RUNTIME
+========================= */
+
+#define ARENA_BLOCK_SIZE (8 * 1024 * 1024)
+
+typedef struct ArenaBlock
+{
+    char *memory;
+    size_t capacity;
+    size_t offset;
+    struct ArenaBlock *next;
+} ArenaBlock;
+
+static ArenaBlock *arena_head = NULL;
+static ArenaBlock *arena_current = NULL;
+
+static int global_argc;
+static char **global_argv;
+
+static ArenaBlock *create_arena_block(size_t capacity)
+{
+    ArenaBlock *block = malloc(sizeof(ArenaBlock));
+    if (!block)
+        flint_panic("Fatal error: Unable to allocate the Arena block header..");
+
+    block->memory = malloc(capacity);
+    if (!block->memory)
+        flint_panic("Fatal failure: OS refused to allocate memory for the block.");
+
+    block->capacity = capacity;
+    block->offset = 0;
+    block->next = NULL;
+    return block;
+}
 
 void flint_init(int argc, char **argv)
 {
     global_argc = argc;
     global_argv = argv;
-    arena = malloc(ARENA_CAPACITY);
-    if (!arena)
-        flint_panic("Arena allocation failed");
-    arena_offset = 0;
-    curl_global_init(CURL_GLOBAL_ALL);
+
+    arena_head = create_arena_block(ARENA_BLOCK_SIZE);
+    arena_current = arena_head;
 }
 
 void flint_deinit()
 {
-    free(arena);
-    curl_global_cleanup();
+    ArenaBlock *curr = arena_head;
+    while (curr)
+    {
+        ArenaBlock *next = curr->next;
+        free(curr->memory);
+        free(curr);
+        curr = next;
+    }
 }
 
 void flint_arena_reset()
 {
-    arena_offset = 0;
+    ArenaBlock *curr = arena_head;
+    while (curr)
+    {
+        curr->offset = 0;
+        curr = curr->next;
+    }
+    arena_current = arena_head;
+}
+
+void *flint_alloc_raw(size_t size)
+{
+    size = (size + 7) & ~7;
+
+    if (arena_current->offset + size > arena_current->capacity)
+    {
+
+        if (arena_current->next != NULL && arena_current->next->capacity >= size)
+        {
+            arena_current = arena_current->next;
+        }
+        else
+        {
+            size_t new_cap = (size > ARENA_BLOCK_SIZE) ? size : ARENA_BLOCK_SIZE;
+            ArenaBlock *new_block = create_arena_block(new_cap);
+
+            arena_current->next = new_block;
+            arena_current = new_block;
+        }
+    }
+
+    void *ptr = arena_current->memory + arena_current->offset;
+    arena_current->offset += size;
+    return ptr;
 }
 
 void *flint_alloc(size_t size)
 {
-    size = (size + 7) & ~7;
-    if (arena_offset + size >= ARENA_CAPACITY)
-        flint_panic("Arena out of memory");
-    void *ptr = arena + arena_offset;
-    arena_offset += size;
+    void *ptr = flint_alloc_raw(size);
     memset(ptr, 0, size);
     return ptr;
 }
@@ -73,13 +140,19 @@ FlintValue flint_make_str(flint_str v) { return (FlintValue){FLINT_VAL_STR, .as.
 
 FlintValue flint_make_error(flint_str msg) { return (FlintValue){FLINT_VAL_ERROR, .as.s = msg}; }
 bool flint_is_err(FlintValue v) { return v.type == FLINT_VAL_ERROR; }
-flint_str flint_get_err(FlintValue v) { return v.type == FLINT_VAL_ERROR ? v.as.s : ""; }
+flint_str flint_get_err(FlintValue v)
+{
+    return v.type == FLINT_VAL_ERROR ? v.as.s : FLINT_STR("");
+}
 
 /* =========================
    PRINT
    ========================= */
 
-void flint_print_str(flint_str s) { printf("%s\n", s ? s : ""); }
+void flint_print_str(flint_str text)
+{
+    printf("%.*s\n", (int)text.len, text.ptr);
+}
 void flint_print_int(long long v) { printf("%lld\n", v); }
 void flint_print_dict(FlintDict *d) { printf("[Flint Dictionary: %zu keys]\n", d ? d->count : 0); }
 
@@ -87,6 +160,9 @@ void flint_print_val(FlintValue v)
 {
     switch (v.type)
     {
+    case FLINT_VAL_NULL:
+        printf("null\n");
+        break;
     case FLINT_VAL_INT:
         printf("%lld\n", v.as.i);
         break;
@@ -94,16 +170,13 @@ void flint_print_val(FlintValue v)
         printf("%s\n", v.as.b ? "true" : "false");
         break;
     case FLINT_VAL_STR:
-        printf("%s\n", v.as.s);
-        break;
-    case FLINT_VAL_NULL:
-        printf("null\n");
+        printf("%.*s\n", (int)v.as.s.len, v.as.s.ptr);
         break;
     case FLINT_VAL_DICT:
-        flint_print_dict(v.as.d);
+        printf("[Dict]\n");
         break;
     case FLINT_VAL_ERROR:
-        printf("\033[1;31m[Caught Error]\033[0m %s\n", v.as.s);
+        printf("\033[1;31m[Caught Error]\033[0m %.*s\n", (int)v.as.s.len, v.as.s.ptr);
         break;
     }
 }
@@ -112,37 +185,80 @@ void flint_print_val(FlintValue v)
    FILE I/O
    ========================= */
 
-flint_str flint_read_file(flint_str path)
+static char *to_c_string(flint_str s)
 {
-    FILE *f = fopen(path, "rb");
-    if (!f)
-        flint_panic("cannot open file");
-    fseek(f, 0, SEEK_END);
-    size_t size = ftell(f);
-    rewind(f);
-    char *buf = flint_alloc(size + 1);
-    fread(buf, 1, size, f);
-    buf[size] = 0;
-    fclose(f);
+    if (s.len == 0)
+        return "";
+    if (s.ptr[s.len] == '\0')
+    {
+        return (char *)s.ptr;
+    }
+
+    char *buf = flint_alloc_raw(s.len + 1);
+    memcpy(buf, s.ptr, s.len);
+    buf[s.len] = '\0';
     return buf;
 }
 
-bool flint_file_exists(flint_str path)
+flint_str flint_read_file(flint_str path)
 {
-    FILE *f = fopen(path, "r");
-    if (!f)
-        return false;
-    fclose(f);
-    return true;
+    char *c_path = to_c_string(path);
+    int fd = open(c_path, O_RDONLY);
+    if (fd < 0)
+        flint_panic("Cannot open file");
+
+    struct stat sb;
+    if (fstat(fd, &sb) < 0)
+        flint_panic("Cannot stat file");
+
+    if (sb.st_size == 0)
+    {
+        close(fd);
+        return FLINT_STR("");
+    }
+
+    char *mapped = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    close(fd);
+    if (mapped == MAP_FAILED)
+        flint_panic("mmap failed");
+
+    long page_size = sysconf(_SC_PAGESIZE);
+    if (sb.st_size % page_size != 0)
+    {
+        return FLINT_SLICE(mapped, sb.st_size);
+    }
+
+    char *buf = flint_alloc_raw(sb.st_size + 1);
+    int fd2 = open(c_path, O_RDONLY);
+    read(fd2, buf, sb.st_size);
+    buf[sb.st_size] = '\0';
+    close(fd2);
+    munmap(mapped, sb.st_size);
+
+    return FLINT_SLICE(buf, sb.st_size);
 }
 
-void flint_write_file(flint_str text, flint_str path)
+void flint_write_file(flint_str text, flint_str filepath)
 {
-    FILE *f = fopen(path, "wb");
+    char *c_path = to_c_string(filepath);
+    FILE *f = fopen(c_path, "wb");
     if (!f)
         flint_panic("cannot write file");
-    fputs(text, f);
+
+    fwrite(text.ptr, 1, text.len, f);
     fclose(f);
+}
+
+bool flint_file_exists(flint_str filepath)
+{
+    char *c_path = to_c_string(filepath);
+    FILE *f = fopen(c_path, "r");
+    if (f)
+    {
+        fclose(f);
+        return true;
+    }
+    return false;
 }
 
 /* =========================
@@ -151,207 +267,279 @@ void flint_write_file(flint_str text, flint_str path)
 
 flint_str flint_env(flint_str name)
 {
-    char *v = getenv(name);
-    return v ? v : "";
+    char *c_name = to_c_string(name);
+    char *v = getenv(c_name);
+    if (!v)
+        return FLINT_STR("");
+    return FLINT_SLICE(v, strlen(v));
 }
 
 flint_str_array flint_args()
 {
     flint_str_array arr;
-    arr.count = global_argc;
-    arr.capacity = global_argc;
-    arr.items = flint_alloc(sizeof(flint_str) * global_argc);
+    flint_array_init(arr);
     for (int i = 0; i < global_argc; i++)
-        arr.items[i] = global_argv[i];
+    {
+        flint_str arg_slice = FLINT_SLICE(global_argv[i], strlen(global_argv[i]));
+        flint_push(arr, arg_slice);
+    }
     return arr;
 }
 
 flint_str flint_exec(flint_str cmd)
 {
-    if (!cmd)
-        return "";
-    FILE *pipe = popen(cmd, "r");
+    if (cmd.len == 0)
+        return FLINT_STR("");
+
+    char *c_cmd = to_c_string(cmd);
+    FILE *pipe = popen(c_cmd, "r");
     if (!pipe)
-        flint_panic("Falha ao executar comando");
+        flint_panic("popen failed");
 
-    size_t capacity = 1024 * 1024;
-    char *temp_buf = malloc(capacity);
-    size_t total_read = 0, bytes_read = 0;
+    char temp_buf[1024];
+    size_t total_read = 0;
+    size_t max_size = 4096;
+    char *buf = flint_alloc_raw(max_size);
 
-    while ((bytes_read = fread(temp_buf + total_read, 1, capacity - total_read - 1, pipe)) > 0)
+    while (fgets(temp_buf, sizeof(temp_buf), pipe) != NULL)
     {
-        total_read += bytes_read;
-        if (total_read >= capacity - 1024)
+        size_t len = strlen(temp_buf);
+        if (total_read + len >= max_size)
         {
-            capacity *= 2;
-            temp_buf = realloc(temp_buf, capacity);
+            max_size *= 2;
+            char *new_buf = flint_alloc_raw(max_size);
+            memcpy(new_buf, buf, total_read);
+            buf = new_buf;
         }
+        memcpy(buf + total_read, temp_buf, len);
+        total_read += len;
     }
-    temp_buf[total_read] = '\0';
     pclose(pipe);
 
-    flint_str result = (flint_str)flint_alloc(total_read + 1);
-    memcpy((void *)result, temp_buf, total_read + 1);
-    free(temp_buf);
-    return result;
+    // Ajuste perfeito do tamanho
+    return FLINT_SLICE(buf, total_read);
 }
 
 /* =========================
    STRINGS
    ========================= */
 
-flint_str flint_trim(flint_str text)
+static bool flint_str_eq(flint_str a, flint_str b)
 {
-    if (!text)
-        return "";
-    while (isspace((unsigned char)*text))
-        text++;
-    if (*text == '\0')
-        return "";
-    const char *end = text + strlen(text) - 1;
-    while (end > text && isspace((unsigned char)*end))
-        end--;
-    size_t len = end - text + 1;
-    flint_str result = (flint_str)flint_alloc(len + 1);
-    memcpy((void *)result, text, len);
-    ((char *)result)[len] = '\0';
-    return result;
+    if (a.len != b.len)
+        return false;
+    if (a.len == 0)
+        return true;
+    return memcmp(a.ptr, b.ptr, a.len) == 0;
 }
 
-flint_str flint_replace(flint_str text, flint_str target, flint_str replacement)
+static unsigned long flint_hash(flint_str s)
 {
-    if (!text || !target || !replacement)
-        return text ? text : "";
-    size_t target_len = strlen(target);
-    if (target_len == 0)
-        return text;
-    size_t repl_len = strlen(replacement);
-    size_t count = 0;
-    const char *tmp = text;
-    while ((tmp = strstr(tmp, target)))
+    unsigned long hash = 5381;
+    for (size_t i = 0; i < s.len; i++)
     {
-        count++;
-        tmp += target_len;
+        hash = ((hash << 5) + hash) + s.ptr[i];
     }
-    if (count == 0)
-        return text;
+    return hash;
+}
 
-    size_t final_len = strlen(text) - (count * target_len) + (count * repl_len);
-    flint_str result = (flint_str)flint_alloc(final_len + 1);
-    char *dest = (char *)result;
-    const char *src = text, *match;
+flint_str flint_trim(flint_str text)
+{
+    if (text.len == 0 || !text.ptr)
+        return FLINT_STR("");
 
-    while ((match = strstr(src, target)))
+    size_t start = 0;
+    while (start < text.len && isspace((unsigned char)text.ptr[start]))
     {
-        size_t chunk_len = match - src;
-        memcpy(dest, src, chunk_len);
-        dest += chunk_len;
-        memcpy(dest, replacement, repl_len);
-        dest += repl_len;
-        src = match + target_len;
+        start++;
     }
-    strcpy(dest, src);
-    return result;
+
+    if (start == text.len)
+        return FLINT_STR("");
+
+    size_t end = text.len - 1;
+    while (end > start && isspace((unsigned char)text.ptr[end]))
+    {
+        end--;
+    }
+
+    return FLINT_SLICE(text.ptr + start, (end - start) + 1);
+}
+
+flint_str flint_concat(flint_str a, flint_str b)
+{
+    if (a.len == 0 && b.len == 0)
+        return FLINT_STR("");
+    if (a.len == 0)
+        return b;
+    if (b.len == 0)
+        return a;
+
+    size_t total_len = a.len + b.len;
+    char *buf = flint_alloc_raw(total_len + 1);
+
+    memcpy(buf, a.ptr, a.len);
+    memcpy(buf + a.len, b.ptr, b.len);
+
+    buf[total_len] = '\0';
+
+    return FLINT_SLICE(buf, total_len);
 }
 
 flint_str_array flint_split(flint_str text, flint_str delimiter)
 {
-    if (!text || !delimiter)
-        return (flint_str_array){0};
-    size_t delim_len = strlen(delimiter);
-    if (delim_len == 0)
-        return (flint_str_array){0};
-    size_t count = 1;
-    const char *tmp = text;
-    while ((tmp = strstr(tmp, delimiter)))
-    {
-        count++;
-        tmp += delim_len;
-    }
-
     flint_str_array arr;
-    arr.count = count;
-    arr.capacity = count;
-    arr.items = flint_alloc(count * sizeof(flint_str));
+    flint_array_init(arr);
 
-    size_t idx = 0;
-    const char *start = text, *end;
-    while ((end = strstr(start, delimiter)))
+    if (text.len == 0 || !text.ptr)
+        return arr;
+    if (delimiter.len == 0 || !delimiter.ptr)
     {
-        size_t chunk_len = end - start;
-        flint_str chunk = (flint_str)flint_alloc(chunk_len + 1);
-        memcpy((void *)chunk, start, chunk_len);
-        ((char *)chunk)[chunk_len] = '\0';
-        arr.items[idx++] = chunk;
-        start = end + delim_len;
+        flint_push(arr, text);
+        return arr;
     }
-    size_t last_len = strlen(start);
-    flint_str last_chunk = (flint_str)flint_alloc(last_len + 1);
-    strcpy((char *)last_chunk, start);
-    arr.items[idx] = last_chunk;
+
+    const char *curr = text.ptr;
+    const char *end = text.ptr + text.len;
+
+    while (curr < end)
+    {
+        const char *match = memmem(curr, end - curr, delimiter.ptr, delimiter.len);
+        if (!match)
+        {
+            flint_str tail = FLINT_SLICE(curr, end - curr);
+            flint_push(arr, tail);
+            break;
+        }
+        flint_str piece = FLINT_SLICE(curr, match - curr);
+        flint_push(arr, piece);
+        curr = match + delimiter.len;
+    }
+
     return arr;
 }
 
 flint_str_array flint_lines(flint_str text)
 {
-    return flint_split(text, "\n");
+    return flint_split(text, FLINT_STR("\n"));
+}
+
+flint_str_array flint_grep(flint_str_array lines, flint_str pattern)
+{
+    flint_str_array arr;
+    flint_array_init(arr);
+
+    if (pattern.len == 0 || !pattern.ptr)
+        return arr;
+
+    for (size_t i = 0; i < lines.count; i++)
+    {
+        flint_str line = lines.items[i];
+        if (memmem(line.ptr, line.len, pattern.ptr, pattern.len))
+        {
+            flint_push(arr, line);
+        }
+    }
+    return arr;
+}
+
+long long flint_count_matches(flint_str text, flint_str pattern)
+{
+    if (text.len == 0 || pattern.len == 0)
+        return 0;
+
+    long long count = 0;
+    const char *curr = text.ptr;
+    const char *end = text.ptr + text.len;
+
+    while (curr < end)
+    {
+        const char *match = memmem(curr, end - curr, pattern.ptr, pattern.len);
+        if (!match)
+            break;
+        count++;
+        curr = match + pattern.len;
+    }
+
+    return count;
+}
+
+flint_str flint_replace(flint_str text, flint_str target, flint_str repl)
+{
+    if (text.len == 0 || !text.ptr)
+        return FLINT_STR("");
+    if (target.len == 0 || !target.ptr)
+        return text;
+
+    long long count = flint_count_matches(text, target);
+    if (count == 0)
+        return text;
+
+    size_t final_len = text.len - (count * target.len) + (count * repl.len);
+    char *buf = flint_alloc_raw(final_len + 1);
+    char *dest = buf;
+
+    const char *curr = text.ptr;
+    const char *end = text.ptr + text.len;
+
+    while (curr < end)
+    {
+        const char *match = memmem(curr, end - curr, target.ptr, target.len);
+        if (!match)
+        {
+            memcpy(dest, curr, end - curr);
+            dest += (end - curr);
+            break;
+        }
+        size_t prefix_len = match - curr;
+        memcpy(dest, curr, prefix_len);
+        dest += prefix_len;
+
+        memcpy(dest, repl.ptr, repl.len);
+        dest += repl.len;
+
+        curr = match + target.len;
+    }
+
+    *dest = '\0';
+    return FLINT_SLICE(buf, final_len);
 }
 
 flint_str flint_join(flint_str_array arr, flint_str sep)
 {
     if (arr.count == 0)
-        return (flint_str)flint_alloc(1);
-    if (!sep)
-        sep = "";
-    size_t sep_len = strlen(sep);
+        return FLINT_STR("");
+
     size_t total_len = 0;
     for (size_t i = 0; i < arr.count; i++)
-        total_len += strlen(arr.items[i]);
-    total_len += sep_len * (arr.count - 1);
+    {
+        total_len += arr.items[i].len;
+    }
+    total_len += sep.len * (arr.count > 0 ? arr.count - 1 : 0);
 
-    flint_str result = (flint_str)flint_alloc(total_len + 1);
-    char *current_pos = (char *)result;
+    char *buf = flint_alloc_raw(total_len + 1);
+    char *dest = buf;
+
     for (size_t i = 0; i < arr.count; i++)
     {
-        size_t line_len = strlen(arr.items[i]);
-        memcpy(current_pos, arr.items[i], line_len);
-        current_pos += line_len;
-        if (i < arr.count - 1 && sep_len > 0)
+        memcpy(dest, arr.items[i].ptr, arr.items[i].len);
+        dest += arr.items[i].len;
+        if (i < arr.count - 1 && sep.len > 0)
         {
-            memcpy(current_pos, sep, sep_len);
-            current_pos += sep_len;
+            memcpy(dest, sep.ptr, sep.len);
+            dest += sep.len;
         }
     }
-    *current_pos = '\0';
-    return result;
-}
 
-flint_str_array flint_grep(flint_str_array lines, flint_str pattern)
-{
-    if (lines.count == 0 || !pattern)
-        return (flint_str_array){0};
-    flint_str *matched = flint_alloc(sizeof(flint_str) * lines.count);
-    size_t match_count = 0;
-    for (size_t i = 0; i < lines.count; i++)
-    {
-        if (strstr(lines.items[i], pattern) != NULL)
-            matched[match_count++] = lines.items[i];
-    }
-    flint_str_array res;
-    res.items = matched;
-    res.count = match_count;
-    res.capacity = lines.count;
-    return res;
+    *dest = '\0';
+    return FLINT_SLICE(buf, total_len);
 }
 
 flint_str flint_int_to_str(long long num)
 {
-    char buf[64];
-    snprintf(buf, sizeof(buf), "%lld", num);
-    size_t len = strlen(buf);
-    flint_str res = (flint_str)flint_alloc(len + 1);
-    memcpy((void *)res, buf, len + 1);
-    return res;
+    char *buf = flint_alloc(32);
+    int len = snprintf(buf, 32, "%lld", num);
+    return FLINT_SLICE(buf, (size_t)len);
 }
 
 flint_str flint_to_str(FlintValue v)
@@ -363,30 +551,14 @@ flint_str flint_to_str(FlintValue v)
     case FLINT_VAL_INT:
         return flint_int_to_str(v.as.i);
     case FLINT_VAL_BOOL:
-        return v.as.b ? "true" : "false";
+        return v.as.b ? FLINT_STR("true") : FLINT_STR("false");
     case FLINT_VAL_NULL:
-        return "null";
-    case FLINT_VAL_DICT:
-        return "[Flint Dictionary]";
+        return FLINT_STR("null");
     case FLINT_VAL_ERROR:
-        return "[Error]";
+        return flint_concat(FLINT_STR("[Error] "), v.as.s);
+    default:
+        return FLINT_STR("[Object]");
     }
-
-    return "";
-}
-
-flint_str flint_concat(flint_str a, flint_str b)
-{
-    if (!a)
-        a = "";
-    if (!b)
-        b = "";
-    size_t len_a = strlen(a);
-    size_t len_b = strlen(b);
-    flint_str res = (flint_str)flint_alloc(len_a + len_b + 1);
-    memcpy((void *)res, a, len_a);
-    memcpy((void *)res + len_a, b, len_b + 1);
-    return res;
 }
 
 /* =========================
@@ -402,15 +574,6 @@ flint_int_array flint_range(long long start, long long end)
     for (size_t i = 0; i < n; i++)
         items[i] = start + i;
     return (flint_int_array){items, n, n};
-}
-
-static unsigned long hash(flint_str s)
-{
-    unsigned long h = 5381;
-    int c;
-    while ((c = *s++))
-        h = ((h << 5) + h) + c;
-    return h;
 }
 
 FlintDict *flint_dict_new(size_t cap)
@@ -445,12 +608,12 @@ void flint_dict_set(FlintDict *d, flint_str key, FlintValue val)
         }
     }
 
-    size_t i = hash(key) % d->capacity;
+    size_t i = flint_hash(key) % d->capacity;
     size_t probes = 0;
 
     while (d->entries[i].occupied)
     {
-        if (strcmp(d->entries[i].key, key) == 0)
+        if (flint_str_eq(d->entries[i].key, key))
             break;
 
         i = (i + 1) % d->capacity;
@@ -472,10 +635,10 @@ void flint_dict_set(FlintDict *d, flint_str key, FlintValue val)
 
 FlintValue flint_dict_get(FlintDict *d, flint_str key)
 {
-    size_t i = hash(key) % d->capacity;
+    size_t i = flint_hash(key) % d->capacity;
     while (d->entries[i].occupied)
     {
-        if (strcmp(d->entries[i].key, key) == 0)
+        if (flint_str_eq(d->entries[i].key, key))
             return d->entries[i].value;
         i = (i + 1) % d->capacity;
     }
@@ -506,45 +669,48 @@ static size_t flint_fetch_callback(void *contents, size_t size, size_t nmemb, vo
     return realsize;
 }
 
+static bool curl_initialized = false;
 FlintValue flint_fetch(flint_str url)
 {
-    if (!url)
-        return flint_make_error("Null or invalid URL provided to fetch");
-    CURL *curl_handle;
-    CURLcode res;
-    struct FetchMemoryStruct chunk;
-    chunk.memory = malloc(1);
-    chunk.size = 0;
+    if (url.len == 0 || !url.ptr)
+        return flint_make_error(FLINT_STR("Null or invalid URL provided to fetch"));
 
-    curl_handle = curl_easy_init();
-    if (curl_handle)
+    if (!curl_initialized)
     {
-        curl_easy_setopt(curl_handle, CURLOPT_URL, url);
-        curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, flint_fetch_callback);
-        curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)&chunk);
-        curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "Flint-Lang-v1.5");
-        curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1L);
-
-        // 5-second timeout to prevent the program from freezing indefinitely.
-        curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 5L);
-
-        res = curl_easy_perform(curl_handle);
-
-        if (res != CURLE_OK)
-        {
-            curl_easy_cleanup(curl_handle);
-            free(chunk.memory);
-
-            return flint_make_error((flint_str)curl_easy_strerror(res));
-        }
-        curl_easy_cleanup(curl_handle);
+        curl_global_init(CURL_GLOBAL_ALL);
+        curl_initialized = true;
     }
 
-    flint_str result = (flint_str)flint_alloc(chunk.size + 1);
-    memcpy((void *)result, chunk.memory, chunk.size + 1);
-    free(chunk.memory);
+    CURL *curl = curl_easy_init();
+    if (!curl)
+        return flint_make_error(FLINT_STR("Failed to init curl"));
 
-    return flint_make_str(result);
+    struct FetchMemoryStruct chunk = {.memory = malloc(1), .size = 0};
+    char *c_url = to_c_string(url);
+
+    curl_easy_setopt(curl, CURLOPT_URL, c_url);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, flint_fetch_callback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Flint/1.6");
+
+    CURLcode res = curl_easy_perform(curl);
+
+    curl_easy_cleanup(curl);
+
+    if (res != CURLE_OK)
+    {
+        free(chunk.memory);
+        const char *err_msg = curl_easy_strerror(res);
+        return flint_make_error(FLINT_SLICE(err_msg, strlen(err_msg)));
+    }
+
+    char *buf = flint_alloc_raw(chunk.size + 1);
+    memcpy(buf, chunk.memory, chunk.size);
+    buf[chunk.size] = '\0';
+
+    free(chunk.memory);
+    return flint_make_str(FLINT_SLICE(buf, chunk.size));
 }
 
 /* =========================
@@ -569,16 +735,18 @@ static flint_str json_parse_str(const char **p)
             (*p)++;
     }
     size_t len = *p - start;
-    flint_str res = (flint_str)flint_alloc(len + 1);
-    memcpy((void *)res, start, len);
-    ((char *)res)[len] = '\0';
+
+    char *buf = flint_alloc_raw(len + 1);
+    memcpy(buf, start, len);
+    buf[len] = '\0';
+
     if (**p == '"')
         (*p)++;
-    return res;
+
+    return FLINT_SLICE(buf, len);
 }
 
 static FlintValue json_parse_value(const char **p);
-
 static FlintDict *json_parse_object(const char **p)
 {
     (*p)++;
@@ -663,9 +831,10 @@ static FlintValue json_parse_value(const char **p)
 
 FlintDict *flint_parse_json(flint_str text)
 {
-    if (!text)
-        return flint_dict_new(16);
-    const char *p = text;
+    if (text.len == 0 || !text.ptr)
+        return NULL;
+
+    const char *p = text.ptr;
     json_skip_ws(&p);
     if (*p == '{')
     {
