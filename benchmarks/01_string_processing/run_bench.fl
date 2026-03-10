@@ -1,0 +1,26 @@
+print("====================================================");
+print("        FLINT BENCHMARK ORCHESTRATOR v1.6           ");
+print("====================================================");
+
+print("\n1. [PREPARATION] Generating test data (1M lines)...");
+exec("python3 gen_data.py") ~> print();
+
+print("2. [COMPILATION] Optimizing Flint binary...");
+# Compiling bench.fl to generate the './bench' executable
+exec("flint build bench.fl") ~> print();
+
+print("3. [DUEL] Starting Hyperfine...");
+print("----------------------------------------------------");
+
+print("3. [DUEL] Starting Hyperfine (3 runs)...");
+print("----------------------------------------------------\n\n");
+
+# Hyperfine runs the commands and Flint prints the final result
+for i in range(1, 5){
+    const result = exec("hyperfine --warmup 3 './bench' 'python3 bench.py' 'bash bench.sh'");
+
+    print(result);
+}
+
+print("----------------------------------------------------");
+print("Benchmark completed successfully.");

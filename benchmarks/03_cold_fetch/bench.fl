@@ -1,0 +1,4 @@
+# Native C Libcurl with Lazy Initialization
+const payload = fetch("https://dummyjson.com/products/1") catch |e| { exit(1); };
+const data = parse_json(to_str(payload));
+print(to_str(get(data, "title")));

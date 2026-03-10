@@ -1,73 +1,48 @@
 {
-    "For Loop": {
-        "prefix": "for",
+    "Define Struct": {
+        "prefix": "struct",
         "body": [
-            "for ${1:item} in ${2:iterable} {",
-            "    $0",
+            "struct ${1:Name} {",
+            "    ${2:field}: ${3|string,int,bool|}",
             "}"
         ],
-        "description": "Iterador For..In do Flint"
+        "description": "Declare a strongly typed custom Struct"
     },
-    "Function Declaration": {
-        "prefix": "fn",
-        "body": [
-            "fn ${1:nome}(${2:argumentos}) ${3:void} {",
-            "    $0",
-            "}"
-        ],
-        "description": "Declaração de função global"
-    },
-    "If Statement": {
-        "prefix": "if",
-        "body": [
-            "if ${1:condicao} {",
-            "    $0",
-            "}"
-        ],
-        "description": "Bloco condicional IF"
-    },
-    "Read File Pipeline": {
-        "prefix": "read_file",
-        "body": [
-            "read_file(${1:filepath})",
-            "    ~> lines()",
-            "    ~> grep(\"${2:padrao}\")",
-            "    ~> join(\"\\n\");$0"
-        ],
-        "description": "Reads a file and starts a processing pipeline"
-    },
-    "Print Console": {
-        "prefix": "print",
-        "body": [
-            "print(${1:data});$0"
-        ],
-        "description": "Prints data to the terminal (Strings or Integers)"
-    },
-    "Get Arguments": {
-        "prefix": "args",
-        "body": [
-            "const ${1:my_args} = args();$0"
-        ],
-        "description": "Captures the arguments passed in the terminal"
-    },
-    "Fetch with Catch": {
+    "Fetch API Call": {
         "prefix": "fetch",
         "body": [
-            "const ${1:data} = fetch(\"${2:https://api.example.com}\") catch |${3:err}| {",
-            "    print(\"Falha na requisicao: \");",
-            "    print(${3:err});",
+            "const ${1:payload} = fetch(\"${2:https://api.example.com}\") catch |err| {",
+            "    print(\"Network Error: \");",
+            "    print(err);",
             "    exit(1);",
-            "};$0"
+            "};"
         ],
-        "description": "Dispara uma requisição HTTP segura com tratamento de erro nativo"
+        "description": "Make an HTTP request with safe error handling"
     },
-    "Catch Block": {
-        "prefix": "catch",
+    "Parse JSON to Struct": {
+        "prefix": "parse",
         "body": [
-            "catch |${1:err}| {",
-            "    $0",
-            "}"
+            "const ${1:obj} = parse_json_as(${2:StructName}, ${3:payload});"
         ],
-        "description": "Injeta um bloco de interceptação de erro (estilo Zig)"
+        "description": "Parse JSON string directly into a typed Struct"
+    },
+    "Execute OS Command": {
+        "prefix": "exec",
+        "body": [
+            "exec(\"${1:ls -la}\")",
+            "    ~> lines()",
+            "    ~> grep(\"${2:pattern}\")",
+            "    ~> print();"
+        ],
+        "description": "Run an OS command and process output via pipeline"
+    },
+    "Read File Pipeline": {
+        "prefix": "read",
+        "body": [
+            "read_file(\"${1:data.log}\")",
+            "    ~> lines()",
+            "    ~> print();"
+        ],
+        "description": "Read a file from disk with zero-copy mmap"
     }
 }

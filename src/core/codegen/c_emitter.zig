@@ -6,9 +6,10 @@ const Token = @import("../lexer/structs/token.zig").Token;
 pub const CEmitter = struct {
     allocator: std.mem.Allocator,
     temp_counter: usize = 0,
+    source_file: []const u8,
 
-    pub fn init(allocator: std.mem.Allocator) CEmitter {
-        return .{ .allocator = allocator };
+    pub fn init(allocator: std.mem.Allocator, source_file: []const u8) CEmitter {
+        return .{ .allocator = allocator, .source_file = source_file };
     }
 
     pub fn generate(self: *CEmitter, writer: anytype, program: *AstNode) !void {
@@ -151,6 +152,8 @@ pub const CEmitter = struct {
 
     fn visitPropertyAccessExpr(self: *CEmitter, node: *AstNode, writer: anytype) !void {
         const prop_access = node.property_access_expr;
+        try writer.print("\n#line {d} \"{s}\"\n    ", .{ prop_access.line, self.source_file });
+
         try writer.print("(", .{});
 
         try self.visitNode(prop_access.object, writer);
@@ -163,6 +166,8 @@ pub const CEmitter = struct {
     fn visitVarDecl(self: *CEmitter, node: *AstNode, writer: anytype) !void {
         const decl = node.var_decl;
 
+        try writer.print("\n#line {d} \"{s}\"\n    ", .{ decl.line, self.source_file });
+
         if (decl.is_const) {
             try writer.print("const ", .{});
         }
@@ -173,6 +178,8 @@ pub const CEmitter = struct {
 
     fn visitCallExpr(self: *CEmitter, node: *AstNode, writer: anytype) !void {
         const call = node.call_expr;
+
+        try writer.print("\n#line {d} \"{s}\"\n    ", .{ call.line, self.source_file });
 
         if (std.mem.eql(u8, call.callee, "parse_json_as")) {
             if (call.arguments.len != 2) return error.InvalidArgumentCount;

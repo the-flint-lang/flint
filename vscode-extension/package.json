@@ -1,10 +1,17 @@
 {
     "name": "flint-lang",
-    "displayName": "Flint Language",
-    "description": "Suporte oficial para a linguagem Flint",
-    "version": "1.0.0",
+    "displayName": "Flint Language Support",
+    "description": "Official syntax highlighting and snippets for the Flint programming language.",
+    "version": "1.7.0",
+    "repository": {
+        "type": "git",
+        "url": "https://codeberg.org/lucaas-d3v/flint.git"
+    },
+    "license": "MIT",
+    "icon": "assets/favicon_transparent_bg.png",
+    "publisher": "lucaas-d3v",
     "engines": {
-        "vscode": "^1.80.0"
+        "vscode": "^1.75.0"
     },
     "categories": [
         "Programming Languages",
@@ -19,9 +26,9 @@
                     "flint"
                 ],
                 "extensions": [
-                    ".fl",
-                    ".flt"
-                ]
+                    ".fl"
+                ],
+                "configuration": "./language-configuration.json"
             }
         ],
         "grammars": [

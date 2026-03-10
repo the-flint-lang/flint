@@ -225,7 +225,13 @@ pub const Parser = struct {
                 const callee_name = expr.identifier.name;
 
                 const node = try self.allocator.create(AstNode);
-                node.* = .{ .call_expr = .{ .callee = callee_name, .arguments = try args.toOwnedSlice(self.allocator) } };
+                node.* = .{
+                    .call_expr = .{
+                        .line = self.previous().line + 1,
+                        .callee = callee_name,
+                        .arguments = try args.toOwnedSlice(self.allocator),
+                    },
+                };
                 expr = node;
             } else if (self.match(&.{.lbracket_token})) {
                 const index_expr = try self.parseExpression();
@@ -238,7 +244,11 @@ pub const Parser = struct {
                 const property_token = try self.consume(.identifier_token, "Expected property name after '.'.");
 
                 const node = try self.allocator.create(AstNode);
-                node.* = .{ .property_access_expr = .{ .object = expr, .property_name = property_token.value } };
+                node.* = .{ .property_access_expr = .{
+                    .line = property_token.line + 1,
+                    .object = expr,
+                    .property_name = property_token.value,
+                } };
                 expr = node;
             } else {
                 break;
@@ -258,7 +268,10 @@ pub const Parser = struct {
         if (self.match(&.{.identifier_token})) {
             const name_token = self.previous();
             const node = try self.allocator.create(AstNode);
-            node.* = .{ .identifier = .{ ._type = name_token, .name = name_token.value } };
+            node.* = .{ .identifier = .{
+                ._type = name_token,
+                .name = name_token.value,
+            } };
             return node;
         }
 
@@ -383,12 +396,15 @@ pub const Parser = struct {
 
         _ = try self.consume(.semicolon_token, "Expected ';' after variable declaration.");
 
-        node.* = .{ .var_decl = .{
-            ._type = null,
-            .is_const = is_const,
-            .name = name_token.value,
-            .value = value_expr,
-        } };
+        node.* = .{
+            .var_decl = .{
+                .line = name_token.line + 1,
+                ._type = null,
+                .is_const = is_const,
+                .name = name_token.value,
+                .value = value_expr,
+            },
+        };
 
         return node;
     }

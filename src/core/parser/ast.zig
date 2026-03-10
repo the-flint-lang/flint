@@ -41,6 +41,7 @@ pub const AstNode = union(NodeType) {
     },
 
     var_decl: struct {
+        line: u32,
         _type: ?Token,
         is_const: bool,
         name: []const u8,
@@ -62,6 +63,7 @@ pub const AstNode = union(NodeType) {
     },
 
     call_expr: struct {
+        line: u32,
         callee: []const u8,
         arguments: []const *AstNode,
     },
@@ -83,6 +85,7 @@ pub const AstNode = union(NodeType) {
     },
 
     property_access_expr: struct {
+        line: u32,
         object: *AstNode,
         property_name: []const u8,
     },

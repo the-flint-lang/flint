@@ -10,7 +10,6 @@ const Token = @import("./core/lexer/structs/token.zig").Token;
 const help = @import("./core/helpers/functions/help.zig").help;
 const version = @import("./core/helpers/functions/version.zig").version;
 
-// Injetando o código C diretamente no executável do Zig!
 const flint_rt_c_content = @embedFile("core/codegen/runtime/flint_rt.c");
 const flint_rt_h_content = @embedFile("core/codegen/runtime/flint_rt.h");
 
@@ -222,7 +221,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
 
     var merged_ast = AstNode{ .program = .{ .statements = linker.statements.items } };
 
-    var emitter = CEmitter.init(alloc);
+    var emitter = CEmitter.init(alloc, file_path);
     const out_filename = ".flint_temp.c";
 
     var out_file = try std.fs.cwd().createFile(out_filename, .{});
@@ -358,7 +357,7 @@ fn testSingleFile(alloc: std.mem.Allocator, file_path: []const u8, io: IoHelper)
 
     var merged_ast = AstNode{ .program = .{ .statements = linker.statements.items } };
 
-    var emitter = CEmitter.init(alloc);
+    var emitter = CEmitter.init(alloc, file_path);
 
     const basename = std.fs.path.basename(file_path);
     const name_only = basename[0 .. std.mem.indexOf(u8, basename, ".") orelse basename.len];
