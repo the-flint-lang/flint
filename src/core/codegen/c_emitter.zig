@@ -226,7 +226,7 @@ pub const CEmitter = struct {
         const tok = node.literal.token;
 
         if (tok._type == .string_literal_token) {
-            try writer.print("((flint_str)\"{s}\")", .{tok.value});
+            try writer.print("FLINT_STR(\"{s}\")", .{tok.value});
         } else if (tok._type == .multile_string_literal_token) {
             try writer.print("\"", .{});
 
