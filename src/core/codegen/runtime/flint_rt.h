@@ -41,6 +41,7 @@ void flint_init(int argc, char **argv);
 void flint_deinit();
 
 void *flint_alloc(size_t size);
+void *flint_alloc_raw(size_t size);
 void flint_arena_reset();
 
 void flint_panic(const char *msg);
@@ -201,6 +202,7 @@ flint_str flint_join(flint_str_array arr, flint_str sep);
 
 flint_str flint_trim(flint_str text);
 flint_str_array flint_grep(flint_str_array lines, flint_str pattern);
+long long flint_count_matches(flint_str text, flint_str pattern);
 flint_str flint_replace(flint_str text, flint_str target, flint_str repl);
 
 flint_str flint_to_str(FlintValue v);

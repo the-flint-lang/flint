@@ -1,12 +1,18 @@
-#include "flint_rt.h"
+#define _GNU_SOURCE
 
+#include "flint_rt.h"
+#include <string.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
 #include <curl/curl.h>
 
-#define ARENA_CAPACITY (128 * 1024 * 1024)
+#define ARENA_CAPACITY (125 * 1024 * 1024)
 
 static char *arena;
 static size_t arena_offset;
@@ -26,7 +32,6 @@ void flint_init(int argc, char **argv)
     if (!arena)
         flint_panic("Arena allocation failed");
     arena_offset = 0;
-    curl_global_init(CURL_GLOBAL_ALL);
 }
 
 void flint_deinit()
@@ -40,13 +45,19 @@ void flint_arena_reset()
     arena_offset = 0;
 }
 
-void *flint_alloc(size_t size)
+void *flint_alloc_raw(size_t size)
 {
     size = (size + 7) & ~7;
     if (arena_offset + size >= ARENA_CAPACITY)
         flint_panic("Arena out of memory");
     void *ptr = arena + arena_offset;
     arena_offset += size;
+    return ptr;
+}
+
+void *flint_alloc(size_t size)
+{
+    void *ptr = flint_alloc_raw(size);
     memset(ptr, 0, size);
     return ptr;
 }
@@ -114,16 +125,37 @@ void flint_print_val(FlintValue v)
 
 flint_str flint_read_file(flint_str path)
 {
-    FILE *f = fopen(path, "rb");
-    if (!f)
-        flint_panic("cannot open file");
-    fseek(f, 0, SEEK_END);
-    size_t size = ftell(f);
-    rewind(f);
-    char *buf = flint_alloc(size + 1);
-    fread(buf, 1, size, f);
-    buf[size] = 0;
-    fclose(f);
+    int fd = open(path, O_RDONLY);
+    if (fd < 0)
+        flint_panic("Cannot open file");
+
+    struct stat sb;
+    if (fstat(fd, &sb) < 0)
+        flint_panic("Cannot stat file");
+
+    if (sb.st_size == 0)
+    {
+        close(fd);
+        return "";
+    }
+
+    char *mapped = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    close(fd);
+    if (mapped == MAP_FAILED)
+        flint_panic("mmap failed");
+
+    long page_size = sysconf(_SC_PAGESIZE);
+    if (sb.st_size % page_size != 0)
+    {
+        return mapped;
+    }
+
+    char *buf = flint_alloc_raw(sb.st_size + 1);
+    int fd2 = open(path, O_RDONLY);
+    read(fd2, buf, sb.st_size);
+    buf[sb.st_size] = '\0';
+    close(fd2);
+    munmap(mapped, sb.st_size);
     return buf;
 }
 
@@ -344,6 +376,35 @@ flint_str_array flint_grep(flint_str_array lines, flint_str pattern)
     return res;
 }
 
+long long flint_count_matches(flint_str text, flint_str pattern)
+{
+    if (!text || !pattern)
+        return 0;
+
+    char first = pattern[0];
+    if (!first)
+        return 0;
+
+    size_t pat_len = strlen(pattern);
+    long long count = 0;
+    const char *ptr = text;
+
+    while ((ptr = strchr(ptr, first)) != NULL)
+    {
+        if (strncmp(ptr, pattern, pat_len) == 0)
+        {
+            count++;
+            ptr += pat_len;
+        }
+        else
+        {
+            ptr++;
+        }
+    }
+
+    return count;
+}
+
 flint_str flint_int_to_str(long long num)
 {
     char buf[64];
@@ -506,8 +567,15 @@ static size_t flint_fetch_callback(void *contents, size_t size, size_t nmemb, vo
     return realsize;
 }
 
+static bool curl_initialized = false;
 FlintValue flint_fetch(flint_str url)
 {
+    if (!curl_initialized)
+    {
+        curl_global_init(CURL_GLOBAL_ALL);
+        curl_initialized = true;
+    }
+
     if (!url)
         return flint_make_error("Null or invalid URL provided to fetch");
     CURL *curl_handle;
