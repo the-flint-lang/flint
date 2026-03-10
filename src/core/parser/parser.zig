@@ -4,6 +4,7 @@ const TokenType = @import("../lexer/enums/token_type.zig").TokenType;
 const AstNode = @import("./ast.zig").AstNode;
 const IoHelpers = @import("../helpers/structs/structs.zig").IoHelpers;
 const DictEntry = @import("./ast.zig").DictEntry;
+const StructField = @import("./ast.zig").StructField;
 
 pub const Parser = struct {
     tokens: []const Token,
@@ -51,10 +52,51 @@ pub const Parser = struct {
 
     fn parseDeclaration(self: *Parser) anyerror!*AstNode {
         if (self.match(&.{.import_token})) return self.parseImport();
+        if (self.match(&.{.struct_token})) return self.parseStructDecl();
         if (self.match(&.{.fn_token})) return self.parseFunctionDeclaration();
         if (self.match(&.{ .var_token, .const_token })) return self.parseVarDecl();
 
         return self.parseStatement();
+    }
+
+    fn parseStructDecl(self: *Parser) anyerror!*AstNode {
+        const node = try self.allocator.create(AstNode);
+        const name_token = try self.consume(.identifier_token, "Expected struct name.");
+
+        _ = try self.consume(.lbrace_token, "Expected '{' before struct body.");
+
+        var fields = std.ArrayList(*StructField).empty;
+
+        if (!self.check(.rbrace_token)) {
+            while (true) {
+                const field_name = try self.consume(.identifier_token, "Expected field name.");
+                _ = try self.consume(.colon_token, "Expected ':' after field name.");
+
+                const field_type = self.advance();
+
+                const field = try self.allocator.create(StructField);
+                field.* = .{
+                    .name = field_name.value,
+                    ._type = field_type,
+                };
+                try fields.append(self.allocator, field);
+
+                if (self.match(&.{.comma_token})) {
+                    if (self.check(.rbrace_token)) break;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        _ = try self.consume(.rbrace_token, "Expected '}' to close struct body.");
+
+        node.* = .{ .struct_decl = .{
+            .name = name_token.value,
+            .fields = try fields.toOwnedSlice(self.allocator),
+        } };
+
+        return node;
     }
 
     fn parseImport(self: *Parser) anyerror!*AstNode {
@@ -183,7 +225,13 @@ pub const Parser = struct {
                 const callee_name = expr.identifier.name;
 
                 const node = try self.allocator.create(AstNode);
-                node.* = .{ .call_expr = .{ .callee = callee_name, .arguments = try args.toOwnedSlice(self.allocator) } };
+                node.* = .{
+                    .call_expr = .{
+                        .line = self.previous().line + 1,
+                        .callee = callee_name,
+                        .arguments = try args.toOwnedSlice(self.allocator),
+                    },
+                };
                 expr = node;
             } else if (self.match(&.{.lbracket_token})) {
                 const index_expr = try self.parseExpression();
@@ -191,6 +239,16 @@ pub const Parser = struct {
 
                 const node = try self.allocator.create(AstNode);
                 node.* = .{ .index_expr = .{ .left = expr, .index = index_expr } };
+                expr = node;
+            } else if (self.match(&.{.dot_token})) {
+                const property_token = try self.consume(.identifier_token, "Expected property name after '.'.");
+
+                const node = try self.allocator.create(AstNode);
+                node.* = .{ .property_access_expr = .{
+                    .line = property_token.line + 1,
+                    .object = expr,
+                    .property_name = property_token.value,
+                } };
                 expr = node;
             } else {
                 break;
@@ -210,7 +268,10 @@ pub const Parser = struct {
         if (self.match(&.{.identifier_token})) {
             const name_token = self.previous();
             const node = try self.allocator.create(AstNode);
-            node.* = .{ .identifier = .{ ._type = name_token, .name = name_token.value } };
+            node.* = .{ .identifier = .{
+                ._type = name_token,
+                .name = name_token.value,
+            } };
             return node;
         }
 
@@ -335,12 +396,15 @@ pub const Parser = struct {
 
         _ = try self.consume(.semicolon_token, "Expected ';' after variable declaration.");
 
-        node.* = .{ .var_decl = .{
-            ._type = null,
-            .is_const = is_const,
-            .name = name_token.value,
-            .value = value_expr,
-        } };
+        node.* = .{
+            .var_decl = .{
+                .line = name_token.line + 1,
+                ._type = null,
+                .is_const = is_const,
+                .name = name_token.value,
+                .value = value_expr,
+            },
+        };
 
         return node;
     }
@@ -387,6 +451,13 @@ pub const Parser = struct {
                 node.* = .{ .binary_expr = .{ .left = expr, .operator = equals, .right = value } };
                 return node;
             }
+
+            if (expr.* == .identifier or expr.* == .index_expr or expr.* == .property_access_expr) {
+                const node = try self.allocator.create(AstNode);
+                node.* = .{ .binary_expr = .{ .left = expr, .operator = equals, .right = value } };
+                return node;
+            }
+
             return self.reportError(equals, "Invalid assignment target. You can only assign to variables or indexes.");
         }
 

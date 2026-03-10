@@ -1,7 +1,6 @@
 {
     "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
     "name": "Flint",
-    "scopeName": "source.flint",
     "patterns": [
         {
             "include": "#comments"
@@ -13,13 +12,13 @@
             "include": "#keywords"
         },
         {
-            "include": "#error_handling"
+            "include": "#types"
+        },
+        {
+            "include": "#builtins"
         },
         {
             "include": "#operators"
-        },
-        {
-            "include": "#functions"
         },
         {
             "include": "#numbers"
@@ -58,70 +57,43 @@
             "patterns": [
                 {
                     "name": "keyword.control.flint",
-                    "match": "\\b(if|else|for|in|return|import|catch)\\b"
+                    "match": "\\b(if|else|for|in|return|catch)\\b"
                 },
                 {
-                    "name": "storage.type.flint",
-                    "match": "\\b(fn|const|var|void|string|int|bool)\\b"
+                    "name": "keyword.other.flint",
+                    "match": "\\b(fn|var|const|import|struct)\\b"
                 },
                 {
-                    "name": "constant.language.boolean.flint",
+                    "name": "constant.language.flint",
                     "match": "\\b(true|false|null)\\b"
                 }
             ]
         },
-        "error_handling": {
+        "types": {
             "patterns": [
                 {
-                    "name": "meta.catch.flint",
-                    "match": "(\\|)([a-zA-Z_][a-zA-Z0-9_]*)(\\|)",
-                    "captures": {
-                        "1": {
-                            "name": "punctuation.definition.parameters.begin.flint"
-                        },
-                        "2": {
-                            "name": "variable.parameter.error.flint"
-                        },
-                        "3": {
-                            "name": "punctuation.definition.parameters.end.flint"
-                        }
-                    }
+                    "name": "support.type.flint",
+                    "match": "\\b(int|string|bool|void)\\b"
+                }
+            ]
+        },
+        "builtins": {
+            "patterns": [
+                {
+                    "name": "support.function.builtin.flint",
+                    "match": "\\b(print|read_file|write_file|lines|grep|join|args|file_exists|exit|env|exec|len|range|push|trim|split|replace|fetch|parse_json|parse_json_as|int_to_str|concat|to_str|is_err|get_err|count_matches|get|set)\\b(?=\\s*\\()"
                 }
             ]
         },
         "operators": {
             "patterns": [
                 {
-                    "name": "keyword.control.flow.pipeline.flint",
+                    "name": "keyword.operator.pipeline.flint",
                     "match": "~>"
                 },
                 {
-                    "name": "keyword.operator.logical.flint",
-                    "match": "\\b(not|and|or)\\b"
-                },
-                {
-                    "name": "keyword.operator.comparison.flint",
-                    "match": "(==|!=|<=|>=|<|>)"
-                },
-                {
-                    "name": "keyword.operator.assignment.flint",
-                    "match": "="
-                },
-                {
-                    "name": "keyword.operator.math.flint",
-                    "match": "(\\+|-|\\*|/|%)"
-                },
-                {
-                    "name": "keyword.operator.bitwise.flint",
-                    "match": "\\|"
-                }
-            ]
-        },
-        "functions": {
-            "patterns": [
-                {
-                    "name": "entity.name.function.flint",
-                    "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()"
+                    "name": "keyword.operator.flint",
+                    "match": "(\\+|-|\\*|/|%|==|!=|<=|>=|<|>|=|\\|)"
                 }
             ]
         },
@@ -133,5 +105,6 @@
                 }
             ]
         }
-    }
+    },
+    "scopeName": "source.flint"
 }

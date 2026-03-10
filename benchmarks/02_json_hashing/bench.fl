@@ -1,0 +1,5 @@
+const payload = read_file("bench_data.json");
+const db = parse_json(payload);
+
+const status = get(db, "user_key_499999");
+print(to_str(status));

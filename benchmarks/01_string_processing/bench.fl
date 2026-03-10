@@ -1,0 +1,3 @@
+read_file("bench_data.log")
+    ~> count_matches("ERROR")
+    ~> print();

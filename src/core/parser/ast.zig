@@ -7,6 +7,7 @@ pub const NodeType = enum {
 
     function_decl,
     var_decl,
+    struct_decl,
     import_stmt,
     if_stmt,
 
@@ -15,6 +16,7 @@ pub const NodeType = enum {
     unary_expr,
 
     index_expr,
+    property_access_expr,
     array_expr,
     dict_expr,
 
@@ -39,10 +41,16 @@ pub const AstNode = union(NodeType) {
     },
 
     var_decl: struct {
+        line: u32,
         _type: ?Token,
         is_const: bool,
         name: []const u8,
         value: *AstNode,
+    },
+
+    struct_decl: struct {
+        name: []const u8,
+        fields: []const *StructField,
     },
 
     import_stmt: struct {
@@ -55,6 +63,7 @@ pub const AstNode = union(NodeType) {
     },
 
     call_expr: struct {
+        line: u32,
         callee: []const u8,
         arguments: []const *AstNode,
     },
@@ -73,6 +82,12 @@ pub const AstNode = union(NodeType) {
     index_expr: struct {
         left: *AstNode,
         index: *AstNode,
+    },
+
+    property_access_expr: struct {
+        line: u32,
+        object: *AstNode,
+        property_name: []const u8,
     },
 
     array_expr: struct {
@@ -115,4 +130,9 @@ pub const CatchExpr = struct {
     expression: *AstNode,
     error_identifier: []const u8,
     body: []*AstNode,
+};
+
+pub const StructField = struct {
+    name: []const u8,
+    _type: Token,
 };
