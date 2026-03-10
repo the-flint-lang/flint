@@ -22,7 +22,7 @@ Flint takes the expressiveness of functional data pipelines and brutally enforce
 
 * **The Pipeline Operator (`~>`):** Data flows forward. No nested function hell. The result of the left expression becomes the first argument of the right function.
 * **4GB Virtual Memory Arena:** Memory is managed via a highly optimized, branchless virtual allocator using `mmap(MAP_NORESERVE)`. Scripts boot instantly, scale infinitely without `malloc` fragmentation, and bypass the Garbage Collector entirely.
-* **Zero-Copy String Slices & SIMD:** The C-string `\0` terminator overhead has been eradicated. Strings are "Fat Pointers" (`ptr` + `len`), making operations like `split()` and `lines()` $O(1)$ in memory. JSON parsing leverages vectorized `memchr` for brutal scanning speeds.
+* **Zero-Copy String Slices & SIMD:** The C-string `\0` terminator overhead has been eradicated. Strings are "Fat Pointers" (`ptr` + `len`), making operations like `split()` and `lines()` `O(1)` in memory. JSON parsing leverages vectorized `memchr` for brutal scanning speeds.
 * **AOT Strongly-Typed Structs:** Define static data contracts. Flint's compiler generates native C deserializers that map JSON directly into physical memory offsets, obliterating dynamic hashmap lookups.
 * **Errors as Values (Zig-Style):** No silent crashes. I/O and Network failures are intercepted via a zero-cost `catch |err|` inline block, keeping your CI/CD pipelines bulletproof without the overhead of stack unwinding.
 
