@@ -116,7 +116,7 @@ Flint is designed to operate at the physical limits of your hardware, utilizing 
 | **Flint (v1.7)** | Native C / AOT Struct Mapping | **~ 58.7 ms** | **7x Faster** |
 | **Python 3** | CPython / Pydantic BaseModel | ~ 405.6 ms | Baseline |
 
-*Verdict:* Pydantic (the industry standard in Python) requires parsing the entire JSON into a dynamic dictionary of `PyObjects` before applying runtime reflection to validate fields. Flint generates native C deserializers at compile-time, slicing the `mmap` buffer directly into physical struct offsets in $O(1)$ time.
+*Verdict:* Pydantic (the industry standard in Python) requires parsing the entire JSON into a dynamic dictionary of `PyObjects` before applying runtime reflection to validate fields. Flint generates native C deserializers at compile-time, slicing the `mmap` buffer directly into physical struct offsets in `O(1)` time.
 
 ## Getting Started (Building from Source)
 
