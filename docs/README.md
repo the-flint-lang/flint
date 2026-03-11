@@ -16,13 +16,22 @@ If you are writing infrastructure tooling, you face a miserable trilemma today:
 2. **Python/Node.js are bloated:** Bootstrapping a VM/Interpreter just to parse a JSON or invoke an OS command adds unacceptable latency to fast-moving CLI workflows.
 3. **Go/Rust are verbose:** General-purpose systems languages require massive boilerplate for simple I/O, regex, and process invocation.
 
+## Inside Flint (Architecture & Contributing)
+
+Flint is built by and for systems engineers. Before opening a Pull Request or questioning the absence of standard `malloc()`/`free()` in the C runtime, please read our internal engineering documents:
+
+* [**Architecture & Memory Model**](ARCHITECTURE.md): A deep dive into the Zig-to-C99 transpilation pipeline, the 4GB `mmap` Virtual Arena, and how AOT Structs bypass dynamic reflection.
+* [**Contributing Guide**](CONTRIBUTING.md): Learn how to build the compiler from source, run the `flint test` orchestrator, and adhere to our strict C99/Zig coding standards.
+
+We welcome PRs that align with Flint's core philosophy: **zero-cost abstractions, zero runtime dependencies, and instant startup times.**
+
 ## The Flint Architecture (v1.7)
 
 Flint takes the expressiveness of functional data pipelines and brutally enforces it at the hardware level.
 
 * **The Pipeline Operator (`~>`):** Data flows forward. No nested function hell. The result of the left expression becomes the first argument of the right function.
 * **4GB Virtual Memory Arena:** Memory is managed via a highly optimized, branchless virtual allocator using `mmap(MAP_NORESERVE)`. Scripts boot instantly, scale infinitely without `malloc` fragmentation, and bypass the Garbage Collector entirely.
-* **Zero-Copy String Slices & SIMD:** The C-string `\0` terminator overhead has been eradicated. Strings are "Fat Pointers" (`ptr` + `len`), making operations like `split()` and `lines()` $O(1)$ in memory. JSON parsing leverages vectorized `memchr` for brutal scanning speeds.
+* **Zero-Copy String Slices & SIMD:** The C-string `\0` terminator overhead has been eradicated. Strings are "Fat Pointers" (`ptr` + `len`), making operations like `split()` and `lines()` $\mathcal{O}(1)$ in memory. JSON parsing leverages vectorized `memchr` for brutal scanning speeds.
 * **AOT Strongly-Typed Structs:** Define static data contracts. Flint's compiler generates native C deserializers that map JSON directly into physical memory offsets, obliterating dynamic hashmap lookups.
 * **Errors as Values (Zig-Style):** No silent crashes. I/O and Network failures are intercepted via a zero-cost `catch |err|` inline block, keeping your CI/CD pipelines bulletproof without the overhead of stack unwinding.
 
@@ -116,7 +125,7 @@ Flint is designed to operate at the physical limits of your hardware, utilizing 
 | **Flint (v1.7)** | Native C / AOT Struct Mapping | **~ 58.7 ms** | **7x Faster** |
 | **Python 3** | CPython / Pydantic BaseModel | ~ 405.6 ms | Baseline |
 
-*Verdict:* Pydantic (the industry standard in Python) requires parsing the entire JSON into a dynamic dictionary of `PyObjects` before applying runtime reflection to validate fields. Flint generates native C deserializers at compile-time, slicing the `mmap` buffer directly into physical struct offsets in `O(1)` time.
+*Verdict:* Pydantic (the industry standard in Python) requires parsing the entire JSON into a dynamic dictionary of `PyObjects` before applying runtime reflection to validate fields. Flint generates native C deserializers at compile-time, slicing the `mmap` buffer directly into physical struct offsets in $\mathcal{O}(1)$ time.
 
 ## Getting Started (Building from Source)
 
