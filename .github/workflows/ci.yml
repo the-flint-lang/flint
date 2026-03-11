@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [ "**" ]
 
-jobs:ltw1ltw1ltw1
+jobs:
   build-and-test:
     runs-on: ubuntu-latest
 
