@@ -4,6 +4,7 @@
 
 # > flint
 
+[![Flint CI](https://github.com/lucaas-d3v/flint/actions/workflows/ci.yml/badge.svg)](https://github.com/lucaas-d3v/flint/actions/workflows/ci.yml)
 
 **A pipeline-oriented system language for robust CLI tools.** *Stop writing fragile Bash. Stop waiting for Python to boot.*
 
