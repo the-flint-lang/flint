@@ -18,14 +18,14 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y clang libcurl4-openssl-dev
-
+    
     - name: Install Zig 0.15.2 (Manual Bypass)
-      run: |
-        wget -q https://ziglang.org/download/0.15.2/zig-linux-x86_64-0.15.2.tar.xz
-        tar -xf zig-linux-x86_64-0.15.2.tar.xz
-        sudo mv zig-linux-x86_64-0.15.2 /usr/local/zig
-        sudo ln -s /usr/local/zig/zig /usr/local/bin/zig
-        zig version
+          run: |
+            wget https://ziglang.org/download/0.15.2/zig-0.15.2.tar.xz
+            tar -xf zig-0.15.2.tar.xz
+            sudo mv zig-0.15.2 /usr/local/zig
+            sudo ln -s /usr/local/zig/zig /usr/local/bin/zig
+            zig version
 
     - name: Build Flint
       run: zig build -Doptimize=ReleaseFast
