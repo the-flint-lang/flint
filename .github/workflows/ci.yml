@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [ "**" ]
 
-jobs:
+jobs:ltw1ltw1ltw1
   build-and-test:
     runs-on: ubuntu-latest
 
@@ -17,7 +17,7 @@ jobs:
     - name: Install Target Dependencies (Clang & libcurl)
       run: |
         sudo apt-get update
-        sudo apt-get install -y clang libcurl4-openssl-dev, wget, tar
+        sudo apt-get install -y clang libcurl4-openssl-dev
     
     - name: Install Zig
       run: |
