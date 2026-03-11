@@ -4,6 +4,8 @@
 
 # > flint
 
+[![Flint CI](https://github.com/lucaas-d3v/flint/actions/workflows/ci.yml/badge.svg)](https://github.com/lucaas-d3v/flint/actions/workflows/ci.yml)
+
 **A pipeline-oriented system language for robust CLI tools.** *Stop writing fragile Bash. Stop waiting for Python to boot.*
 
 Flint is a statically-typed, ahead-of-time (AOT) compiled language designed specifically to replace complex shell scripts and slow-starting interpreted languages in DevOps and infrastructure environments. It transpiles to pure C99, yielding dependency-free native binaries that execute in milliseconds.

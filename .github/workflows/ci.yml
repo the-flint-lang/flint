@@ -1,0 +1,31 @@
+name: Flint CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Install Target Dependences (Clang anf libcurl)
+      run: |
+        sudo apt-get update
+        sudo apt-get install clang libcurl4-openssl-dev -y
+
+    - name: Setup Zig Compiler (Host)
+      uses: mlugg/setup-zig@v1
+      with:
+        version: lasted
+
+    - name: Build Flint
+      run: zig build -Doptimize=ReleaseFast
+
+    - name: Run Test Battery
+      run: ./zig-out/bin/flint test
