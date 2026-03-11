@@ -1,5 +1,5 @@
 <div align="center">
-<img src="../assets/favicon_transparent_bg.png" alt="Flint Logo" width="120">
+<img src="assets/favicon_transparent_bg.png" alt="Flint Logo" width="120">
 </div>
 
 # > flint
