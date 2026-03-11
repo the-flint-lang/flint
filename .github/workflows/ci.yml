@@ -22,7 +22,7 @@ jobs:
     - name: Setup Zig Compiler (Host)
       uses: mlugg/setup-zig@v1
       with:
-        version: 0.15.2
+        version: 0.15.1
 
     - name: Build Flint
       run: zig build -Doptimize=ReleaseFast
