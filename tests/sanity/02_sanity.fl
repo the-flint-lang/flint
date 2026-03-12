@@ -1,0 +1,11 @@
+fn check_arguments() void {
+    const my_args = args();
+    
+    print("Test 2: Listing passed arguments...");
+    
+    for argument in my_args {
+        print(argument);
+    }
+}
+
+check_arguments();

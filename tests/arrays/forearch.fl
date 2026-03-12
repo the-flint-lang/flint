@@ -1,0 +1,10 @@
+const numbers = [10, 20, 30, 40];
+const servers = ["aws", "gcp", "azure"];
+
+for n in numbers {
+    print(n);
+}
+
+for s in servers {
+    print(s);
+}

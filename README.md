@@ -160,10 +160,10 @@ Since Flint is fully independent, the extension is distributed directly via this
 
 **How to install:**
 
-1. Download the `flint-lang-1.7.0.vsix` file from the [Releases](https://www.google.com/search?q=%23) page.
+1. Download the `flint-lang-1.7.1.vsix` file from the [Releases](https://www.google.com/search?q=%23) page.
 2. Open your terminal and run:
 ```bash
-code --install-extension flint-lang-1.7.0.vsix
+code --install-extension flint-lang-1.7.1.vsix
 
 ```
 

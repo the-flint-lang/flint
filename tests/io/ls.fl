@@ -1,0 +1,10 @@
+const f = ls(".") catch |err| {
+    print(err);
+    exit(1);
+};
+
+var i = 0;
+for line in to_str(f) ~> lines(){
+    int_to_str(i) ~> concat(". ") ~> concat(line) ~> print();
+    i = i + 1;
+}

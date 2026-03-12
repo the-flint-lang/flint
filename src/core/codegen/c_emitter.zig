@@ -460,31 +460,54 @@ pub const CEmitter = struct {
         }
 
         const stdlibs = [_][]const u8{
-            "print",
-            "read_file",
-            "write_file",
-            "lines",
+            // string
             "grep",
             "join",
-            "args",
-            "file_exists",
-            "exit",
-            "env",
-            "exec",
-            "len",
-            "range",
-            "push",
             "trim",
             "split",
             "replace",
+            "concat",
+            "count_matches",
+            "to_str",
+            "int_to_str",
+
+            // arays
+            "lines",
+            "args",
+            "len",
+            "range",
+            "push",
+
+            // i/o
+            "print",
+
+            // filesystem
+            "read_file",
+            "write_file",
+            "file_exists",
+            "exec",
+            "mkdir",
+            "rm",
+            "mv",
+            "copy",
+            "rm_dir",
+            "touch",
+            "ls",
+            "is_dir",
+            "is_file",
+            "file_size",
+
+            // user space
+            "env",
+            "exit",
+
+            // http
             "fetch",
             "parse_json",
-            "int_to_str",
-            "concat",
-            "to_str",
+
+            // errors
             "is_err",
             "get_err",
-            "count_matches",
         };
 
         for (stdlibs) |lib| {
