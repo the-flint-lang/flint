@@ -1,0 +1,6 @@
+const f = touch("teste.test") catch |err| {
+    print(err);
+    exit(1);
+};
+
+print("ok");

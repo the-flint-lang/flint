@@ -1,5 +1,0 @@
-import "math.fl";
-
-print("Starting modular system...");
-
-sum(50, 50);

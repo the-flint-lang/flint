@@ -9,9 +9,6 @@ print("2. [COMPILATION] Optimizing Flint binary...");
 # Compiling bench.fl to generate the './bench' executable
 exec("flint build bench.fl") ~> print();
 
-print("3. [DUEL] Starting Hyperfine...");
-print("----------------------------------------------------");
-
 print("3. [DUEL] Starting Hyperfine (3 runs)...");
 print("----------------------------------------------------\n\n");
 

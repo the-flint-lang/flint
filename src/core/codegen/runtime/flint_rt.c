@@ -14,6 +14,9 @@
 #include <stdint.h>
 #include <ctype.h>
 #include <curl/curl.h>
+#include <dirent.h>
+#include <errno.h>
+#include <sys/sendfile.h>
 
 static int global_argc;
 static char **global_argv;
@@ -122,6 +125,9 @@ void flint_print_val(FlintValue v)
     case FLINT_VAL_DICT:
         printf("[Dict]\n");
         break;
+    case FLINT_VAL_ARRAY:
+        printf("[Array]\n");
+        break;
     case FLINT_VAL_ERROR:
         printf("\033[1;31m[Caught Error]\033[0m %.*s\n", (int)v.as.s.len, v.as.s.ptr);
         break;
@@ -152,32 +158,37 @@ static char *to_c_string(flint_str s)
     return buf;
 }
 
-flint_str flint_read_file(flint_str path)
+FlintValue flint_read_file(flint_str path)
 {
     char *c_path = to_c_string(path);
     int fd = open(c_path, O_RDONLY);
+
     if (fd < 0)
-        flint_panic("Cannot open file");
+        return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
 
     struct stat sb;
     if (fstat(fd, &sb) < 0)
-        flint_panic("Cannot stat file");
+    {
+        close(fd);
+        return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
+    }
 
     if (sb.st_size == 0)
     {
         close(fd);
-        return FLINT_STR("");
+        return flint_make_str(FLINT_STR(""));
     }
 
     char *mapped = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
     close(fd);
+
     if (mapped == MAP_FAILED)
-        flint_panic("mmap failed");
+        return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
 
     long page_size = sysconf(_SC_PAGESIZE);
     if (sb.st_size % page_size != 0)
     {
-        return FLINT_SLICE(mapped, sb.st_size);
+        return flint_make_str(FLINT_SLICE(mapped, sb.st_size));
     }
 
     char *buf = flint_alloc_raw(sb.st_size + 1);
@@ -187,18 +198,24 @@ flint_str flint_read_file(flint_str path)
     close(fd2);
     munmap(mapped, sb.st_size);
 
-    return FLINT_SLICE(buf, sb.st_size);
+    return flint_make_str(FLINT_SLICE(buf, sb.st_size));
 }
 
-void flint_write_file(flint_str text, flint_str filepath)
+FlintValue flint_write_file(flint_str text, flint_str filepath)
 {
     char *c_path = to_c_string(filepath);
     FILE *f = fopen(c_path, "wb");
-    if (!f)
-        flint_panic("cannot write file");
 
-    fwrite(text.ptr, 1, text.len, f);
+    if (!f)
+        return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
+
+    size_t written = fwrite(text.ptr, 1, text.len, f);
     fclose(f);
+
+    if (written != text.len)
+        return flint_make_error(FLINT_STR("IO Error: Failed to write all bytes to disk"));
+
+    return flint_make_bool(true);
 }
 
 bool flint_file_exists(flint_str filepath)
@@ -211,6 +228,82 @@ bool flint_file_exists(flint_str filepath)
         return true;
     }
     return false;
+}
+
+bool flint_is_dir(flint_str path)
+{
+    char *c_path = to_c_string(path);
+    struct stat sb;
+    if (stat(c_path, &sb) == 0 && S_ISDIR(sb.st_mode))
+        return true;
+    return false;
+}
+
+bool flint_is_file(flint_str path)
+{
+    char *c_path = to_c_string(path);
+    struct stat sb;
+    if (stat(c_path, &sb) == 0 && S_ISREG(sb.st_mode))
+        return true;
+    return false;
+}
+
+FlintValue flint_file_size(flint_str path)
+{
+    char *c_path = to_c_string(path);
+    struct stat sb;
+    if (stat(c_path, &sb) == 0)
+    {
+        return flint_make_int((long long)sb.st_size);
+    }
+    return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
+}
+
+FlintValue flint_mv(flint_str old_path, flint_str new_path)
+{
+    char *c_old = to_c_string(old_path);
+    char *c_new = to_c_string(new_path);
+
+    if (rename(c_old, c_new) == 0)
+        return flint_make_bool(true);
+    return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
+}
+
+FlintValue flint_copy(flint_str src, flint_str dest)
+{
+    char *c_src = to_c_string(src);
+    char *c_dest = to_c_string(dest);
+
+    int source_fd = open(c_src, O_RDONLY);
+    if (source_fd < 0)
+        return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
+
+    struct stat stat_buf;
+    if (fstat(source_fd, &stat_buf) < 0)
+    {
+        close(source_fd);
+        return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
+    }
+
+    int dest_fd = open(c_dest, O_WRONLY | O_CREAT | O_TRUNC, stat_buf.st_mode);
+    if (dest_fd < 0)
+    {
+        close(source_fd);
+        return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
+    }
+
+    off_t offset = 0;
+    ssize_t bytes_copied = sendfile(dest_fd, source_fd, &offset, stat_buf.st_size);
+
+    close(source_fd);
+    close(dest_fd);
+
+    if (bytes_copied == -1)
+    {
+        return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
+    }
+
+    return flint_make_bool(true);
 }
 
 /* =========================
@@ -268,8 +361,93 @@ flint_str flint_exec(flint_str cmd)
     }
     pclose(pipe);
 
-    // Ajuste perfeito do tamanho
     return FLINT_SLICE(buf, total_read);
+}
+
+FlintValue flint_mkdir(flint_str path)
+{
+    char *c_path = to_c_string(path);
+    if (mkdir(c_path, 0777) == 0)
+    {
+        return flint_make_bool(true);
+    }
+    return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
+}
+
+FlintValue flint_rm(flint_str path)
+{
+    char *c_path = to_c_string(path);
+    if (unlink(c_path) == 0)
+    {
+        return flint_make_bool(true);
+    }
+
+    return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
+}
+
+FlintValue flint_rm_dir(flint_str path)
+{
+    char *c_path = to_c_string(path);
+    if (rmdir(c_path) == 0)
+    {
+        return flint_make_bool(true);
+    }
+
+    return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
+}
+
+FlintValue flint_touch(flint_str path)
+{
+    char *c_path = to_c_string(path);
+    int fd = open(c_path, O_CREAT | O_WRONLY, 0666);
+    if (fd >= 0)
+    {
+        close(fd);
+        return flint_make_bool(true);
+    }
+
+    return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
+}
+
+FlintValue flint_ls(flint_str path)
+{
+    char *c_path = to_c_string(path);
+    DIR *d = opendir(c_path);
+    if (!d)
+    {
+        return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
+    }
+
+    struct dirent *dir;
+    size_t total_len = 0;
+    size_t max_size = 4096;
+    char *buf = flint_alloc_raw(max_size);
+
+    while ((dir = readdir(d)) != NULL)
+    {
+        if (strcmp(dir->d_name, ".") == 0 || strcmp(dir->d_name, "..") == 0)
+            continue;
+
+        size_t name_len = strlen(dir->d_name);
+        if (total_len + name_len + 2 >= max_size)
+        {
+            max_size *= 2;
+            char *new_buf = flint_alloc_raw(max_size);
+            memcpy(new_buf, buf, total_len);
+            buf = new_buf;
+        }
+
+        memcpy(buf + total_len, dir->d_name, name_len);
+        total_len += name_len;
+        buf[total_len] = '\n';
+        total_len++;
+    }
+    closedir(d);
+
+    if (total_len > 0)
+        total_len--; // remove the las '\n'
+
+    return flint_make_str(FLINT_SLICE(buf, total_len));
 }
 
 /* =========================

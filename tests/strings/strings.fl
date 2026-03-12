@@ -1,0 +1,12 @@
+const log_sujo = "   ERROR:  banco de dados falhou, ERROR:  timeout na rede   ";
+
+print("Processando o log...");
+
+const partes = log_sujo 
+    ~> replace("ERROR: ", "[FALHA]")
+    ~> split(",");
+
+for pedaco in partes {
+    print("Encontrado:");
+    print(trim(pedaco)); 
+}

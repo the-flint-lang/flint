@@ -1,0 +1,11 @@
+const f = mkdir("test") catch |err| {
+    print(err);
+    exit(1);
+};
+
+if is_dir("test") {
+    print("Is a dir");
+    exit(0);
+} 
+
+print("Not is a dir");

@@ -1,5 +1,0 @@
-fn sum(a: int, b: int) void {
-    const sum = a + b;
-    print("To imported sum is: ");
-    print(sum);
-}

@@ -1,0 +1,6 @@
+const f = rm_dir("test") catch |err| {
+    print(err);
+    exit(1);
+};
+
+print("ok");

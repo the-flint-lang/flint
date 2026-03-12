@@ -28,6 +28,7 @@ typedef enum
     FLINT_VAL_BOOL,
     FLINT_VAL_STR,
     FLINT_VAL_DICT,
+    FLINT_VAL_ARRAY,
     FLINT_VAL_ERROR
 } FlintValType;
 
@@ -186,9 +187,23 @@ void flint_print_dict(FlintDict *dict);
    FILESYSTEM
    ========================= */
 
-flint_str flint_read_file(flint_str filepath);
-void flint_write_file(flint_str text, flint_str filepath);
+FlintValue flint_read_file(flint_str filepath);
+FlintValue flint_write_file(flint_str text, flint_str filepath);
 bool flint_file_exists(flint_str filepath);
+
+// new posix api (v1.7.1)
+FlintValue flint_mkdir(flint_str path);
+FlintValue flint_rm(flint_str path);
+FlintValue flint_rm_dir(flint_str path);
+FlintValue flint_touch(flint_str path);
+FlintValue flint_ls(flint_str path);
+
+bool flint_is_dir(flint_str path);
+bool flint_is_file(flint_str path);
+
+FlintValue flint_file_size(flint_str path);
+FlintValue flint_mv(flint_str old_path, flint_str new_path);
+FlintValue flint_copy(flint_str src, flint_str dest);
 
 /* =========================
    PROCESS

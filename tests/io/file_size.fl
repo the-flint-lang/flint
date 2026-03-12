@@ -1,0 +1,6 @@
+const size = file_size("tests/io/file_size.fl") catch |err| {
+    print(err);
+    exit(1);
+};
+
+print(size);
