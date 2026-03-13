@@ -1,5 +1,5 @@
 {
-    "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+    "$schema": "../schemas/tmlanguage.json",
     "name": "Flint",
     "patterns": [
         {
@@ -81,7 +81,7 @@
             "patterns": [
                 {
                     "name": "support.function.builtin.flint",
-                    "match": "\\b(print|read_file|write_file|lines|grep|join|args|file_exists|exit|env|exec|len|range|push|trim|split|replace|fetch|parse_json|parse_json_as|int_to_str|concat|to_str|is_err|get_err|count_matches|get|set)\\b(?=\\s*\\()"
+                    "match": "\\b(grep|join|trim|split|replace|concat|get|set|count_matches|to_str|int_to_str|to_int|lines|args|len|range|push|print|exec|spawn|read_file|write_file|file_exists|mkdir|rm|mv|copy|rm_dir|touch|ls|is_dir|is_file|file_size|env|exit|fetch|parse_json|is_err|get_err)\\b(?=\\s*\\()"
                 }
             ]
         },

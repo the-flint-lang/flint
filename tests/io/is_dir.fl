@@ -1,11 +1,19 @@
-const f = mkdir("test") catch |err| {
+_ = mkdir("test") catch |err| {
     print(err);
     exit(1);
 };
 
 if is_dir("test") {
     print("Is a dir");
+    rm_();
     exit(0);
 } 
 
 print("Not is a dir");
+rm_();
+
+fn rm_() void {
+    _ = rm_dir("test") catch |err| {
+        print(err);
+    };
+}

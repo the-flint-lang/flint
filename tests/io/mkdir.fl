@@ -1,9 +1,9 @@
-var _ = mkdir("tests/io/test_mkdir_only") catch |err| {
+_ = mkdir("tests/io/test_mkdir") catch |err| {
     print(err);
     exit(1);
 };
 
-_ = rm_dir("tests/io/test_mkdir_only") catch |err| {
+_ = rm_dir("tests/io/test_mkdir") catch |err| {
     print(err);
     exit(1);
 };

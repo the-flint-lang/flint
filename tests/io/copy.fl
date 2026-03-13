@@ -1,4 +1,4 @@
-var _ = copy("tests/io/copy.fl", "tests/io/copy_temp.out") catch |err| {
+_ = copy("tests/io/copy.fl", "tests/io/copy_temp.out") catch |err| {
     print(err);
     exit(1);
 };

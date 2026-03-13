@@ -1,6 +1,12 @@
-const f = touch("teste.test") catch |err| {
+_ = touch("tests/io/teste.test") catch |err| {
     print(err);
     exit(1);
 };
+
+_ = rm("tests/io/teste.test") catch |err| {
+    print(err);
+    exit(1);
+};
+
 
 print("ok");

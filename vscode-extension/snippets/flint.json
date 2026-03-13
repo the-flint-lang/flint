@@ -26,23 +26,62 @@
         ],
         "description": "Parse JSON string directly into a typed Struct"
     },
-    "Execute OS Command": {
+    "Execute OS Command (Raw)": {
         "prefix": "exec",
         "body": [
-            "exec(\"${1:ls -la}\")",
-            "    ~> lines()",
-            "    ~> grep(\"${2:pattern}\")",
-            "    ~> print();"
+            "const ${1:output} = exec(\"${2:ls -la}\");"
         ],
-        "description": "Run an OS command and process output via pipeline"
+        "description": "Run an OS command and get stdout as string (Fast/Raw)"
     },
     "Read File Pipeline": {
         "prefix": "read",
         "body": [
-            "read_file(\"${1:data.log}\")",
-            "    ~> lines()",
-            "    ~> print();"
+            "const ${1:content} = read_file(\"${2:data.log}\") catch |err| {",
+            "   print(err);",
+            "   exit(1);",
+            "};"
         ],
         "description": "Read a file from disk with zero-copy mmap"
+    },
+    "Spawn Process (Dict)": {
+        "prefix": "spawn",
+        "body": [
+            "const ${1:proc} = spawn(\"${2:process_command}\") catch |err| {",
+            "    print(\"KERNEL ERROR: Unable to spawn process\");",
+            "    print(err);",
+            "    exit(1);",
+            "};",
+            "const ${3:code} = to_int(get(${1:proc}, \"exit_code\"));",
+            "const ${4:out} = to_str(get(${1:proc}, \"stdout\"));$0"
+        ],
+        "description": "Orchestrate a subprocess safely, returning a Dict with exit_code, stdout, and stderr"
+    },
+    "Zero-Copy File Clone": {
+        "prefix": "copy",
+        "body": [
+            "_ = copy(\"${1:source.txt}\", \"${2:dest.txt}\") catch |err| {",
+            "    print(\"IO Error: \");",
+            "    print(err);",
+            "    exit(1);",
+            "};$0"
+        ],
+        "description": "Clone a file using Kernel Space zero-copy (sendfile)"
+    },
+    "Iterate Directory Metadata": {
+        "prefix": "ls",
+        "body": [
+            "const ${1:files} = ls(\"${2:.}\") catch |err| {",
+            "    print(err);",
+            "    exit(1);",
+            "};",
+            "",
+            "for f in to_str(${1:files}) ~> lines() {",
+            "    if (is_file(f)) {",
+            "        const ${3:size} = file_size(f);",
+            "        $0",
+            "    }",
+            "}"
+        ],
+        "description": "List directory and iterate over files with O(1) stack allocation stat calls"
     }
 }

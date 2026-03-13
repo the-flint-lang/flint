@@ -2,7 +2,12 @@
 #define _GNU_SOURCE
 #endif
 
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #include "flint_rt.h"
+
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -10,13 +15,19 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <stdint.h>
 #include <ctype.h>
 #include <curl/curl.h>
 #include <dirent.h>
 #include <errno.h>
 #include <sys/sendfile.h>
+#include <sys/wait.h>
+#include <poll.h>
+
+#include <spawn.h>
+#include <limits.h>
+
+extern char **environ;
 
 static int global_argc;
 static char **global_argv;
@@ -143,6 +154,16 @@ void flint_print_bool(bool b)
    FILE I/O
    ========================= */
 
+// Macro de Alta Performance: Copia a string para a Stack (0 alocações na Heap/Arena)
+#define FLINT_C_PATH(dest_name, fstr)                                            \
+    char dest_name[PATH_MAX];                                                    \
+    do                                                                           \
+    {                                                                            \
+        size_t _len = (fstr).len < (PATH_MAX - 1) ? (fstr).len : (PATH_MAX - 1); \
+        memcpy(dest_name, (fstr).ptr, _len);                                     \
+        dest_name[_len] = '\0';                                                  \
+    } while (0)
+
 static char *to_c_string(flint_str s)
 {
     if (s.len == 0)
@@ -230,49 +251,10 @@ bool flint_file_exists(flint_str filepath)
     return false;
 }
 
-bool flint_is_dir(flint_str path)
-{
-    char *c_path = to_c_string(path);
-    struct stat sb;
-    if (stat(c_path, &sb) == 0 && S_ISDIR(sb.st_mode))
-        return true;
-    return false;
-}
-
-bool flint_is_file(flint_str path)
-{
-    char *c_path = to_c_string(path);
-    struct stat sb;
-    if (stat(c_path, &sb) == 0 && S_ISREG(sb.st_mode))
-        return true;
-    return false;
-}
-
-FlintValue flint_file_size(flint_str path)
-{
-    char *c_path = to_c_string(path);
-    struct stat sb;
-    if (stat(c_path, &sb) == 0)
-    {
-        return flint_make_int((long long)sb.st_size);
-    }
-    return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
-}
-
-FlintValue flint_mv(flint_str old_path, flint_str new_path)
-{
-    char *c_old = to_c_string(old_path);
-    char *c_new = to_c_string(new_path);
-
-    if (rename(c_old, c_new) == 0)
-        return flint_make_bool(true);
-    return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
-}
-
 FlintValue flint_copy(flint_str src, flint_str dest)
 {
-    char *c_src = to_c_string(src);
-    char *c_dest = to_c_string(dest);
+    FLINT_C_PATH(c_src, src);
+    FLINT_C_PATH(c_dest, dest);
 
     int source_fd = open(c_src, O_RDONLY);
     if (source_fd < 0)
@@ -292,18 +274,83 @@ FlintValue flint_copy(flint_str src, flint_str dest)
         return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
     }
 
+    posix_fadvise(source_fd, 0, 0, POSIX_FADV_SEQUENTIAL);
+
     off_t offset = 0;
-    ssize_t bytes_copied = sendfile(dest_fd, source_fd, &offset, stat_buf.st_size);
+    size_t remaining = stat_buf.st_size;
+
+    while (remaining > 0)
+    {
+        ssize_t bytes_copied = sendfile(dest_fd, source_fd, &offset, remaining);
+        if (bytes_copied <= 0)
+        {
+            close(source_fd);
+            close(dest_fd);
+            return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
+        }
+        remaining -= bytes_copied;
+    }
 
     close(source_fd);
     close(dest_fd);
+    return flint_make_bool(true);
+}
 
-    if (bytes_copied == -1)
+FlintValue flint_ls(flint_str path)
+{
+    FLINT_C_PATH(c_path, path);
+    DIR *d = opendir(c_path);
+    if (!d)
     {
         return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
     }
 
-    return flint_make_bool(true);
+    struct dirent *dir;
+    size_t total_len = 0;
+    size_t max_size = 4096;
+
+    char *buf = malloc(max_size);
+    if (!buf)
+    {
+        closedir(d);
+        return flint_make_error(FLINT_STR("Fatal: Out of memory during ls"));
+    }
+
+    while ((dir = readdir(d)) != NULL)
+    {
+        if (strcmp(dir->d_name, ".") == 0 || strcmp(dir->d_name, "..") == 0)
+            continue;
+
+        size_t name_len = strlen(dir->d_name);
+        if (total_len + name_len + 2 >= max_size)
+        {
+            max_size *= 2;
+            char *new_buf = realloc(buf, max_size);
+            if (!new_buf)
+            {
+                free(buf);
+                closedir(d);
+                return flint_make_error(FLINT_STR("Fatal: Out of memory during ls realloc"));
+            }
+            buf = new_buf;
+        }
+
+        memcpy(buf + total_len, dir->d_name, name_len);
+        total_len += name_len;
+        buf[total_len] = '\n';
+        total_len++;
+    }
+    closedir(d);
+
+    if (total_len > 0)
+        total_len--;
+
+    char *final_buf = flint_alloc_raw(total_len);
+    memcpy(final_buf, buf, total_len);
+
+    free(buf);
+
+    return flint_make_str(FLINT_SLICE(final_buf, total_len));
 }
 
 /* =========================
@@ -364,90 +411,189 @@ flint_str flint_exec(flint_str cmd)
     return FLINT_SLICE(buf, total_read);
 }
 
+FlintValue flint_spawn(flint_str cmd)
+{
+    if (cmd.len == 0 || !cmd.ptr)
+        return flint_make_error(FLINT_STR("Empty command"));
+
+    FLINT_C_PATH(c_cmd, cmd);
+    int out_pipe[2], err_pipe[2];
+
+    if (pipe(out_pipe) == -1 || pipe(err_pipe) == -1)
+    {
+        return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
+    }
+
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+
+    posix_spawn_file_actions_addclose(&actions, out_pipe[0]);
+    posix_spawn_file_actions_addclose(&actions, err_pipe[0]);
+    posix_spawn_file_actions_adddup2(&actions, out_pipe[1], STDOUT_FILENO);
+    posix_spawn_file_actions_adddup2(&actions, err_pipe[1], STDERR_FILENO);
+    posix_spawn_file_actions_addclose(&actions, out_pipe[1]);
+    posix_spawn_file_actions_addclose(&actions, err_pipe[1]);
+
+    char *argv[] = {"sh", "-c", c_cmd, NULL};
+    pid_t pid;
+
+    int status_spawn = posix_spawnp(&pid, "sh", &actions, NULL, argv, environ);
+    posix_spawn_file_actions_destroy(&actions);
+
+    if (status_spawn != 0)
+    {
+        close(out_pipe[0]);
+        close(out_pipe[1]);
+        close(err_pipe[0]);
+        close(err_pipe[1]);
+        return flint_make_error(FLINT_SLICE(strerror(status_spawn), strlen(strerror(status_spawn))));
+    }
+
+    close(out_pipe[1]);
+    close(err_pipe[1]);
+
+    size_t out_cap = 4096, err_cap = 4096;
+    size_t out_len = 0, err_len = 0;
+
+    char *out_buf = malloc(out_cap);
+    char *err_buf = malloc(err_cap);
+
+    struct pollfd fds[2];
+    fds[0].fd = out_pipe[0];
+    fds[0].events = POLLIN;
+    fds[1].fd = err_pipe[0];
+    fds[1].events = POLLIN;
+
+    while (fds[0].fd != -1 || fds[1].fd != -1)
+    {
+        if (poll(fds, 2, -1) == -1)
+            break;
+
+        for (int i = 0; i < 2; i++)
+        {
+            if (fds[i].fd == -1)
+                continue;
+
+            if (fds[i].revents & POLLIN)
+            {
+                char **buf = (i == 0) ? &out_buf : &err_buf;
+                size_t *len = (i == 0) ? &out_len : &err_len;
+                size_t *cap = (i == 0) ? &out_cap : &err_cap;
+
+                if (*len + 1024 >= *cap)
+                {
+                    *cap *= 2;
+                    char *new_buf = malloc(*cap);
+                    memcpy(new_buf, *buf, *len);
+                    free(*buf);
+                    *buf = new_buf;
+                }
+
+                ssize_t n = read(fds[i].fd, *buf + *len, 1024);
+                if (n > 0)
+                {
+                    *len += n;
+                }
+                else
+                {
+                    close(fds[i].fd);
+                    fds[i].fd = -1;
+                }
+            }
+            else if (fds[i].revents & (POLLHUP | POLLERR | POLLNVAL))
+            {
+                close(fds[i].fd);
+                fds[i].fd = -1;
+            }
+        }
+    }
+
+    int status;
+    waitpid(pid, &status, 0);
+    int exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : 128;
+
+    char *final_out = flint_alloc_raw(out_len);
+    memcpy(final_out, out_buf, out_len);
+    free(out_buf);
+
+    char *final_err = flint_alloc_raw(err_len);
+    memcpy(final_err, err_buf, err_len);
+    free(err_buf);
+
+    FlintDict *dict = flint_dict_new(4);
+    flint_dict_set(dict, FLINT_STR("exit_code"), flint_make_int(exit_code));
+    flint_dict_set(dict, FLINT_STR("stdout"), flint_make_str(FLINT_SLICE(final_out, out_len)));
+    flint_dict_set(dict, FLINT_STR("stderr"), flint_make_str(FLINT_SLICE(final_err, err_len)));
+
+    return (FlintValue){FLINT_VAL_DICT, .as.d = dict};
+}
+
+bool flint_is_dir(flint_str path)
+{
+    FLINT_C_PATH(c_path, path);
+    struct stat sb;
+    return (stat(c_path, &sb) == 0 && S_ISDIR(sb.st_mode));
+}
+
+bool flint_is_file(flint_str path)
+{
+    FLINT_C_PATH(c_path, path);
+    struct stat sb;
+    return (stat(c_path, &sb) == 0 && S_ISREG(sb.st_mode));
+}
+
+FlintValue flint_file_size(flint_str path)
+{
+    FLINT_C_PATH(c_path, path);
+    struct stat sb;
+    if (stat(c_path, &sb) == 0)
+        return flint_make_int((long long)sb.st_size);
+    return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
+}
+
 FlintValue flint_mkdir(flint_str path)
 {
-    char *c_path = to_c_string(path);
+    FLINT_C_PATH(c_path, path);
     if (mkdir(c_path, 0777) == 0)
-    {
         return flint_make_bool(true);
-    }
     return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
 }
 
 FlintValue flint_rm(flint_str path)
 {
-    char *c_path = to_c_string(path);
+    FLINT_C_PATH(c_path, path);
     if (unlink(c_path) == 0)
-    {
         return flint_make_bool(true);
-    }
-
     return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
 }
 
 FlintValue flint_rm_dir(flint_str path)
 {
-    char *c_path = to_c_string(path);
+    FLINT_C_PATH(c_path, path);
     if (rmdir(c_path) == 0)
-    {
         return flint_make_bool(true);
-    }
-
     return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
 }
 
 FlintValue flint_touch(flint_str path)
 {
-    char *c_path = to_c_string(path);
+    FLINT_C_PATH(c_path, path);
     int fd = open(c_path, O_CREAT | O_WRONLY, 0666);
     if (fd >= 0)
     {
         close(fd);
         return flint_make_bool(true);
     }
-
     return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
 }
 
-FlintValue flint_ls(flint_str path)
+FlintValue flint_mv(flint_str old_path, flint_str new_path)
 {
-    char *c_path = to_c_string(path);
-    DIR *d = opendir(c_path);
-    if (!d)
-    {
-        return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
-    }
-
-    struct dirent *dir;
-    size_t total_len = 0;
-    size_t max_size = 4096;
-    char *buf = flint_alloc_raw(max_size);
-
-    while ((dir = readdir(d)) != NULL)
-    {
-        if (strcmp(dir->d_name, ".") == 0 || strcmp(dir->d_name, "..") == 0)
-            continue;
-
-        size_t name_len = strlen(dir->d_name);
-        if (total_len + name_len + 2 >= max_size)
-        {
-            max_size *= 2;
-            char *new_buf = flint_alloc_raw(max_size);
-            memcpy(new_buf, buf, total_len);
-            buf = new_buf;
-        }
-
-        memcpy(buf + total_len, dir->d_name, name_len);
-        total_len += name_len;
-        buf[total_len] = '\n';
-        total_len++;
-    }
-    closedir(d);
-
-    if (total_len > 0)
-        total_len--; // remove the las '\n'
-
-    return flint_make_str(FLINT_SLICE(buf, total_len));
+    FLINT_C_PATH(c_old, old_path);
+    FLINT_C_PATH(c_new, new_path);
+    if (rename(c_old, c_new) == 0)
+        return flint_make_bool(true);
+    return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
 }
 
 /* =========================

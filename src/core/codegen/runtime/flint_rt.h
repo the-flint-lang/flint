@@ -131,6 +131,17 @@ FlintDict *flint_dict_new(size_t capacity);
 void flint_dict_set(FlintDict *dict, flint_str key, FlintValue value);
 FlintValue flint_dict_get(FlintDict *dict, flint_str key);
 
+static inline FlintValue flint_dict_get_from_val(FlintValue v, flint_str key)
+{
+    if (v.type == FLINT_VAL_DICT && v.as.d)
+        return flint_dict_get(v.as.d, key);
+    return (FlintValue){FLINT_VAL_NULL};
+}
+
+#define FLINT_GET(obj, key) _Generic((obj), \
+    FlintDict *: flint_dict_get,            \
+    FlintValue: flint_dict_get_from_val)(obj, key)
+
 /* =========================
    VALUE CONSTRUCTORS
    ========================= */
@@ -210,6 +221,7 @@ FlintValue flint_copy(flint_str src, flint_str dest);
    ========================= */
 
 flint_str flint_exec(flint_str cmd);
+FlintValue flint_spawn(flint_str cmd);
 
 /* =========================
    ENV
@@ -234,6 +246,13 @@ flint_str flint_replace(flint_str text, flint_str target, flint_str repl);
 flint_str flint_to_str(FlintValue v);
 flint_str flint_int_to_str(long long num);
 flint_str flint_concat(flint_str a, flint_str b);
+
+static inline long long flint_to_int(FlintValue v)
+{
+    if (v.type == FLINT_VAL_INT)
+        return v.as.i;
+    return 0;
+}
 
 /* =========================
    UTIL

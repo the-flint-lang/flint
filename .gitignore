@@ -5,4 +5,4 @@ tests/teste.fl
 erro
 .venv
 
-!tests/*
+!tests/*vscode-extension/*.vsix
