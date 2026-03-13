@@ -168,6 +168,13 @@ pub const CEmitter = struct {
 
         try writer.print("\n#line {d} \"{s}\"\n    ", .{ decl.line, self.source_file });
 
+        if (std.mem.eql(u8, decl.name, "_")) {
+            try writer.print("(void)(", .{});
+            try self.visitNode(decl.value, writer);
+            try writer.print(")", .{});
+            return;
+        }
+
         if (decl.is_const) {
             try writer.print("const ", .{});
         }
@@ -240,6 +247,16 @@ pub const CEmitter = struct {
         }
 
         try writer.print("    }}", .{});
+
+        if (if_node.else_branch) |else_body| {
+            try writer.print(" else {{\n", .{});
+            for (else_body) |stmt| {
+                try writer.print("        ", .{});
+                try self.visitNode(stmt, writer);
+                try writer.print(";\n", .{});
+            }
+            try writer.print("    }}", .{});
+        }
     }
 
     fn visitForStmt(self: *CEmitter, node: *AstNode, writer: anytype) !void {
@@ -266,6 +283,16 @@ pub const CEmitter = struct {
 
     fn visitBinaryExpr(self: *CEmitter, node: *AstNode, writer: anytype) !void {
         const bin = node.binary_expr;
+
+        if (bin.operator._type == .assign_token and bin.left.* == .identifier) {
+            if (std.mem.eql(u8, bin.left.identifier.name, "_")) {
+                try writer.print("(void)(", .{});
+                try self.visitNode(bin.right, writer);
+                try writer.print(")", .{});
+                return;
+            }
+        }
+
         try writer.print("(", .{});
         try self.visitNode(bin.left, writer);
 
@@ -450,7 +477,7 @@ pub const CEmitter = struct {
         _ = self;
 
         if (std.mem.eql(u8, name, "get")) {
-            try writer.print("flint_dict_get", .{});
+            try writer.print("FLINT_GET", .{});
             return;
         }
 
@@ -460,31 +487,58 @@ pub const CEmitter = struct {
         }
 
         const stdlibs = [_][]const u8{
-            "print",
-            "read_file",
-            "write_file",
-            "lines",
+            // string
             "grep",
             "join",
-            "args",
-            "file_exists",
-            "exit",
-            "env",
-            "exec",
-            "len",
-            "range",
-            "push",
             "trim",
             "split",
             "replace",
+            "concat",
+            "count_matches",
+            "to_str",
+            "int_to_str",
+
+            // utils
+            "to_int",
+
+            // arays
+            "lines",
+            "args",
+            "len",
+            "range",
+            "push",
+
+            // i/o
+            "print",
+            "exec",
+            "spawn",
+
+            // filesystem
+            "read_file",
+            "write_file",
+            "file_exists",
+            "mkdir",
+            "rm",
+            "mv",
+            "copy",
+            "rm_dir",
+            "touch",
+            "ls",
+            "is_dir",
+            "is_file",
+            "file_size",
+
+            // user space
+            "env",
+            "exit",
+
+            // http
             "fetch",
             "parse_json",
-            "int_to_str",
-            "concat",
-            "to_str",
+
+            // errors
             "is_err",
             "get_err",
-            "count_matches",
         };
 
         for (stdlibs) |lib| {

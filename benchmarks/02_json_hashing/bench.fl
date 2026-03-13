@@ -1,4 +1,6 @@
-const payload = read_file("bench_data.json");
+const payload_box = read_file("typed_data.json") catch |err| { print(err); exit(1); };
+const payload = to_str(payload_box);
+
 const db = parse_json(payload);
 
 const status = get(db, "user_key_499999");

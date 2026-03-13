@@ -1,10 +1,8 @@
 <div align="center">
-<img src="assets/favicon_transparent_bg.png" alt="Flint Logo" width="120">
+<img src="assets/favicon_transparent_bg.svg" alt="Flint Logo" width="200">
 </div>
 
 # > flint
-
-[![Flint CI](https://github.com/lucaas-d3v/flint/actions/workflows/ci.yml/badge.svg)](https://github.com/lucaas-d3v/flint/actions/workflows/ci.yml)
 
 **A pipeline-oriented system language for robust CLI tools.** *Stop writing fragile Bash. Stop waiting for Python to boot.*
 
@@ -22,8 +20,8 @@ If you are writing infrastructure tooling, you face a miserable trilemma today:
 
 Flint is built by and for systems engineers. Before opening a Pull Request or questioning the absence of standard `malloc()`/`free()` in the C runtime, please read our internal engineering documents:
 
-* [**Architecture & Memory Model**](ARCHITECTURE.md): A deep dive into the Zig-to-C99 transpilation pipeline, the 4GB `mmap` Virtual Arena, and how AOT Structs bypass dynamic reflection.
-* [**Contributing Guide**](CONTRIBUTING.md): Learn how to build the compiler from source, run the `flint test` orchestrator, and adhere to our strict C99/Zig coding standards.
+* **[Architecture & Memory Model](ARCHITECTURE.md)**: A deep dive into the Zig-to-C99 transpilation pipeline, the 4GB `mmap` Virtual Arena, and how AOT Structs bypass dynamic reflection.
+* **[Contributing Guide](https://www.google.com/search?q=CONTRIBUTING.md)**: Learn how to build the compiler from source, run the `flint test` orchestrator, and adhere to our strict C99/Zig coding standards.
 
 We welcome PRs that align with Flint's core philosophy: **zero-cost abstractions, zero runtime dependencies, and instant startup times.**
 
@@ -33,13 +31,14 @@ Flint takes the expressiveness of functional data pipelines and brutally enforce
 
 * **The Pipeline Operator (`~>`):** Data flows forward. No nested function hell. The result of the left expression becomes the first argument of the right function.
 * **4GB Virtual Memory Arena:** Memory is managed via a highly optimized, branchless virtual allocator using `mmap(MAP_NORESERVE)`. Scripts boot instantly, scale infinitely without `malloc` fragmentation, and bypass the Garbage Collector entirely.
-* **Zero-Copy String Slices & SIMD:** The C-string `\0` terminator overhead has been eradicated. Strings are "Fat Pointers" (`ptr` + `len`), making operations like `split()` and `lines()` $\mathcal{O}(1)$ in memory. JSON parsing leverages vectorized `memchr` for brutal scanning speeds.
+* **Zero-Copy String Slices & SIMD:** The C-string `\0` terminator overhead has been eradicated. Strings are "Fat Pointers" (`ptr` + `len`), making operations like `split()` and `lines()` O(1) in memory. JSON parsing leverages vectorized `memchr` for brutal scanning speeds.
 * **AOT Strongly-Typed Structs:** Define static data contracts. Flint's compiler generates native C deserializers that map JSON directly into physical memory offsets, obliterating dynamic hashmap lookups.
 * **Errors as Values (Zig-Style):** No silent crashes. I/O and Network failures are intercepted via a zero-cost `catch |err|` inline block, keeping your CI/CD pipelines bulletproof without the overhead of stack unwinding.
 
 ## Show, Don't Tell
 
 ### Scenario 1: The OS Level (Killing Bash)
+
 *Fragile Bash relies on external binaries and fails silently if pipes break. Flint is native, safe, and strictly typed.*
 
 ```flint
@@ -54,7 +53,6 @@ exec("ps aux")
     ~> write_file("user_procs.log");
 
 print("Done in 0.001s.");
-
 ```
 
 ### Scenario 2: The Data Level (Killing Python & Pydantic)
@@ -69,7 +67,7 @@ struct GithubUser {
 }
 
 # Native HTTP with inline Catch block for absolute resilience
-const payload = fetch("[https://api.github.com/users/lucaas-d3v](https://api.github.com/users/lucaas-d3v)") catch |err| {
+const payload = fetch("https://api.github.com/users/lucaas-d3v") catch |err| {
     print("Network Failure Intercepted.");
     exit(1);
 };
@@ -78,7 +76,6 @@ const payload = fetch("[https://api.github.com/users/lucaas-d3v](https://api.git
 const user = parse_json_as(GithubUser, to_str(payload));
 
 print(concat("Developer: ", user.login));
-
 ```
 
 ## Performance: The Benchmarks
@@ -120,6 +117,7 @@ Flint is designed to operate at the physical limits of your hardware, utilizing 
 | **Python 3** | `requests` module | ~ 324.6 ms |
 
 ### 4. The Pydantic Massacre (AOT Structs vs Dynamic Reflection)
+
 **Task:** Parse a 6MB JSON payload containing 200,000 "noise" keys, extract exactly 3 target fields into a strongly-typed struct, and print one of them.
 
 | Competitor | Engine / Validation Model | Mean Time | Speedup |
@@ -127,17 +125,54 @@ Flint is designed to operate at the physical limits of your hardware, utilizing 
 | **Flint (v1.7)** | Native C / AOT Struct Mapping | **~ 58.7 ms** | **7x Faster** |
 | **Python 3** | CPython / Pydantic BaseModel | ~ 405.6 ms | Baseline |
 
-*Verdict:* Pydantic (the industry standard in Python) requires parsing the entire JSON into a dynamic dictionary of `PyObjects` before applying runtime reflection to validate fields. Flint generates native C deserializers at compile-time, slicing the `mmap` buffer directly into physical struct offsets in $\mathcal{O}(1)$ time.
+*Verdict:* Pydantic (the industry standard in Python) requires parsing the entire JSON into a dynamic dictionary of `PyObjects` before applying runtime reflection to validate fields. Flint generates native C deserializers at compile-time, slicing the `mmap` buffer directly into physical struct offsets in O(1) time.
+
+### 5. The 5GB Zero-Copy I/O Challenge
+
+**Task:** Copy a 1GB payload 5 times sequentially, forcing maximum disk throughput while measuring CPU overhead.
+
+| Competitor | Engine / Syscall | Mean Time | User CPU Time |
+| --- | --- | --- | --- |
+| **Flint (v1.7)** | Native C / `sendfile` | **~ 129.0 s** | **0.007 s** |
+| **Python 3** | `shutil` / User Space RAM | ~ 139.1 s | 0.067 s |
+| **Bash (`cp`)** | GNU Coreutils | ~ 156.3 s | 0.011 s |
+
+*Verdict:* While all languages hit the physical limits of the storage drive, Flint uses **10x less CPU time** than Python. By instructing the Linux Kernel to copy blocks directly between file descriptors, Flint leaves the machine's CPU and RAM entirely free for other concurrent tasks.
+
+### 6. The 10,000 Metadata Massacre
+
+**Task:** Read a directory containing 10,000 files, iterate through them, and invoke `stat` to calculate the total size.
+
+| Competitor | Memory Model | Mean Time | Speedup |
+| --- | --- | --- | --- |
+| **Flint (v1.7)** | Hybrid Arena + Stack Allocation | **~ 7.1 ms** | **2.0x Faster** |
+| **Bash** | Native globbing + sub-process | ~ 9.0 ms | 1.25x Faster |
+| **Python 3** | Heap Objects + GC | ~ 14.6 ms | Baseline |
+
+*Verdict:* Python suffers allocating 10,000 strings on the heap and tracking them via the Garbage Collector. Flint uses a single consolidated Arena allocation and pushes system paths directly to the stack (`O(1)` overhead), resulting in zero memory fragmentation and doubling Python's execution speed.
+
+### 7. The Subprocess Storm (Process Orchestration)
+
+**Task:** Spawn, execute, and capture the output of 500 external system processes (`/bin/true`) sequentially.
+
+| Competitor | Spawning Mechanism | Mean Time |
+| --- | --- | --- |
+| **Bash** | Native Shell (`fork`) | **~ 399.6 ms** |
+| **Flint (v1.7)** | `posix_spawn` + `popen` | ~ 519.7 ms |
+| **Python 3** | `subprocess.run` | ~ 592.9 ms |
+
+*Verdict:* Bash wins by design—it is a shell built exclusively for process invocation. However, Flint easily outpaces Python's heavyweight `subprocess` module by replacing costly `fork()` memory-cloning with lightweight `posix_spawn`, delivering robust process orchestration without the interpreter lag.
 
 ## Getting Started (Building from Source)
 
 The Flint compiler is written in [Zig](https://ziglang.org). You need Zig `0.15.2` and `clang` (or `gcc`) installed on your system.
 
 ```bash
-git clone [https://codeberg.org/lucaas-d3v/flint.git](https://codeberg.org/lucaas-d3v/flint.git)
+git clone https://codeberg.org/lucaas-d3v/flint.git
 cd flint
 zig build -Doptimize=ReleaseFast
 sudo ./install.sh
+
 
 ```
 
@@ -145,6 +180,7 @@ Compile and run your first script:
 
 ```bash
 flint run my_script.fl
+
 
 ```
 
@@ -160,14 +196,14 @@ Since Flint is fully independent, the extension is distributed directly via this
 
 **How to install:**
 
-1. Download the `flint-lang-1.7.0.vsix` file from the [Releases](https://www.google.com/search?q=%23) page.
+1. Download the `flint-lang-1.7.1.vsix` file from the Releases page.
 2. Open your terminal and run:
+
 ```bash
-code --install-extension flint-lang-1.7.0.vsix
+code --install-extension flint-lang-1.7.1.vsix
+
 
 ```
-
-
 
 *(Alternatively, open VS Code, go to the Extensions tab, click the `...` menu at the top right, and select "Install from VSIX...")*
 
@@ -179,6 +215,7 @@ Flint is highly experimental but heavily optimized for its core use cases. The v
 
 **Upcoming Milestones (v1.8+):**
 
+* **Namespaces & Safe Modularity:** Introducing `import as` to prevent global scope pollution during complex deployments.
 * **Streaming Data Pipelines:** Shifting from memory-centric parsing to chunk-based streaming (like `awk` or `jq`) for multi-gigabyte log processing without RAM overhead.
 * **Native Concurrency:** Safe, async HTTP requests and process pooling.
 * **Language Server Protocol (LSP):** Real-time error linting and autocomplete directly in the editor.

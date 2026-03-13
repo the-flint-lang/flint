@@ -42,7 +42,7 @@ pub const Lexer = struct {
                 continue;
             }
 
-            if (std.ascii.isAlphabetic(c)) {
+            if (std.ascii.isAlphabetic(c) or c == '_') {
                 const indet = self.readIdentifier();
 
                 const _type_ident = tokenMap.get(indet) orelse TokenType.identifier_token;

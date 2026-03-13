@@ -1,3 +1,6 @@
-read_file("bench_data.log")
+(read_file("bench_data.log") catch |err| {
+     print(err); exit(1); 
+    }) 
+    ~> to_str()
     ~> count_matches("ERROR")
     ~> print();

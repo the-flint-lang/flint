@@ -36,7 +36,7 @@ You can install this extension locally in 10 seconds:
 1. Download the latest `flint-lang-X.X.X.vsix` from the [Releases page](https://github.com/lucaas-d3v/flint/releases).
 2. Open your terminal and run:
    ```bash
-   code --install-extension flint-lang-1.7.0.vsix
+   code --install-extension flint-lang-1.7.1.vsix
     ```
 
 **Option 2: GUI**

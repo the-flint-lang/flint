@@ -1,0 +1,12 @@
+_ = mkdir("tests/io/test_rm_dir") catch |err| {
+    print(err);
+    exit(1);
+};
+
+_ = rm_dir("tests/io/test_rm_dir") catch |err| {
+    print(err);
+    exit(1);
+};
+
+
+print("ok");

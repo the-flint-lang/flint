@@ -119,10 +119,19 @@ pub const Parser = struct {
         const body = try self.parseBody();
         _ = try self.consume(.rbrace_token, "'}' expected to close if block");
 
+        var else_body: ?[]const *AstNode = null;
+
+        if (self.match(&.{.else_token})) {
+            _ = try self.consume(.lbrace_token, "'{' expected before else block");
+            else_body = try self.parseBody();
+            _ = try self.consume(.rbrace_token, "'}' expected to close else block");
+        }
+
         node.* = .{
             .if_stmt = .{
                 .condition = expr,
                 .then_branch = body,
+                .else_branch = else_body,
             },
         };
 

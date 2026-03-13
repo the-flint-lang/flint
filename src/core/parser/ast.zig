@@ -60,6 +60,7 @@ pub const AstNode = union(NodeType) {
     if_stmt: struct {
         condition: *AstNode,
         then_branch: []const *AstNode,
+        else_branch: ?[]const *AstNode,
     },
 
     call_expr: struct {

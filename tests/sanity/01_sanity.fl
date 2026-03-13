@@ -1,0 +1,10 @@
+const greeting = "Test 1: Compiler Sanity OK";
+
+const fake_log = `
+[INFO] Booting system...
+[WARN] Deprecated API usage.
+[ERROR] Out of memory.
+[INFO] Shutting down.
+`;
+
+print(greeting);

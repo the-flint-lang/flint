@@ -1,0 +1,11 @@
+_ = touch("tests/io/test_rm_only") catch |err| {
+    print(err);
+    exit(1);
+};
+
+_ = rm("tests/io/test_rm_only") catch |err| {
+    print(err);
+    exit(1);
+};
+
+print("ok");

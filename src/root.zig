@@ -319,25 +319,27 @@ fn runTests(alloc: std.mem.Allocator, io: IoHelper) !void {
     };
     defer test_dir.close();
 
-    var iter = test_dir.iterate();
+    var walker = try test_dir.walk(alloc);
+    defer walker.deinit();
+
     var pass_count: usize = 0;
     var fail_count: usize = 0;
 
     try io.stdout.print("\x1b[36m=== STARTING FLINT TEST BATTERY ===\x1b[0m\n\n", .{});
     _ = try io.stdout.flush();
 
-    while (try iter.next()) |entry| {
-        if (entry.kind == .file and std.mem.endsWith(u8, entry.name, ".fl")) {
-            const file_path = try std.fmt.allocPrint(alloc, "tests/{s}", .{entry.name});
+    while (try walker.next()) |entry| {
+        if (entry.kind == .file and std.mem.endsWith(u8, entry.basename, ".fl")) {
+            const file_path = try std.fmt.allocPrint(alloc, "tests/{s}", .{entry.path});
             defer alloc.free(file_path);
 
             const passed = try testSingleFile(alloc, file_path, io);
 
             if (passed) {
-                try io.stdout.print("\x1b[32m[PASS]\x1b[0m {s}\n", .{entry.name});
+                try io.stdout.print("\x1b[32m[PASS]\x1b[0m {s}\n", .{entry.path});
                 pass_count += 1;
             } else {
-                try io.stdout.print("\x1b[31m[FAIL]\x1b[0m {s}\n", .{entry.name});
+                try io.stdout.print("\x1b[31m[FAIL]\x1b[0m {s}\n", .{entry.path});
                 fail_count += 1;
             }
             _ = try io.stdout.flush();
