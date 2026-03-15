@@ -1,5 +1,8 @@
-import "math.fl";
+import "math.fl" as m;
 
-print("Starting modular system...");
+# Função local com o mesmo nome (colisão proposital)
+fn somar(a: int, b: int) int {
+    return 0; 
+}
 
-sum(50, 50);
+print(int_to_str(m.dobro(5)));

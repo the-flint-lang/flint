@@ -43,6 +43,13 @@
                 "language": "flint",
                 "path": "./snippets/flint.json"
             }
+        ],
+        "iconThemes": [
+            {
+                "id": "flint-icons",
+                "label": "Flint File Icons",
+                "path": "./fileicons/flint-icon-theme.json"
+            }
         ]
     }
 }

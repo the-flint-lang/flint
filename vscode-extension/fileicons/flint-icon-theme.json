@@ -1,0 +1,11 @@
+{
+    "iconDefinitions": {
+        "_flint": {
+            "iconPath": "../assets/favicon_transparent_bg.svg"
+        }
+    },
+    "extensions": {
+        "fl": "_flint"
+    },
+    "file": "_flint"
+}

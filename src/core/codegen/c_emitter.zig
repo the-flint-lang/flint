@@ -99,12 +99,22 @@ pub const CEmitter = struct {
             .dict_expr => try self.visitDictExpr(node, writer),
             .catch_expr => try self.visitCatchExpr(node, writer),
             .struct_decl => try self.visitStructDecl(node, writer),
+            .return_stmt => try self.visitReturnStmt(node, writer),
             .property_access_expr => try self.visitPropertyAccessExpr(node, writer),
 
             else => {
                 std.debug.print("Codegen not implemented for: {s}\n", .{@tagName(node.*)});
                 return error.NotImplemented;
             },
+        }
+    }
+
+    fn visitReturnStmt(self: *CEmitter, node: *AstNode, writer: anytype) !void {
+        try writer.print("return", .{});
+
+        if (node.return_stmt.value) |val| {
+            try writer.print(" ", .{});
+            try self.visitNode(val, writer);
         }
     }
 
@@ -183,12 +193,28 @@ pub const CEmitter = struct {
         try self.visitNode(decl.value, writer);
     }
 
+    fn emitCallee(self: *CEmitter, callee: *AstNode, writer: anytype) !void {
+        if (callee.* == .identifier) {
+            try self.writeMappedIdentifier(callee.identifier.name, writer);
+        } else if (callee.* == .property_access_expr) {
+            const prop = callee.property_access_expr;
+            if (prop.object.* == .identifier) {
+                try writer.print("{s}_{s}", .{ prop.object.identifier.name, prop.property_name });
+            } else {
+                std.debug.print("Nested namespaces not supported in v1.7.2\n", .{});
+                return error.ComplexNamespaceNotSupported;
+            }
+        } else {
+            return error.InvalidCallee;
+        }
+    }
+
     fn visitCallExpr(self: *CEmitter, node: *AstNode, writer: anytype) !void {
         const call = node.call_expr;
 
         try writer.print("\n#line {d} \"{s}\"\n    ", .{ call.line, self.source_file });
 
-        if (std.mem.eql(u8, call.callee, "parse_json_as")) {
+        if (call.callee.* == .identifier and std.mem.eql(u8, call.callee.identifier.name, "parse_json_as")) {
             if (call.arguments.len != 2) return error.InvalidArgumentCount;
 
             const struct_name = call.arguments[0].identifier.name;
@@ -199,7 +225,7 @@ pub const CEmitter = struct {
             return;
         }
 
-        try self.writeMappedIdentifier(call.callee, writer);
+        try self.emitCallee(call.callee, writer);
         try writer.print("(", .{});
 
         for (call.arguments, 0..) |arg, i| {
@@ -215,7 +241,7 @@ pub const CEmitter = struct {
         const pipe = node.pipeline_expr;
         const right_call = pipe.right_call.call_expr;
 
-        try self.writeMappedIdentifier(right_call.callee, writer);
+        try self.emitCallee(right_call.callee, writer);
         try writer.print("(", .{});
 
         try self.visitNode(pipe.left, writer);
