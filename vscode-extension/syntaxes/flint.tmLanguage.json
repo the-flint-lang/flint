@@ -15,7 +15,7 @@
             "include": "#types"
         },
         {
-            "include": "#numbers"
+            "include": "#builtins"
         },
         {
             "include": "#function-calls"
@@ -25,6 +25,9 @@
         },
         {
             "include": "#operators"
+        },
+        {
+            "include": "#numbers"
         }
     ],
     "repository": {
@@ -76,7 +79,15 @@
             "patterns": [
                 {
                     "name": "storage.type.flint",
-                    "match": "\\b(int|string|bool|void|val)\\b"
+                    "match": "\\b(int|string|bool|void|val|arr)\\b"
+                }
+            ]
+        },
+        "builtins": {
+            "patterns": [
+                {
+                    "name": "support.function.builtin.flint",
+                    "match": "\\b(print|len|push|range|get|set|parse_json_as)\\b(?=\\s*\\()"
                 }
             ]
         },
@@ -84,14 +95,28 @@
             "patterns": [
                 {
                     "name": "entity.name.function.flint",
-                    "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()"
+                    "match": "(?<![.])\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()"
                 }
             ]
         },
         "namespaces": {
             "patterns": [
                 {
-                    "name": "entity.name.type.flint",
+                    "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)(\\.)([ a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()",
+                    "captures": {
+                        "1": {
+                            "name": "entity.name.namespace.flint"
+                        },
+                        "2": {
+                            "name": "punctuation.accessor.flint"
+                        },
+                        "3": {
+                            "name": "entity.name.function.flint"
+                        }
+                    }
+                },
+                {
+                    "name": "entity.name.namespace.flint",
                     "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)(?=\\.)"
                 }
             ]
@@ -104,7 +129,7 @@
                 },
                 {
                     "name": "keyword.operator.flint",
-                    "match": "(\\+|-|\\*|/|%|==|!=|<=|>=|<|>|=|\\|)"
+                    "match": "(!=|==|<=|>=|~>|\\+|-|\\*|/|%|<|>|=|!|\\|)"
                 }
             ]
         },

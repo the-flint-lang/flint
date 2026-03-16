@@ -115,36 +115,41 @@ const Linker = struct {
         var local_stmts = std.ArrayList(*AstNode).empty;
         defer local_stmts.deinit(self.allocator);
 
-        // 1. Dicionário para catalogar os aliases importados NESTE arquivo
         var local_aliases = std.StringHashMap(void).init(self.allocator);
         defer local_aliases.deinit();
 
         for (result_ptr.ast.program.statements) |stmt| {
             if (stmt.* == .import_stmt) {
                 const import_raw = stmt.import_stmt.path;
-                const clean_path = import_raw[0..import_raw.len];
                 const next_alias = stmt.import_stmt.alias;
+
+                var formatted_path: []const u8 = undefined;
+
+                if (!std.mem.endsWith(u8, import_raw, ".fl")) {
+                    formatted_path = try std.fmt.allocPrint(self.allocator, "std/{s}.fl", .{import_raw});
+                } else {
+                    formatted_path = try self.allocator.dupe(u8, import_raw);
+                }
+                defer self.allocator.free(formatted_path);
 
                 var next_file: []const u8 = undefined;
 
-                if (std.mem.startsWith(u8, clean_path, "./") or std.mem.startsWith(u8, clean_path, "../")) {
-                    next_file = try std.fs.path.join(self.allocator, &.{ base_dir, clean_path });
+                if (std.mem.startsWith(u8, formatted_path, "./") or std.mem.startsWith(u8, formatted_path, "../")) {
+                    next_file = try std.fs.path.join(self.allocator, &.{ base_dir, formatted_path });
                 } else {
                     const std_base = std.posix.getenv("FLINT_LIB_PATH") orelse "/usr/local/lib/flint";
-                    next_file = try std.fs.path.join(self.allocator, &.{ std_base, clean_path });
+                    next_file = try std.fs.path.join(self.allocator, &.{ std_base, formatted_path });
                 }
 
                 defer self.allocator.free(next_file);
                 try self.linkFile(next_file, next_alias);
 
-                // Cadastra o alias localmente para sabermos quem ele é
                 if (next_alias) |a| try local_aliases.put(a, {});
             } else {
                 try local_stmts.append(self.allocator, stmt);
             }
         }
 
-        // 2. Resolve os acessos a namespace ANTES de aplicar o escopo global
         for (local_stmts.items) |stmt| {
             try self.resolveAliases(stmt, &local_aliases);
         }

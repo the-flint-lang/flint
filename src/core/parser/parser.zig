@@ -51,7 +51,7 @@ pub const Parser = struct {
     }
 
     fn parseDeclaration(self: *Parser) anyerror!*AstNode {
-        if (self.match(&.{.import_token})) return self.parseImport();
+        if (self.match(&.{.import_token})) return self.parseImportStmt();
         if (self.match(&.{.struct_token})) return self.parseStructDecl();
         if (self.match(&.{ .fn_token, .extern_token })) return self.parseFunctionDeclaration();
         if (self.match(&.{ .var_token, .const_token })) return self.parseVarDecl();
@@ -99,24 +99,28 @@ pub const Parser = struct {
         return node;
     }
 
-    fn parseImport(self: *Parser) anyerror!*AstNode {
-        const path_token = try self.consume(.string_literal_token, "Expected file path in quotes after 'import'.");
-
+    fn parseImportStmt(self: *Parser) !*AstNode {
+        var path: []const u8 = undefined;
         var alias: ?[]const u8 = null;
 
-        if (self.match(&.{.as_token})) {
-            const alias_token = try self.consume(.identifier_token, "Expected alias identifier after 'as'.");
-            alias = alias_token.value;
+        if (self.match(&.{.string_literal_token})) {
+            path = self.previous().value;
+            if (self.match(&.{.as_token})) {
+                _ = try self.consume(.identifier_token, "Expected alias name after 'as'.");
+                alias = self.previous().value;
+            }
+        } else if (self.match(&.{.identifier_token})) {
+            const mod_name = self.previous().value;
+            path = mod_name;
+            alias = mod_name;
+        } else {
+            return self.reportError(self.peek(), "Expected string path or module identifier after 'import'.");
         }
 
-        _ = try self.consume(.semicolon_token, "Expected ';' after the import path.");
+        _ = try self.consume(.semicolon_token, "Expected ';' after import statement.");
 
         const node = try self.allocator.create(AstNode);
-        node.* = .{ .import_stmt = .{
-            .path = path_token.value,
-            .alias = alias,
-        } };
-
+        node.* = .{ .import_stmt = .{ .path = path, .alias = alias } };
         return node;
     }
 
@@ -458,7 +462,7 @@ pub const Parser = struct {
         const expr = try self.parsePipeline();
 
         if (self.match(&.{.catch_token})) {
-            _ = try self.consume(.pipe_token, "Expected '|' after the 'catch' keyword.");
+            _ = try self.consume(.pipe_token, "Expected '|' after 'catch' keyword.");
             const err_token = try self.consume(.identifier_token, "Expected error variable name.");
             _ = try self.consume(.pipe_token, "Expected '|' to close the error variable.");
 
@@ -484,14 +488,7 @@ pub const Parser = struct {
 
         if (self.match(&.{.assign_token})) {
             const equals = self.previous();
-
             const value = try self.parseAssignment();
-
-            if (expr.* == .identifier or expr.* == .index_expr) {
-                const node = try self.allocator.create(AstNode);
-                node.* = .{ .binary_expr = .{ .left = expr, .operator = equals, .right = value } };
-                return node;
-            }
 
             if (expr.* == .identifier or expr.* == .index_expr or expr.* == .property_access_expr) {
                 const node = try self.allocator.create(AstNode);
@@ -499,7 +496,7 @@ pub const Parser = struct {
                 return node;
             }
 
-            return self.reportError(equals, "Invalid assignment target. You can only assign to variables or indexes.");
+            return self.reportError(equals, "Invalid assignment target. You can only assign to variables, arrays or structs.");
         }
 
         return expr;

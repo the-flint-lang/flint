@@ -510,21 +510,20 @@ pub const CEmitter = struct {
             return;
         }
 
-        if (std.mem.eql(u8, name, "print")) {
-            try writer.print("flint_print", .{});
-            return;
-        }
-        if (std.mem.eql(u8, name, "len")) {
-            try writer.print("flint_len", .{});
-            return;
-        }
-        if (std.mem.eql(u8, name, "push")) {
-            try writer.print("flint_push", .{});
-            return;
-        }
-        if (std.mem.eql(u8, name, "range")) {
-            try writer.print("flint_range", .{});
-            return;
+        const built_ins = [_][]const u8{
+            "print",
+            "len",
+            "push",
+            "range",
+            "expect",
+            "fallback",
+        };
+
+        for (built_ins) |built| {
+            if (std.mem.eql(u8, built, name)) {
+                try writer.print("flint_{s}", .{name});
+                return;
+            }
         }
 
         try writer.print("{s}", .{name});

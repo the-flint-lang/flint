@@ -5,6 +5,8 @@
 #include <stddef.h>
 #include <string.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 // ==========================================
 // STRING SLICES
@@ -281,5 +283,64 @@ FlintValue flint_fetch(flint_str url);
 FlintValue flint_parse_json(flint_str text);
 FlintValue flint_dict_get(FlintDict *d, flint_str key);
 static long long fast_atoll(const char **p);
+
+//==
+
+// ============================================================================
+// A BLINDAGEM DO AUTO-BOXING E MACROS VARIÁDICAS
+// ============================================================================
+
+static inline FlintValue flint_box_str_safe(flint_str s)
+{
+    return (FlintValue){FLINT_VAL_STR, .as.s = s};
+}
+static inline FlintValue flint_box_int_safe(int i)
+{
+    return (FlintValue){FLINT_VAL_INT, .as.i = i};
+}
+static inline FlintValue flint_box_bool_safe(bool b)
+{
+    return (FlintValue){FLINT_VAL_BOOL, .as.b = b};
+}
+static inline FlintValue flint_box_val_safe(FlintValue v)
+{
+    return v;
+}
+
+#undef FLINT_BOX
+#define FLINT_BOX(...) _Generic((__VA_ARGS__), \
+    int: flint_box_int_safe,                   \
+    bool: flint_box_bool_safe,                 \
+    flint_str: flint_box_str_safe,             \
+    FlintValue: flint_box_val_safe)(__VA_ARGS__)
+
+#define flint_expect(v, ...) flint_expect_inner((v), (__VA_ARGS__))
+#define flint_fallback(v, ...) flint_fallback_inner((v), FLINT_BOX(__VA_ARGS__))
+
+static inline FlintValue flint_expect_inner(FlintValue v, flint_str msg)
+{
+    if (v.type == FLINT_VAL_ERROR || v.type == FLINT_VAL_NULL)
+    {
+        printf("\033[31m[FLINT] FATAL PIPELINE EXPECTATION FAILED\033[0m\n");
+
+        printf("\033[31mMessage: %.*s\033[0m\n", (int)msg.len, msg.ptr);
+
+        if (v.type == FLINT_VAL_ERROR && v.as.s.ptr)
+        {
+            printf("\033[33mDetails: %.*s\033[0m\n", (int)v.as.s.len, v.as.s.ptr);
+        }
+        exit(1);
+    }
+    return v;
+}
+
+static inline FlintValue flint_fallback_inner(FlintValue v, FlintValue alt)
+{
+    if (v.type == FLINT_VAL_ERROR || v.type == FLINT_VAL_NULL)
+    {
+        return alt;
+    }
+    return v;
+}
 
 #endif

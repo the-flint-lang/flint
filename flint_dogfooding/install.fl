@@ -1,0 +1,76 @@
+import "std/os.fl" as os;
+import "std/strings.fl" as str;
+
+fn get_dir_name() string {
+    const proc = os.spawn("pwd") catch |err| {
+        print("KERNEL ERROR: Unable to spawn process 'pwd'");
+        print(err);
+        os.exit(1);
+    };
+    const code = str.to_int(get(proc, "exit_code"));
+    const out = str.to_str(get(proc, "stdout"));
+
+    if (code != 0){
+        print("Erro ao rodar 'pwd'");
+        os.exit(1);
+    }
+
+    const path = out ~> str.split("/");  
+    const lenth = len(path) - 1;
+
+    return path[lenth];
+}
+
+const SCRIPT_DIR = get_dir_name();
+
+const DEST_DIR = "/usr/local/bin";
+const DEST_BIN = DEST_DIR ~> str.concat("/flint");
+const BIN_SRC= SCRIPT_DIR ~> str.concat("/zig-out/bin/flint");
+
+const LIB_DEST_DIR = "/usr/local/lib/flint"
+const STD_SRC_DIR = SCRIPT_DIR ~> str.concat("/std");
+
+# verifica se o zig existe
+_ = const zig_version_proc = os.spawn("zig version") catch |err| {
+    print("KERNEL ERROR: Unable to spawn process 'zig version'");
+    print(err);
+    os.exit(1);
+};
+
+if (code != 0){
+    print("Zig is not installed or could not be found.");
+    print("Zig 0.15.2 is recommended.");
+    os.exit(1);
+}
+
+print("Compiling Flint (AOT Compiler)");
+
+const zig_build = os.spawn("zig build -Doptimize=ReleaseFast -Dcpu=native") catch |err| {
+    print("KERNEL ERROR: Unable to spawn process 'zig build'");
+    print(err);
+    os.exit(1);
+};
+
+code = str.to_int(get(zig_build, "exit_code"));
+
+if (code != 0){
+    print("Zig is not installed or could not be found.");
+    print("Zig 0.15.2 is recommended.");
+    os.exit(1);
+}
+
+print("Binary compiled: " ~> str.concat(BIN_SRC));
+
+print("Installing binary to $DEST_BIN...");
+
+const install_proc = os.spawn("sudo install -m 0755 " ~> str.concat(BIN_SRC) ~> str.concat(" ") ~> str.concat(DEST_BIN)) catch |err| {
+    print("KERNEL ERROR: Unable to spawn process 'sudo install'");
+    print(err);
+    os.exit(1);
+};
+
+code = str.to_int(get(install_proc, "exit_code"));
+
+print("Installing Standard Library to " ~> str.concat(LIB_DEST_DIR) ~> str.concat("..."));
+sudo mkdir -p "$LIB_DEST_DIR"
+
