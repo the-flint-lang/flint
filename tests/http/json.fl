@@ -1,15 +1,19 @@
+import "std/io.fl" as io;
+import "std/http.fl" as http;
+import "std/json.fl" as json;
+import "std/strings.fl" as str;
+import "std/utils.fl" as utils;
+import "std/os.fl" as os;
+
 print("Fetching data from GitHub...");
 
-# 1. Fetch the raw data with Resilience
-const raw_payload = fetch("https://api.github.com/users/lucaas-d3v") catch |e| {
+const raw_payload = http.fetch("https://api.github.com/users/lucaas-d3v") catch |e| {
     print(e);
-    exit(1);
+    os.exit(1);
 };
 
-# 2. Converts text to native Memoria structure (FlintDict)
-const my_profile = parse_json(to_str(raw_payload));
+const my_profile = json.parse(str.to_str(raw_payload));
 
-# 3. Access properties with elegant dynamic typing
 print("\n=== DEVELOPER PROFILE ===");
 print("Login:");
 print(get(my_profile, "login"));

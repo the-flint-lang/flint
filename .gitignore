@@ -6,3 +6,7 @@ erro
 .venv
 
 !tests/*vscode-extension/*.vsix
+
+# Release Tools
+zemit
+zemit.toml

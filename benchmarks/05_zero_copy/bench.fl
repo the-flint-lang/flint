@@ -1,9 +1,9 @@
+import "std/os.fl" as os;
+
 print("Starting heavy copy (Flint - Kernel Space)...");
-
-_ = copy("monster_1GB.bin", "clone_flint1.bin") catch |err| { print(err); exit(1); };
-_ = copy("monster_1GB.bin", "clone_flint2.bin") catch |err| { print(err); exit(1); };
-_ = copy("monster_1GB.bin", "clone_flint3.bin") catch |err| { print(err); exit(1); };
-_ = copy("monster_1GB.bin", "clone_flint4.bin") catch |err| { print(err); exit(1); };
-_ = copy("monster_1GB.bin", "clone_flint5.bin") catch |err| { print(err); exit(1); };
-
+_ = os.copy("monster_1GB.bin", "clone_flint1.bin") catch |err| { print(err); os.exit(1); };
+_ = os.copy("monster_1GB.bin", "clone_flint2.bin") catch |err| { print(err); os.exit(1); };
+_ = os.copy("monster_1GB.bin", "clone_flint3.bin") catch |err| { print(err); os.exit(1); };
+_ = os.copy("monster_1GB.bin", "clone_flint4.bin") catch |err| { print(err); os.exit(1); };
+_ = os.copy("monster_1GB.bin", "clone_flint5.bin") catch |err| { print(err); os.exit(1); };
 print("Flint: 5GB copied via sendfile.");

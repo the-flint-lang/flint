@@ -1,20 +1,17 @@
+import "std/os.fl" as os;
+
 print("====================================================");
 print("     FLINT BENCHMARK: AOT STRUCTS vs PYDANTIC       ");
 print("====================================================");
-
 print("\n1. [PREPARATION] Generating massive noisy JSON...");
-exec("python3 gen_data.py") ~> print();
-
+os.exec("python3 gen_data.py") ~> print();
 print("2. [COMPILATION] Optimizing Flint binary with C99 Structs...");
-exec("flint build bench.fl") ~> print();
-
+os.exec("flint build bench.fl") ~> print();
 print("3. [DUEL] Starting Hyperfine (3 runs)...");
 print("----------------------------------------------------\n\n");
-
 for i in range(1, 4){
-    const result = exec("hyperfine --warmup 2 './bench' '../../.venv/bin/python3 bench.py'");
+    const result = os.exec("hyperfine --warmup 2 './bench' '../../.venv/bin/python3 bench.py'");
     print(result);
 }
-
 print("\n----------------------------------------------------");
 print("Benchmark completed.");

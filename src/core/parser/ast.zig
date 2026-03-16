@@ -9,6 +9,7 @@ pub const NodeType = enum {
     var_decl,
     struct_decl,
     import_stmt,
+    return_stmt,
     if_stmt,
 
     call_expr,
@@ -34,6 +35,7 @@ pub const AstNode = union(NodeType) {
     },
 
     function_decl: struct {
+        is_extern: bool,
         name: []const u8,
         return_type: Token,
         arguments: []const *AstNode,
@@ -55,6 +57,11 @@ pub const AstNode = union(NodeType) {
 
     import_stmt: struct {
         path: []const u8,
+        alias: ?[]const u8,
+    },
+
+    return_stmt: struct {
+        value: ?*AstNode,
     },
 
     if_stmt: struct {
@@ -65,7 +72,7 @@ pub const AstNode = union(NodeType) {
 
     call_expr: struct {
         line: u32,
-        callee: []const u8,
+        callee: *AstNode,
         arguments: []const *AstNode,
     },
 

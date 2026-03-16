@@ -4,6 +4,8 @@
 
 # > flint
 
+[![Flint CI](https://github.com/lucaas-d3v/flint/actions/workflows/ci.yml/badge.svg)](https://github.com/lucaas-d3v/flint/actions/workflows/ci.yml)
+
 **A pipeline-oriented system language for robust CLI tools.** *Stop writing fragile Bash. Stop waiting for Python to boot.*
 
 Flint is a statically-typed, ahead-of-time (AOT) compiled language designed specifically to replace complex shell scripts and slow-starting interpreted languages in DevOps and infrastructure environments. It transpiles to pure C99, yielding dependency-free native binaries that execute in milliseconds.
@@ -172,16 +174,12 @@ git clone https://codeberg.org/lucaas-d3v/flint.git
 cd flint
 zig build -Doptimize=ReleaseFast
 sudo ./install.sh
-
-
 ```
 
 Compile and run your first script:
 
 ```bash
 flint run my_script.fl
-
-
 ```
 
 *(Use `flint build my_script.fl` to generate the standalone, dependency-free binary).*
@@ -196,13 +194,11 @@ Since Flint is fully independent, the extension is distributed directly via this
 
 **How to install:**
 
-1. Download the `flint-lang-1.7.1.vsix` file from the Releases page.
+1. Download the `flint-lang-1.7.2.vsix` file from the Releases page.
 2. Open your terminal and run:
 
 ```bash
-code --install-extension flint-lang-1.7.1.vsix
-
-
+code --install-extension flint-lang-1.7.2.vsix
 ```
 
 *(Alternatively, open VS Code, go to the Extensions tab, click the `...` menu at the top right, and select "Install from VSIX...")*
@@ -219,3 +215,7 @@ Flint is highly experimental but heavily optimized for its core use cases. The v
 * **Streaming Data Pipelines:** Shifting from memory-centric parsing to chunk-based streaming (like `awk` or `jq`) for multi-gigabyte log processing without RAM overhead.
 * **Native Concurrency:** Safe, async HTTP requests and process pooling.
 * **Language Server Protocol (LSP):** Real-time error linting and autocomplete directly in the editor.
+
+<!-- ## Star history
+
+[![Star History Chart](https://api.star-history.com/svg?repos=lucaas-d3v/flint&type=Date)](https://star-history.com/#lucaas-d3v/flint) -->

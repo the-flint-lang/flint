@@ -1,5 +1,8 @@
+import "std/io.fl" as io;
+import "std/os.fl" as os;
+
 fn check_arguments() void {
-    const my_args = args();
+    const my_args = os.args();
     
     print("Test 2: Listing passed arguments...");
     

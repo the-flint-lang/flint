@@ -1,6 +1,9 @@
-const size = file_size("tests/io/file_size.fl") catch |err| {
+import "std/io.fl" as io;
+import "std/os.fl" as os;
+
+const size = os.file_size("tests/io/file_size.fl") catch |err| {
     print(err);
-    exit(1);
+    os.exit(1);
 };
 
 print(size);

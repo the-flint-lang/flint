@@ -47,9 +47,15 @@ pub const CEmitter = struct {
     fn visitFunctionDecl(self: *CEmitter, node: *AstNode, writer: anytype) !void {
         const func = node.function_decl;
 
+        // if it is a native C function, the C Emitter does not need to generate the body,
+        // because the Clang linker will tie this with flint_rt.c
+        if (func.is_extern) return;
+
         const ret_type = switch (func.return_type._type) {
             .void_token => "void",
             .integer_type_token => "long long",
+            .value_type_token => "FlintValue",
+            .array_type_token => "flint_str_array",
             .boolean_type_token => "bool",
             else => "flint_str", // Default fallback
         };
@@ -62,6 +68,8 @@ pub const CEmitter = struct {
             const c_type = switch (arg_type_tok) {
                 .integer_type_token => "long long",
                 .boolean_type_token => "bool",
+                .value_type_token => "FlintValue",
+                .array_type_token => "flint_str_array",
                 else => "flint_str",
             };
 
@@ -99,6 +107,7 @@ pub const CEmitter = struct {
             .dict_expr => try self.visitDictExpr(node, writer),
             .catch_expr => try self.visitCatchExpr(node, writer),
             .struct_decl => try self.visitStructDecl(node, writer),
+            .return_stmt => try self.visitReturnStmt(node, writer),
             .property_access_expr => try self.visitPropertyAccessExpr(node, writer),
 
             else => {
@@ -108,12 +117,23 @@ pub const CEmitter = struct {
         }
     }
 
+    fn visitReturnStmt(self: *CEmitter, node: *AstNode, writer: anytype) !void {
+        try writer.print("return", .{});
+
+        if (node.return_stmt.value) |val| {
+            try writer.print(" ", .{});
+            try self.visitNode(val, writer);
+        }
+    }
+
     fn getCTypeFromToken(self: *CEmitter, token: Token) []const u8 {
         _ = self;
         return switch (token._type) {
             .string_type_token => "flint_str",
             .integer_type_token => "long long",
             .boolean_type_token => "bool",
+            .value_type_token => "FlintValue",
+            .array_type_token => "flint_str_array",
             .identifier_token => token.value,
             else => "void*",
         };
@@ -129,11 +149,16 @@ pub const CEmitter = struct {
         }
         try writer.print("}} {s};\n\n", .{struct_node.name});
 
-        try writer.print("static {s} __parse_{s}_from_dict(FlintDict* d) {{\n", .{ struct_node.name, struct_node.name });
+        // 1. A MÁGICA DE DESEMPACOTAMENTO ACONTECE AQUI
+        // Agora a função interna recebe o FlintValue empacotado que o parser JSON devolve
+        try writer.print("static {s} __parse_{s}_from_val(FlintValue v_envelope) {{\n", .{ struct_node.name, struct_node.name });
+
+        // Proteção contra Null Pointers se o JSON vier quebrado
+        try writer.print("    FlintDict* d = (v_envelope.type == FLINT_VAL_DICT) ? v_envelope.as.d : NULL;\n", .{});
         try writer.print("    {s} _obj;\n", .{struct_node.name});
 
         for (struct_node.fields) |field| {
-            try writer.print("    FlintValue _v_{s} = flint_dict_get(d, FLINT_STR(\"{s}\"));\n", .{ field.name, field.name });
+            try writer.print("    FlintValue _v_{s} = d ? flint_dict_get(d, FLINT_STR(\"{s}\")) : (FlintValue){{FLINT_VAL_NULL}};\n", .{ field.name, field.name });
 
             if (field._type._type == .string_type_token) {
                 try writer.print("    _obj.{s} = (_v_{s}.type == FLINT_VAL_STR) ? _v_{s}.as.s : FLINT_STR(\"\");\n", .{ field.name, field.name, field.name });
@@ -188,18 +213,17 @@ pub const CEmitter = struct {
 
         try writer.print("\n#line {d} \"{s}\"\n    ", .{ call.line, self.source_file });
 
-        if (std.mem.eql(u8, call.callee, "parse_json_as")) {
+        if (call.callee.* == .identifier and std.mem.eql(u8, call.callee.identifier.name, "parse_json_as")) {
             if (call.arguments.len != 2) return error.InvalidArgumentCount;
-
             const struct_name = call.arguments[0].identifier.name;
 
-            try writer.print("__parse_{s}_from_dict(flint_parse_json(", .{struct_name});
+            try writer.print("__parse_{s}_from_val(flint_parse_json(", .{struct_name});
             try self.visitNode(call.arguments[1], writer);
             try writer.print("))", .{});
             return;
         }
 
-        try self.writeMappedIdentifier(call.callee, writer);
+        try self.visitNode(call.callee, writer);
         try writer.print("(", .{});
 
         for (call.arguments, 0..) |arg, i| {
@@ -215,7 +239,7 @@ pub const CEmitter = struct {
         const pipe = node.pipeline_expr;
         const right_call = pipe.right_call.call_expr;
 
-        try self.writeMappedIdentifier(right_call.callee, writer);
+        try self.visitNode(right_call.callee, writer);
         try writer.print("(", .{});
 
         try self.visitNode(pipe.left, writer);
@@ -486,67 +510,23 @@ pub const CEmitter = struct {
             return;
         }
 
-        const stdlibs = [_][]const u8{
-            // string
-            "grep",
-            "join",
-            "trim",
-            "split",
-            "replace",
-            "concat",
-            "count_matches",
-            "to_str",
-            "int_to_str",
-
-            // utils
-            "to_int",
-
-            // arays
-            "lines",
-            "args",
-            "len",
-            "range",
-            "push",
-
-            // i/o
-            "print",
-            "exec",
-            "spawn",
-
-            // filesystem
-            "read_file",
-            "write_file",
-            "file_exists",
-            "mkdir",
-            "rm",
-            "mv",
-            "copy",
-            "rm_dir",
-            "touch",
-            "ls",
-            "is_dir",
-            "is_file",
-            "file_size",
-
-            // user space
-            "env",
-            "exit",
-
-            // http
-            "fetch",
-            "parse_json",
-
-            // errors
-            "is_err",
-            "get_err",
-        };
-
-        for (stdlibs) |lib| {
-            if (std.mem.eql(u8, name, lib)) {
-                try writer.print("flint_{s}", .{name});
-                return;
-            }
+        if (std.mem.eql(u8, name, "print")) {
+            try writer.print("flint_print", .{});
+            return;
         }
+        if (std.mem.eql(u8, name, "len")) {
+            try writer.print("flint_len", .{});
+            return;
+        }
+        if (std.mem.eql(u8, name, "push")) {
+            try writer.print("flint_push", .{});
+            return;
+        }
+        if (std.mem.eql(u8, name, "range")) {
+            try writer.print("flint_range", .{});
+            return;
+        }
+
         try writer.print("{s}", .{name});
     }
 };

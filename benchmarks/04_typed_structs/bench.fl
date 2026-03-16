@@ -1,11 +1,11 @@
+import "std/io.fl" as io;
+
 struct Config {
     target_id: int,
     target_name: string,
     target_active: bool
 }
 
-const payload = read_file("typed_data.json");
-
+const payload = io.read_file("typed_data.json");
 const cfg = parse_json_as(Config, payload);
-
 print(cfg.target_name);

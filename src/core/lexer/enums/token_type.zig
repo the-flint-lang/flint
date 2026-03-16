@@ -33,6 +33,10 @@ pub const TokenType = enum {
     import_token,
     struct_token,
     catch_token,
+    as_token,
+    extern_token,
+    value_type_token,
+    array_type_token,
 
     and_token,
     or_token,

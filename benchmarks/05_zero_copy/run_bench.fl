@@ -1,9 +1,11 @@
+import "std/os.fl" as os;
+import "std/strings.fl" as str;
+
 const cmd = "hyperfine "
-    ~> concat(" --min-runs 5")
-    ~> concat(" --show-output")
-    ~> concat(" --prepare 'sync; echo 3 | tee /proc/sys/vm/drop_caches || true' ")
-    ~> concat(" --cleanup 'rm -f clone*.bin' ")
-    ~> concat(" './bench' 'python3 bench.py' 'bash bench.sh'");
+    ~> str.concat(" --min-runs 5")
+    ~> str.concat(" --show-output")
+    ~> str.concat(" --prepare 'sync; echo 3 | tee /proc/sys/vm/drop_caches || true' ")
+    ~> str.concat(" --cleanup 'rm -f clone*.bin' ")
+    ~> str.concat(" './bench' 'python3 bench.py' 'bash bench.sh'");
 
-
-const result = exec(cmd);
+const result = os.exec(cmd);
