@@ -310,6 +310,8 @@ static inline FlintValue flint_box_val_safe(FlintValue v)
 #undef FLINT_BOX
 #define FLINT_BOX(...) _Generic((__VA_ARGS__), \
     int: flint_box_int_safe,                   \
+    long: flint_box_int_safe,                  \
+    long long: flint_box_int_safe,             \
     bool: flint_box_bool_safe,                 \
     flint_str: flint_box_str_safe,             \
     FlintValue: flint_box_val_safe)(__VA_ARGS__)
