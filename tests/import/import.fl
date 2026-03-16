@@ -1,8 +1,9 @@
-import "math.fl" as m;
+import "./math.fl" as m; 
+import "std/io.fl" as io;
+import "std/strings.fl" as str;
 
-# Função local com o mesmo nome (colisão proposital)
 fn somar(a: int, b: int) int {
     return 0; 
 }
 
-print(int_to_str(m.dobro(5)));
+print(str.int_to_str(m.dobro(5)));

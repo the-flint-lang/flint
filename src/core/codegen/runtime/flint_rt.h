@@ -173,8 +173,15 @@ static inline FlintValue flint_identity(FlintValue v) { return v; }
     const char *: flint_make_str,  \
     FlintValue: flint_identity)(X)
 
-#define FLINT_SET(dict, key, val) flint_dict_set((dict), (key), FLINT_BOX(val))
+static inline void flint_dict_set_from_val(FlintValue v, flint_str key, FlintValue val)
+{
+    if (v.type == FLINT_VAL_DICT && v.as.d)
+        flint_dict_set(v.as.d, key, val);
+}
 
+#define FLINT_SET(obj, key, val) _Generic((obj), \
+    FlintDict *: flint_dict_set,                 \
+    FlintValue: flint_dict_set_from_val)(obj, key, FLINT_BOX(val))
 /* =========================
    PRINT
    ========================= */
@@ -259,6 +266,7 @@ static inline long long flint_to_int(FlintValue v)
    ========================= */
 
 flint_int_array flint_range(long long start, long long end);
+bool flint_str_eql(flint_str a, flint_str b);
 
 /* =========================
    NETWORK
@@ -270,7 +278,7 @@ FlintValue flint_fetch(flint_str url);
    JSON
    ========================= */
 
-FlintDict *flint_parse_json(flint_str text);
+FlintValue flint_parse_json(flint_str text);
 FlintValue flint_dict_get(FlintDict *d, flint_str key);
 static long long fast_atoll(const char **p);
 

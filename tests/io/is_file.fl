@@ -1,6 +1,9 @@
-if is_file("is_file.fl") {
+import "std/io.fl" as io;
+import "std/os.fl" as os;
+
+if os.is_file("is_file.fl") {
     print("Is a file");
-    exit(0);
+    os.exit(0);
 } 
 
 print("Not is a file");

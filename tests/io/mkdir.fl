@@ -1,11 +1,14 @@
-_ = mkdir("tests/io/test_mkdir") catch |err| {
+import "std/io.fl" as io;
+import "std/os.fl" as os;
+
+_ = os.mkdir("tests/io/test_mkdir") catch |err| {
     print(err);
-    exit(1);
+    os.exit(1);
 };
 
-_ = rm_dir("tests/io/test_mkdir") catch |err| {
+_ = os.rm_dir("tests/io/test_mkdir") catch |err| {
     print(err);
-    exit(1);
+    os.exit(1);
 };
 
 print("ok");

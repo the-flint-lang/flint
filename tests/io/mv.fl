@@ -1,25 +1,28 @@
-_ = touch("test_file") catch |err| {
+import "std/io.fl" as io;
+import "std/os.fl" as os;
+
+_ = os.touch("test_file") catch |err| {
     print(err);
-    exit(1);
+    os.exit(1);
 };
 
-_ = mkdir("test_dir") catch |err| {
+_ = os.mkdir("test_dir") catch |err| {
     print(err);
-    exit(1);
+    os.exit(1);
 };
 
-_ = mv("test_file", "test_dir/test_file") catch |err| {
+_ = os.mv("test_file", "test_dir/test_file") catch |err| {
     print(err);
-    exit(1);
+    os.exit(1);
 };
 
-_ = rm("test_dir/test_file") catch |err| {
+_ = os.rm("test_dir/test_file") catch |err| {
     print(err);
-    exit(1);
+    os.exit(1);
 };
 
-_ = rm_dir("test_dir") catch |err| {
+_ = os.rm_dir("test_dir") catch |err| {
     print(err);
-    exit(1);
+    os.exit(1);
 };
 

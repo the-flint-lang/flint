@@ -1,0 +1,14 @@
+# std/io.fl
+
+extern fn flint_read_file(path: string) val; # Usa 'val' porque interage com o SO e pode falhar
+extern fn flint_write_file(text: string, path: string) val;
+
+# public API
+
+fn read_file(path: string) val {
+    return flint_read_file(path);
+}
+
+fn write_file(text: string, path: string) val {
+    return flint_write_file(text, path);
+}

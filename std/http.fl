@@ -1,0 +1,8 @@
+# std/http.fl
+
+extern fn flint_fetch(url: string) val;
+
+# public API
+fn fetch(url: string) val { 
+    return flint_fetch(url); 
+}

@@ -53,7 +53,7 @@ pub const Parser = struct {
     fn parseDeclaration(self: *Parser) anyerror!*AstNode {
         if (self.match(&.{.import_token})) return self.parseImport();
         if (self.match(&.{.struct_token})) return self.parseStructDecl();
-        if (self.match(&.{.fn_token})) return self.parseFunctionDeclaration();
+        if (self.match(&.{ .fn_token, .extern_token })) return self.parseFunctionDeclaration();
         if (self.match(&.{ .var_token, .const_token })) return self.parseVarDecl();
 
         return self.parseStatement();
@@ -151,6 +151,10 @@ pub const Parser = struct {
     fn parseFunctionDeclaration(self: *Parser) anyerror!*AstNode {
         const node = try self.allocator.create(AstNode);
 
+        const is_extern = self.previous()._type == .extern_token;
+
+        if (is_extern) _ = try self.consume(.fn_token, "'fn' expected after extern");
+
         const name = try self.consume(.identifier_token, "function name expected");
 
         _ = try self.consume(.lparen_token, "'(' expected after function name");
@@ -159,12 +163,19 @@ pub const Parser = struct {
 
         const return_type = self.advance();
 
-        _ = try self.consume(.lbrace_token, "'{' expected before function body");
-        const body = try self.parseBody();
-        _ = try self.consume(.rbrace_token, "'}' expected to close function body");
+        var body: []const *AstNode = &.{};
+
+        if (is_extern) {
+            _ = try self.consume(.semicolon_token, "Expected ';' after extern function signature.");
+        } else {
+            _ = try self.consume(.lbrace_token, "'{' expected before function body");
+            body = try self.parseBody();
+            _ = try self.consume(.rbrace_token, "'}' expected to close function body");
+        }
 
         node.* = .{
             .function_decl = .{
+                .is_extern = is_extern,
                 .name = name.value,
                 .arguments = args,
                 .return_type = return_type,

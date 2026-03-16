@@ -115,20 +115,38 @@ const Linker = struct {
         var local_stmts = std.ArrayList(*AstNode).empty;
         defer local_stmts.deinit(self.allocator);
 
+        // 1. Dicionário para catalogar os aliases importados NESTE arquivo
+        var local_aliases = std.StringHashMap(void).init(self.allocator);
+        defer local_aliases.deinit();
+
         for (result_ptr.ast.program.statements) |stmt| {
             if (stmt.* == .import_stmt) {
                 const import_raw = stmt.import_stmt.path;
                 const clean_path = import_raw[0..import_raw.len];
-
                 const next_alias = stmt.import_stmt.alias;
 
-                const next_file = try std.fs.path.join(self.allocator, &.{ base_dir, clean_path });
-                defer self.allocator.free(next_file);
+                var next_file: []const u8 = undefined;
 
+                if (std.mem.startsWith(u8, clean_path, "./") or std.mem.startsWith(u8, clean_path, "../")) {
+                    next_file = try std.fs.path.join(self.allocator, &.{ base_dir, clean_path });
+                } else {
+                    const std_base = std.posix.getenv("FLINT_LIB_PATH") orelse "/usr/local/lib/flint";
+                    next_file = try std.fs.path.join(self.allocator, &.{ std_base, clean_path });
+                }
+
+                defer self.allocator.free(next_file);
                 try self.linkFile(next_file, next_alias);
+
+                // Cadastra o alias localmente para sabermos quem ele é
+                if (next_alias) |a| try local_aliases.put(a, {});
             } else {
                 try local_stmts.append(self.allocator, stmt);
             }
+        }
+
+        // 2. Resolve os acessos a namespace ANTES de aplicar o escopo global
+        for (local_stmts.items) |stmt| {
+            try self.resolveAliases(stmt, &local_aliases);
         }
 
         if (current_alias) |alias| {
@@ -146,9 +164,11 @@ const Linker = struct {
 
         for (statements) |stmt| {
             if (stmt.* == .function_decl) {
-                try local_symbols.put(stmt.function_decl.name, {});
+                if (!stmt.function_decl.is_extern) try local_symbols.put(stmt.function_decl.name, {});
             } else if (stmt.* == .struct_decl) {
                 try local_symbols.put(stmt.struct_decl.name, {});
+            } else if (stmt.* == .var_decl) { // <--- ADICIONE ISTO
+                try local_symbols.put(stmt.var_decl.name, {});
             }
         }
 
@@ -158,10 +178,78 @@ const Linker = struct {
 
         for (statements) |stmt| {
             if (stmt.* == .function_decl) {
-                stmt.function_decl.name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ alias, stmt.function_decl.name });
+                if (!stmt.function_decl.is_extern) stmt.function_decl.name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ alias, stmt.function_decl.name });
             } else if (stmt.* == .struct_decl) {
                 stmt.struct_decl.name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ alias, stmt.struct_decl.name });
+            } else if (stmt.* == .var_decl) { // <--- ADICIONE ISTO
+                stmt.var_decl.name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ alias, stmt.var_decl.name });
             }
+        }
+    }
+
+    fn resolveAliases(self: *Linker, node: *AstNode, aliases: *std.StringHashMap(void)) anyerror!void {
+        switch (node.*) {
+            .function_decl => |*f| {
+                for (f.body) |stmt| try self.resolveAliases(stmt, aliases);
+            },
+            .if_stmt => |*i| {
+                try self.resolveAliases(i.condition, aliases);
+                for (i.then_branch) |stmt| try self.resolveAliases(stmt, aliases);
+                if (i.else_branch) |eb| for (eb) |stmt| try self.resolveAliases(stmt, aliases);
+            },
+            .for_stmt => |*f| {
+                try self.resolveAliases(f.iterable, aliases);
+                for (f.body) |stmt| try self.resolveAliases(stmt, aliases);
+            },
+            .var_decl => |*v| try self.resolveAliases(v.value, aliases),
+            .binary_expr => |*b| {
+                try self.resolveAliases(b.left, aliases);
+                try self.resolveAliases(b.right, aliases);
+            },
+            .unary_expr => |*u| try self.resolveAliases(u.right, aliases),
+            .pipeline_expr => |*p| {
+                try self.resolveAliases(p.left, aliases);
+                try self.resolveAliases(p.right_call, aliases);
+            },
+            .call_expr => |*c| {
+                try self.resolveAliases(c.callee, aliases);
+                for (c.arguments) |arg| try self.resolveAliases(arg, aliases);
+            },
+            .catch_expr => |*c| {
+                try self.resolveAliases(c.expression, aliases);
+                for (c.body) |stmt| try self.resolveAliases(stmt, aliases);
+            },
+            .array_expr => |*a| {
+                for (a.elements) |el| try self.resolveAliases(el, aliases);
+            },
+            .dict_expr => |*d| {
+                for (d.entries) |entry| {
+                    try self.resolveAliases(entry.key, aliases);
+                    try self.resolveAliases(entry.value, aliases);
+                }
+            },
+            .index_expr => |*i| {
+                try self.resolveAliases(i.left, aliases);
+                try self.resolveAliases(i.index, aliases);
+            },
+            .return_stmt => |*r| {
+                if (r.value) |val| try self.resolveAliases(val, aliases);
+            },
+            .property_access_expr => |*p| {
+                try self.resolveAliases(p.object, aliases);
+                if (p.object.* == .identifier) {
+                    if (aliases.contains(p.object.identifier.name)) {
+                        const new_name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ p.object.identifier.name, p.property_name });
+                        node.* = .{
+                            .identifier = .{
+                                ._type = .{ ._type = .identifier_token, .value = new_name, .line = 0, .column = 0 },
+                                .name = new_name,
+                            },
+                        };
+                    }
+                }
+            },
+            else => {},
         }
     }
 
@@ -421,6 +509,8 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
             },
             else => try io.stderr.print("Unexpected execution error.\n", .{}),
         }
+
+        std.fs.cwd().deleteFile(exe_name) catch {};
     }
 }
 

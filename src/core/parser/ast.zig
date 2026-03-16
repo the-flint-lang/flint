@@ -35,6 +35,7 @@ pub const AstNode = union(NodeType) {
     },
 
     function_decl: struct {
+        is_extern: bool,
         name: []const u8,
         return_type: Token,
         arguments: []const *AstNode,
