@@ -21,17 +21,14 @@ To build and test Flint locally, you need:
 - **Clang:** (to compile the emitted C code).
 - **libcurl:** Development headers (e.g., `libcurl4-openssl-dev` on Debian/Ubuntu) for the native `fetch()` function.
 
-### Building from Source
+### Building from Source (Self-Hosting)
 ```bash
-# Clone the repository
 git clone https://codeberg.org/lucaas-d3v/flint.git
 cd flint
 
-# Build the compiler
-zig build -Doptimize=ReleaseFast -Dcpu=native
-
-# The executable will be available at:
-./zig-out/bin/flint
+# Trigger bootstrap to build the initial compiler 
+# this will generate the flint binary and the native flint installation binary and run it afterwards
+./bootstrap.sh
 ```
 
 ### Codebase Anatomy
@@ -40,6 +37,7 @@ If you want to fix a bug or add a feature, here is where you should look:
 
 - `src/core/lexer/`: Tokenization logic and keyword hashing.
 - `src/core/parser/`: The AST generator. If you are adding new syntax (like a new loop type), start here.
+- `src/root.zig`: The Linker and Canonical Module Resolver.
 - `src/core/codegen/c_emitter.zig`: Translates the Zig AST into C99 code.
 - `src/core/codegen/runtime/`: Contains `flint_rt.h` and `flint_rt.c`. If you are adding a new built-in function (e.g., string manipulation, OS interaction), this is where it goes.
 
@@ -50,7 +48,7 @@ Flint uses a snapshot/sanity testing approach. All tests are `.fl` files located
 Before submitting any Pull Request, you must ensure the test battery passes:
 ```bash
 # Run the built-in test orchestrator
-./zig-out/bin/flint test
+flint test
 ```
 
 ### Adding a New Test
@@ -76,5 +74,5 @@ If you fix a bug or add a feature, please add a new `.fl` file to the `./tests/`
 1. Fork the repository and create your branch from `main`.
 2. **Discuss first:** If you are proposing a massive syntax change or a core architectural shift, please open an Issue first to discuss it. We want to avoid you wasting hours on a PR that doesn't align with Flint's roadmap.
 3. **Commit:** Write clear, descriptive commit messages.
-4. **Test:** Ensure `./zig-out/bin/flint test` reports all green.
+4. **Test:** Ensure `flint test` reports all green.
 5. **Open the PR:** Describe the problem you are solving and link to any relevant Issues.

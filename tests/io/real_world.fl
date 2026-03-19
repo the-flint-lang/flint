@@ -1,10 +1,10 @@
 import "./get_default_browser.fl";
-import "std/io.fl" as io;
-import "std/http.fl" as http;
-import "std/json.fl" as json;
-import "std/strings.fl" as str;
-import "std/utils.fl" as utils;
-import "std/os.fl" as os;
+import io;
+import http;
+import json;
+import strings;
+import utils;
+import os;
 
 print("================================================");
 print("    FLINT STATIC GENERATOR v1.0 (flint test)    ");
@@ -16,21 +16,23 @@ const req = http.fetch("https://dummyjson.com/quotes/random") catch |e| {
     print(e);
     os.exit(1);
 };
-const data = json.parse(str.to_str(req));
+const data = json.parse(strings.to_str(req));
 
-const quote = str.to_str(get(data, "quote"));
-const author = str.to_str(get(data, "author"));
+const quote = strings.to_str(get(data, "quote"));
+const author = strings.to_str(get(data, "author"));
 
 print("2. Compiling HTML artifact in RAM...");
 
 var html = "<!DOCTYPE html><html><body style='font-family: system-ui; padding: 4rem; background: #1a1a1a; color: #fff;'>"
-    ~> str.concat("<h1 style='color: #4ade80;'>Flint Philosophy</h1>")
-    ~> str.concat("<blockquote style='font-size: 1.5rem; border-left: 4px solid #4ade80; padding-left: 1rem;'>")
-    ~> str.concat(quote)
-    ~> str.concat("</blockquote><p><b>- ")
-    ~> str.concat(author)
-    ~> str.concat("</b></p></body></html>");
+    ~> strings.concat("<h1 style='color: #4ade80;'>Flint Philosophy</h1>")
+    ~> strings.concat("<blockquote style='font-size: 1.5rem; border-left: 4px solid #4ade80; padding-left: 1rem;'>")
+    ~> strings.concat(quote)
+    ~> strings.concat("</blockquote><p><b>- ")
+    ~> strings.concat(author)
+    ~> strings.concat("</b></p></body></html>");
 
 print("3. Writing to hard drive...");
 io.write_file(html, "philosophy.html");
 print("\nAbsolute success!");
+
+os.rm("philosophy.html")~> os.assert("Erro is not possible to clean philosophy.html");

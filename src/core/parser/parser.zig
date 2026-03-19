@@ -264,7 +264,7 @@ pub const Parser = struct {
 
                 _ = try self.consume(.rparen_token, "Expected ')' after arguments.");
 
-                // Shielding v2: the called function can be an identifier (print) or namespace property access (aws.apply)
+                // Shielding the called function can be an identifier (print) or namespace property access (aws.apply)
                 if (expr.* != .identifier and expr.* != .property_access_expr) {
                     return self.reportError(self.previous(), "Invalid function call.");
                 }
@@ -329,7 +329,7 @@ pub const Parser = struct {
         if (self.match(&.{.lbracket_token})) {
             var elements = std.ArrayList(*AstNode).empty;
 
-            // if array n is empty
+            // if array not is empty
             if (!self.check(.rbracket_token)) {
                 while (true) {
                     try elements.append(self.allocator, try self.parseExpression());
@@ -390,7 +390,7 @@ pub const Parser = struct {
 
     fn parseExpressionStatement(self: *Parser) anyerror!*AstNode {
         const expr = try self.parseExpression();
-        const last_token = self.previous(); // token logo após a expressão completa
+        const last_token = self.previous(); // token right after the complete expression
 
         if (!self.check(.semicolon_token)) {
             return self.reportError(last_token, "Expected ';' after expression.");
@@ -430,7 +430,7 @@ pub const Parser = struct {
         const name_token = try self.consume(.identifier_token, "Expected variable name.");
 
         if (self.match(&.{.colon_token})) {
-            if (!self.match(&.{ .integer_type_token, .string_type_token, .char_type_token, .boolean_type_token, .identifier_token })) {
+            if (!self.match(&.{ .integer_type_token, .string_type_token, .char_type_token, .boolean_type_token, .identifier_token, .value_type_token, .array_type_token })) {
                 return self.reportError(self.peek(), "Invalid or unknown type.");
             }
         }
@@ -509,7 +509,7 @@ pub const Parser = struct {
             const right = try self.parseEquality();
 
             if (right.* != .call_expr) {
-                return self.reportError(self.previous(), "O lado direito do operador de pipeline '~>' deve ser uma chamada de função.");
+                return self.reportError(self.previous(), "The right side of the '~>' pipeline operator must be a function call.");
             }
 
             const node = try self.allocator.create(AstNode);
@@ -517,7 +517,7 @@ pub const Parser = struct {
                 .left = expr,
                 .right_call = right,
             } };
-            expr = node; // Encadeia da esquerda para a direita
+            expr = node; // Chain from left to right
         }
 
         return expr;

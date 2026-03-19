@@ -1,4 +1,4 @@
-import "std/io.fl" as io;
+import io;
 
 const greeting = "Test 1: Compiler Sanity OK";
 

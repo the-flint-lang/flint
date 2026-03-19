@@ -5,8 +5,7 @@ tests/teste.fl
 erro
 .venv
 
-!tests/*vscode-extension/*.vsix
-
+vscode-extension/flint-lang-*
 # Release Tools
 zemit
 zemit.toml

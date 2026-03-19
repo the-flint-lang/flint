@@ -1,5 +1,5 @@
-import "std/io.fl" as io;
-import "std/os.fl" as os;
+import io;
+import os;
 
 const size = os.file_size("tests/io/file_size.fl") catch |err| {
     print(err);

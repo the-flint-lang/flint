@@ -8,8 +8,21 @@ pub const CEmitter = struct {
     temp_counter: usize = 0,
     source_file: []const u8,
 
+    built_ins: [6][]const u8,
+
     pub fn init(allocator: std.mem.Allocator, source_file: []const u8) CEmitter {
-        return .{ .allocator = allocator, .source_file = source_file };
+        return .{
+            .allocator = allocator,
+            .source_file = source_file,
+            .built_ins = [_][]const u8{
+                "print",
+                "len",
+                "push",
+                "range",
+                "expect",
+                "fallback",
+            },
+        };
     }
 
     pub fn generate(self: *CEmitter, writer: anytype, program: *AstNode) !void {
@@ -17,12 +30,18 @@ pub const CEmitter = struct {
 
         if (program.* == .program) {
             for (program.program.statements) |stmt| {
-                if (stmt.* == .function_decl) {
-                    try self.visitFunctionDecl(stmt, writer);
-                    try writer.print("\n", .{});
-                } else if (stmt.* == .struct_decl) {
-                    try self.visitStructDecl(stmt, writer);
-                    try writer.print("\n", .{});
+                switch (stmt.*) {
+                    .function_decl => {
+                        try self.visitFunctionDecl(stmt, writer);
+                        try writer.print("\n", .{});
+                    },
+
+                    .struct_decl => {
+                        try self.visitStructDecl(stmt, writer);
+                        try writer.print("\n", .{});
+                    },
+
+                    else => {},
                 }
             }
         }
@@ -57,6 +76,7 @@ pub const CEmitter = struct {
             .value_type_token => "FlintValue",
             .array_type_token => "flint_str_array",
             .boolean_type_token => "bool",
+
             else => "flint_str", // Default fallback
         };
 
@@ -177,7 +197,7 @@ pub const CEmitter = struct {
 
     fn visitPropertyAccessExpr(self: *CEmitter, node: *AstNode, writer: anytype) !void {
         const prop_access = node.property_access_expr;
-        try writer.print("\n#line {d} \"{s}\"\n    ", .{ prop_access.line, self.source_file });
+        try writer.print("\n        #line {d} \"{s}\"\n    ", .{ prop_access.line, self.source_file });
 
         try writer.print("(", .{});
 
@@ -191,7 +211,7 @@ pub const CEmitter = struct {
     fn visitVarDecl(self: *CEmitter, node: *AstNode, writer: anytype) !void {
         const decl = node.var_decl;
 
-        try writer.print("\n#line {d} \"{s}\"\n    ", .{ decl.line, self.source_file });
+        try writer.print("\n    #line {d} \"{s}\"\n    ", .{ decl.line, self.source_file });
 
         if (std.mem.eql(u8, decl.name, "_")) {
             try writer.print("(void)(", .{});
@@ -211,7 +231,7 @@ pub const CEmitter = struct {
     fn visitCallExpr(self: *CEmitter, node: *AstNode, writer: anytype) !void {
         const call = node.call_expr;
 
-        try writer.print("\n#line {d} \"{s}\"\n    ", .{ call.line, self.source_file });
+        try writer.print("\n    #line {d} \"{s}\"\n    ", .{ call.line, self.source_file });
 
         if (call.callee.* == .identifier and std.mem.eql(u8, call.callee.identifier.name, "parse_json_as")) {
             if (call.arguments.len != 2) return error.InvalidArgumentCount;
@@ -498,8 +518,6 @@ pub const CEmitter = struct {
     }
 
     fn writeMappedIdentifier(self: *CEmitter, name: []const u8, writer: anytype) !void {
-        _ = self;
-
         if (std.mem.eql(u8, name, "get")) {
             try writer.print("FLINT_GET", .{});
             return;
@@ -510,16 +528,7 @@ pub const CEmitter = struct {
             return;
         }
 
-        const built_ins = [_][]const u8{
-            "print",
-            "len",
-            "push",
-            "range",
-            "expect",
-            "fallback",
-        };
-
-        for (built_ins) |built| {
+        for (self.built_ins) |built| {
             if (std.mem.eql(u8, built, name)) {
                 try writer.print("flint_{s}", .{name});
                 return;

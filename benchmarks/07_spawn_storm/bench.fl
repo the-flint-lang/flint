@@ -1,4 +1,4 @@
-import "std/os.fl" as os;
+import os;
 
 print("Starting Process Spawn Storm (Flint)...");
 for i in range(0, 500) {

@@ -1,5 +1,5 @@
-import "std/os.fl" as os;
-import "std/strings.fl" as str;
+import os;
+import strings;
 
 print("====================================================");
 print("        FLINT BENCHMARK ORCHESTRATOR v1.6           ");
@@ -18,6 +18,6 @@ for i in range(1, 5){
 
 print("----------------------------------------------------");
 print("Benchmark completed successfully.");
-_ = os.rm("bench") catch |err| { print("Error: " ~> str.concat(err)); os.exit(1); };
-_ = os.rm("bench_data.log") catch |err| { print("Error: " ~> str.concat(err)); os.exit(1); };
-_ = os.rm("run_bench") catch |err| { print("Error: " ~> str.concat(err)); os.exit(1); };
+_ = os.rm("bench") catch |err| { print("Error: " ~> strings.concat(err)); os.exit(1); };
+_ = os.rm("bench_data.log") catch |err| { print("Error: " ~> strings.concat(err)); os.exit(1); };
+_ = os.rm("run_bench") catch |err| { print("Error: " ~> strings.concat(err)); os.exit(1); };

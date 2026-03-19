@@ -1,5 +1,5 @@
-import "std/io.fl" as io;
-import "std/os.fl" as os;
+import io;
+import os;
 
 _ = os.touch("tests/io/test_rm_only") catch |err| {
     print(err);

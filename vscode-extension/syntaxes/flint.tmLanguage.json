@@ -87,7 +87,7 @@
             "patterns": [
                 {
                     "name": "support.function.builtin.flint",
-                    "match": "\\b(print|len|push|range|get|set|parse_json_as)\\b(?=\\s*\\()"
+                    "match": "\\b(print|len|push|range|get|set|parse_json_as|expect|fallback)\\b(?=\\s*\\()"
                 }
             ]
         },

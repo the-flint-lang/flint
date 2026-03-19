@@ -1,10 +1,10 @@
-import "std/io.fl" as io;
-import "std/strings.fl" as str;
-import "std/json.fl" as json;
-import "std/os.fl" as os;
+import io;
+import strings;
+import json;
+import os;
 
 const payload_box = io.read_file("typed_data.json") catch |err| { print(err); os.exit(1); };
-const payload = str.to_str(payload_box);
+const payload = strings.to_str(payload_box);
 const db = json.parse(payload);
 const status = get(db, "user_key_499999");
-print(str.to_str(status));
+print(strings.to_str(status));

@@ -1,4 +1,4 @@
-import "std/os.fl" as os;
+import os;
 
 print("Starting heavy copy (Flint - Kernel Space)...");
 _ = os.copy("monster_1GB.bin", "clone_flint1.bin") catch |err| { print(err); os.exit(1); };

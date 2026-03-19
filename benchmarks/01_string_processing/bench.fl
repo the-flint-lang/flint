@@ -1,8 +1,8 @@
-import "std/io.fl" as io;
-import "std/strings.fl" as str;
-import "std/os.fl" as os;
+import io;
+import str;
+import os;
 
 (io.read_file("bench_data.log") catch |err| { print(err); os.exit(1); }) 
-    ~> str.to_str()
-    ~> str.count_matches("ERROR")
+    ~> strings.to_str()
+    ~> strings.count_matches("ERROR")
     ~> print();

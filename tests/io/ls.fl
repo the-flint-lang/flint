@@ -1,6 +1,6 @@
-import "std/io.fl" as io;
-import "std/os.fl" as os;
-import "std/strings.fl" as str;
+import io;
+import os;
+import strings;
 
 const f = os.ls(".") catch |err| {
     print(err);
@@ -8,7 +8,7 @@ const f = os.ls(".") catch |err| {
 };
 
 var i = 0;
-for line in str.to_str(f) ~> str.lines() {
-    str.int_to_str(i) ~> str.concat(". ") ~> str.concat(line) ~> print();
+for line in strings.to_str(f) ~> strings.lines() {
+    strings.int_to_str(i) ~> strings.concat(". ") ~> strings.concat(line) ~> print();
     i = i + 1;
 }
