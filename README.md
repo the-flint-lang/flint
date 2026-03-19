@@ -209,7 +209,6 @@ Flint is highly experimental but heavily optimized for its core use cases. The v
 
 **Upcoming Milestones (v1.8+):**
 
-* **CLI Ergonomics:** Native parsing of `argc` and `argv` for interactive terminal tools.
 * **Streaming Data Pipelines:** Shifting from memory-centric parsing to chunk-based streaming (like `awk` or `jq`) for multi-gigabyte log processing without RAM overhead.
 * **Native Concurrency:** Safe, async HTTP requests and process pooling.
 * **Language Server Protocol (LSP):** Real-time error linting and autocomplete directly in the editor.
