@@ -144,7 +144,17 @@ const Linker = struct {
                 if (std.mem.startsWith(u8, formatted_path, "./") or std.mem.startsWith(u8, formatted_path, "../")) {
                     next_file = try std.fs.path.join(self.allocator, &.{ base_dir, formatted_path });
                 } else {
-                    const std_base = std.posix.getenv("FLINT_LIB_PATH") orelse "/usr/local/lib/flint";
+                    var std_base: []const u8 = "/usr/local/lib/flint";
+
+                    if (std.posix.getenv("FLINT_LIB_PATH")) |env_path| {
+                        std_base = env_path;
+                    } else {
+                        if (std.fs.cwd().openDir("std", .{})) |*dir| {
+                            dir.close();
+                            std_base = ".";
+                        } else |_| {}
+                    }
+
                     next_file = try std.fs.path.join(self.allocator, &.{ std_base, formatted_path });
                 }
 
