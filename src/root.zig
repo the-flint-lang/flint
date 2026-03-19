@@ -146,11 +146,12 @@ const Linker = struct {
                 } else {
                     var std_base: []const u8 = "/usr/local/lib/flint";
 
+                    var dir = std.fs.cwd().openDir("std", .{});
                     if (std.posix.getenv("FLINT_LIB_PATH")) |env_path| {
                         std_base = env_path;
                     } else {
-                        if (std.fs.cwd().openDir("std", .{})) |*dir| {
-                            dir.close();
+                        if (dir) |*dir_| {
+                            dir_.close();
                             std_base = ".";
                         } else |_| {}
                     }
