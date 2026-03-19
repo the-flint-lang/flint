@@ -10,6 +10,8 @@
 
 Flint is a statically-typed, ahead-of-time (AOT) compiled language designed specifically to replace complex shell scripts and slow-starting interpreted languages in DevOps and infrastructure environments. It transpiles to pure C99, yielding dependency-free native binaries that execute in milliseconds.
 
+Use Flint when Bash is too fragile for your data, Python is too slow to start, and Go/Rust are too verbose for a simple infrastructure script.
+
 ## The Engineering Dilemma
 
 If you are writing infrastructure tooling, you face a miserable trilemma today:
@@ -17,6 +19,15 @@ If you are writing infrastructure tooling, you face a miserable trilemma today:
 1. **Bash is a minefield:** Silent failures, whitespace explosions, and everything-is-a-string typing make scripts unmaintainable past 50 lines.
 2. **Python/Node.js are bloated:** Bootstrapping a VM/Interpreter just to parse a JSON or invoke an OS command adds unacceptable latency to fast-moving CLI workflows.
 3. **Go/Rust are verbose:** General-purpose systems languages require massive boilerplate for simple I/O, regex, and process invocation.
+
+## Stability & SemVer Contract
+
+Flint is currently in **v1.7.x**. 
+We adhere to the following stability guarantees:
+
+* **Core Syntax (Stable):** The pipeline operator (`~>`), variable declarations, structs, and control flow will not change.
+* **Standard Library (Evolving):** The `std` modules (`os`, `io`, `strings`, `http`, `json`) are subject to API changes (Breaking Changes Allowed) until v2.0.
+* **Memory Architecture (Stable):** The 4GB Virtual Arena and zero-copy string models are core to the language and will remain the foundation.
 
 ## Inside Flint (Architecture & Contributing)
 
