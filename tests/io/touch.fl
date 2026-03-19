@@ -1,11 +1,14 @@
-_ = touch("tests/io/teste.test") catch |err| {
+import io;
+import os;
+
+_ = os.touch("tests/io/teste.test") catch |err| {
     print(err);
-    exit(1);
+    os.exit(1);
 };
 
-_ = rm("tests/io/teste.test") catch |err| {
+_ = os.rm("tests/io/teste.test") catch |err| {
     print(err);
-    exit(1);
+    os.exit(1);
 };
 
 

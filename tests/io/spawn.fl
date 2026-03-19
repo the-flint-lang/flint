@@ -1,9 +1,14 @@
+import io;
+import os;
+import strings;
+import utils;
+
 print("Starting subprocess orchestration...");
 
-const proc = spawn("cat /pasta_que_nao_existe") catch |err| { 
+const proc = os.spawn("cat /pasta_que_nao_existe") catch |err| { 
     print("KERNEL ERROR: Unable to spawn!");
     print(err);
-    exit(1); 
+    os.exit(1); 
 };
 
 print("--- MEMORY STATE ---");
@@ -13,16 +18,12 @@ print(proc);
 print("Raw value of key 'exit_code':");
 print(get(proc, "exit_code"));
 
-print("Raw value of key 'stderr':");
-print(get(proc, "stderr"));
-print("--------------------------------------");
-
-if (to_int(get(proc, "exit_code")) != 0) {
+if (strings.to_int(get(proc, "exit_code")) != 0) {
     print("Success! The process failed natively.");
     print("Error Code:");
     print(get(proc, "exit_code"));
     print("STDERR output:");
     print(get(proc, "stderr"));
 } else {
-    print("Failed to else. The exit_code was interpreted as 0.");
+    print("Failed to else.");
 }

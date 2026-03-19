@@ -1,5 +1,9 @@
-import "math.fl";
+import "./math.fl" as m; 
+import io;
+import strings;
 
-print("Starting modular system...");
+fn somar(a: int, b: int) int {
+    return 0; 
+}
 
-sum(50, 50);
+print(strings.int_to_str(m.dobro(5)));

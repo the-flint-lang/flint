@@ -1,3 +1,8 @@
+import io;
+import http;
+import os;
+import strings;
+
 struct GithubUser {
     login: string,
     id: int,
@@ -5,10 +10,10 @@ struct GithubUser {
 }
 
 print("Fetching data...");
-const payload = fetch("https://api.github.com/users/lucaas-d3v") catch |e| { exit(1); };
+const payload = http.fetch("https://api.github.com/users/lucaas-d3v") catch |e| { os.exit(1); };
 
 print("Parsing directly into strongly typed Struct...");
-const user = parse_json_as(GithubUser, to_str(payload));
+const user = parse_json_as(GithubUser, strings.to_str(payload));
 
 print("Login:");
 print(user.login);

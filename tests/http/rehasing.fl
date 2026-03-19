@@ -1,17 +1,13 @@
+import json;
+import strings;
+
 print("Starting Memory Stress Test (Rehashing)...");
-
-const my_json = parse_json("{}");
-
+const my_json = json.parse("{}");
 print("Injecting 1,000 keys into the dictionary...");
 
 for i in range(0, 1000) {
-    # 1. Converts pure Integer to String
-    const num_str = int_to_str(i);
-    
-    # 2. Concatenate natively
-    const final_key = concat("key_", num_str);
-    
-    # 3. Inject into the Dictionary and force the Load Limit!
+    const num_str = strings.int_to_str(i);
+    const final_key = strings.concat("key_", num_str);
     set(my_json, final_key, i);
 }
 

@@ -1,5 +1,8 @@
+import io;
+import os;
+
 fn check_arguments() void {
-    const my_args = args();
+    const my_args = os.args();
     
     print("Test 2: Listing passed arguments...");
     

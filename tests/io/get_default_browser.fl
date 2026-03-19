@@ -1,10 +1,11 @@
-fn get_brwoser_bin_path_and_exec(name: string) void {
-    const path = exec("xdg-settings get default-web-browser") 
-        ~> trim() 
-        ~> split(".");
-    
-    const cmd = path[0] ~> concat(" ") ~> concat(name);
-    exec(cmd);
-}
+import os;
+import strings;
 
-exit(0);
+fn get_brwoser_bin_path_and_exec(name: string) void {
+    const path = os.exec("xdg-settings get default-web-browser") 
+        ~> strings.trim() 
+        ~> strings.split(".");
+    
+    const cmd = path[0] ~> strings.concat(" ") ~> strings.concat(name);
+    os.exec(cmd);
+}

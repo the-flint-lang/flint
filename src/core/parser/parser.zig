@@ -51,9 +51,9 @@ pub const Parser = struct {
     }
 
     fn parseDeclaration(self: *Parser) anyerror!*AstNode {
-        if (self.match(&.{.import_token})) return self.parseImport();
+        if (self.match(&.{.import_token})) return self.parseImportStmt();
         if (self.match(&.{.struct_token})) return self.parseStructDecl();
-        if (self.match(&.{.fn_token})) return self.parseFunctionDeclaration();
+        if (self.match(&.{ .fn_token, .extern_token })) return self.parseFunctionDeclaration();
         if (self.match(&.{ .var_token, .const_token })) return self.parseVarDecl();
 
         return self.parseStatement();
@@ -99,14 +99,28 @@ pub const Parser = struct {
         return node;
     }
 
-    fn parseImport(self: *Parser) anyerror!*AstNode {
-        const path_token = try self.consume(.string_literal_token, "Expected file path in quotes after 'import'.");
+    fn parseImportStmt(self: *Parser) !*AstNode {
+        var path: []const u8 = undefined;
+        var alias: ?[]const u8 = null;
 
-        _ = try self.consume(.semicolon_token, "Expected ';' after the import path.");
+        if (self.match(&.{.string_literal_token})) {
+            path = self.previous().value;
+            if (self.match(&.{.as_token})) {
+                _ = try self.consume(.identifier_token, "Expected alias name after 'as'.");
+                alias = self.previous().value;
+            }
+        } else if (self.match(&.{.identifier_token})) {
+            const mod_name = self.previous().value;
+            path = mod_name;
+            alias = mod_name;
+        } else {
+            return self.reportError(self.peek(), "Expected string path or module identifier after 'import'.");
+        }
+
+        _ = try self.consume(.semicolon_token, "Expected ';' after import statement.");
 
         const node = try self.allocator.create(AstNode);
-        node.* = .{ .import_stmt = .{ .path = path_token.value } };
-
+        node.* = .{ .import_stmt = .{ .path = path, .alias = alias } };
         return node;
     }
 
@@ -141,6 +155,10 @@ pub const Parser = struct {
     fn parseFunctionDeclaration(self: *Parser) anyerror!*AstNode {
         const node = try self.allocator.create(AstNode);
 
+        const is_extern = self.previous()._type == .extern_token;
+
+        if (is_extern) _ = try self.consume(.fn_token, "'fn' expected after extern");
+
         const name = try self.consume(.identifier_token, "function name expected");
 
         _ = try self.consume(.lparen_token, "'(' expected after function name");
@@ -149,12 +167,19 @@ pub const Parser = struct {
 
         const return_type = self.advance();
 
-        _ = try self.consume(.lbrace_token, "'{' expected before function body");
-        const body = try self.parseBody();
-        _ = try self.consume(.rbrace_token, "'}' expected to close function body");
+        var body: []const *AstNode = &.{};
+
+        if (is_extern) {
+            _ = try self.consume(.semicolon_token, "Expected ';' after extern function signature.");
+        } else {
+            _ = try self.consume(.lbrace_token, "'{' expected before function body");
+            body = try self.parseBody();
+            _ = try self.consume(.rbrace_token, "'}' expected to close function body");
+        }
 
         node.* = .{
             .function_decl = .{
+                .is_extern = is_extern,
                 .name = name.value,
                 .arguments = args,
                 .return_type = return_type,
@@ -166,7 +191,18 @@ pub const Parser = struct {
     }
 
     fn parseReturnStatement(self: *Parser) anyerror!*AstNode {
-        return try self.parseExpressionStatement();
+        var value: ?*AstNode = null;
+
+        if (!self.check(.semicolon_token)) {
+            value = try self.parseExpression();
+        }
+
+        _ = try self.consume(.semicolon_token, "Expected ';' after return value.");
+
+        const node = try self.allocator.create(AstNode);
+        node.* = .{ .return_stmt = .{ .value = value } };
+
+        return node;
     }
 
     fn parseArgs(self: *Parser) ![]const *AstNode {
@@ -212,6 +248,7 @@ pub const Parser = struct {
 
         return try self.parsePostfix();
     }
+
     fn parsePostfix(self: *Parser) anyerror!*AstNode {
         var expr = try self.parsePrimary();
 
@@ -224,20 +261,19 @@ pub const Parser = struct {
                         if (!self.match(&.{.comma_token})) break;
                     }
                 }
+
                 _ = try self.consume(.rparen_token, "Expected ')' after arguments.");
 
-                // Shielding v1: Ensures that the called function is a valid name
-                if (expr.* != .identifier) {
+                // Shielding the called function can be an identifier (print) or namespace property access (aws.apply)
+                if (expr.* != .identifier and expr.* != .property_access_expr) {
                     return self.reportError(self.previous(), "Invalid function call.");
                 }
-
-                const callee_name = expr.identifier.name;
 
                 const node = try self.allocator.create(AstNode);
                 node.* = .{
                     .call_expr = .{
                         .line = self.previous().line + 1,
-                        .callee = callee_name,
+                        .callee = expr,
                         .arguments = try args.toOwnedSlice(self.allocator),
                     },
                 };
@@ -293,7 +329,7 @@ pub const Parser = struct {
         if (self.match(&.{.lbracket_token})) {
             var elements = std.ArrayList(*AstNode).empty;
 
-            // if array n is empty
+            // if array not is empty
             if (!self.check(.rbracket_token)) {
                 while (true) {
                     try elements.append(self.allocator, try self.parseExpression());
@@ -354,7 +390,7 @@ pub const Parser = struct {
 
     fn parseExpressionStatement(self: *Parser) anyerror!*AstNode {
         const expr = try self.parseExpression();
-        const last_token = self.previous(); // token logo após a expressão completa
+        const last_token = self.previous(); // token right after the complete expression
 
         if (!self.check(.semicolon_token)) {
             return self.reportError(last_token, "Expected ';' after expression.");
@@ -394,7 +430,7 @@ pub const Parser = struct {
         const name_token = try self.consume(.identifier_token, "Expected variable name.");
 
         if (self.match(&.{.colon_token})) {
-            if (!self.match(&.{ .integer_type_token, .string_type_token, .char_type_token, .boolean_type_token, .identifier_token })) {
+            if (!self.match(&.{ .integer_type_token, .string_type_token, .char_type_token, .boolean_type_token, .identifier_token, .value_type_token, .array_type_token })) {
                 return self.reportError(self.peek(), "Invalid or unknown type.");
             }
         }
@@ -426,7 +462,7 @@ pub const Parser = struct {
         const expr = try self.parsePipeline();
 
         if (self.match(&.{.catch_token})) {
-            _ = try self.consume(.pipe_token, "Expected '|' after the 'catch' keyword.");
+            _ = try self.consume(.pipe_token, "Expected '|' after 'catch' keyword.");
             const err_token = try self.consume(.identifier_token, "Expected error variable name.");
             _ = try self.consume(.pipe_token, "Expected '|' to close the error variable.");
 
@@ -452,14 +488,7 @@ pub const Parser = struct {
 
         if (self.match(&.{.assign_token})) {
             const equals = self.previous();
-
             const value = try self.parseAssignment();
-
-            if (expr.* == .identifier or expr.* == .index_expr) {
-                const node = try self.allocator.create(AstNode);
-                node.* = .{ .binary_expr = .{ .left = expr, .operator = equals, .right = value } };
-                return node;
-            }
 
             if (expr.* == .identifier or expr.* == .index_expr or expr.* == .property_access_expr) {
                 const node = try self.allocator.create(AstNode);
@@ -467,7 +496,7 @@ pub const Parser = struct {
                 return node;
             }
 
-            return self.reportError(equals, "Invalid assignment target. You can only assign to variables or indexes.");
+            return self.reportError(equals, "Invalid assignment target. You can only assign to variables, arrays or structs.");
         }
 
         return expr;
@@ -480,7 +509,7 @@ pub const Parser = struct {
             const right = try self.parseEquality();
 
             if (right.* != .call_expr) {
-                return self.reportError(self.previous(), "O lado direito do operador de pipeline '~>' deve ser uma chamada de função.");
+                return self.reportError(self.previous(), "The right side of the '~>' pipeline operator must be a function call.");
             }
 
             const node = try self.allocator.create(AstNode);
@@ -488,7 +517,7 @@ pub const Parser = struct {
                 .left = expr,
                 .right_call = right,
             } };
-            expr = node; // Encadeia da esquerda para a direita
+            expr = node; // Chain from left to right
         }
 
         return expr;
@@ -616,7 +645,7 @@ pub const Parser = struct {
         const token_len = raw_len;
         const start_col = if (token.column >= raw_len) token.column - raw_len else 0;
 
-        try self.io.stderr.print("\n\x1b[1;31m[Erro de Sintaxe]\x1b[0m {s}:{d}:{d}\n", .{ self.file_path, token.line + 1, start_col + 1 });
+        try self.io.stderr.print("\n\x1b[1;31m[Syntax Error]\x1b[0m {s}:{d}:{d}\n", .{ self.file_path, token.line + 1, start_col + 1 });
         try self.io.stderr.print("    |\n", .{});
         try self.io.stderr.print("{d:3} | {s}\n", .{ token.line + 1, target_line_text });
         try self.io.stderr.print("    | ", .{});

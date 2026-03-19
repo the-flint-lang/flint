@@ -1,10 +1,14 @@
-const f = ls(".") catch |err| {
+import io;
+import os;
+import strings;
+
+const f = os.ls(".") catch |err| {
     print(err);
-    exit(1);
+    os.exit(1);
 };
 
 var i = 0;
-for line in to_str(f) ~> lines(){
-    int_to_str(i) ~> concat(". ") ~> concat(line) ~> print();
+for line in strings.to_str(f) ~> strings.lines() {
+    strings.int_to_str(i) ~> strings.concat(". ") ~> strings.concat(line) ~> print();
     i = i + 1;
 }

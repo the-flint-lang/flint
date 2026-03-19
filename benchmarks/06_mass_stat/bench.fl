@@ -1,14 +1,14 @@
-const files = ls(".") catch |err| { exit(1); };
+import os;
+import strings;
 
+const files = os.ls(".") catch |err| { os.exit(1); };
 var count = 0;
 var total_size = 0;
 
-for f in to_str(files) ~> lines() {
-    # Ignore the test scripts themselves
-    if (is_file(f)) {
-        total_size = total_size + to_int(file_size(f));
+for f in strings.to_str(files) ~> strings.lines() {
+    if (os.is_file(f)) {
+        total_size = total_size + strings.to_int(os.file_size(f));
         count = count + 1;
     }
 }
-
 print("Flint processed the metadata successfully.");

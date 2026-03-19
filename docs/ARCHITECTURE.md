@@ -28,7 +28,7 @@ The life cycle of a Flint script:
  └──────┬─────────┘
         │
         ▼
- ┌────────────────┐ 4. Linker & Runtime Injection
+ ┌────────────────┐ 4. Linker & Canonical Resolution
  │  C Compilation │ Clang combines `.flint_temp.c` + `flint_rt.c` (Runtime).
  └──────┬─────────┘
         │
@@ -44,6 +44,7 @@ The compiler itself is written in Zig to leverage its memory safety, `comptime` 
 - **Memory Management:** The compiler uses Zig's `std.heap.ArenaAllocator` for all AST nodes and tokens. When the compilation finishes, the entire arena is dropped at once. We track leaks rigorously using `std.heap.GeneralPurposeAllocator` in debug modes.
 - **Lexical Analysis:** A hand-written, branch-optimized Lexer (`src/core/lexer.zig`). It uses a static string map for keyword lookups, avoiding expensive hash map allocations for basic syntax checking.
 - **Parsing:** A recursive descent parser (`src/core/parser.zig`). It builds a strictly typed AST (`src/core/parser/ast.zig`).
+- **Canonical Module Resolution (Linker):** Flint prevents the "Diamond Alias Bug" by decoupling the user's alias from the canonical module name. If `io.fl` is imported multiple times under different aliases, the linker routes all C-calls to a single, consolidated C-compilation unit, eliminating binary bloat and reference errors.
 
 ## 2. The Runtime (C99)
 
@@ -76,17 +77,25 @@ typedef struct {
 } FlintValue;
 ```
 
-All variables in Flint are boxed into this structure when interacting with the standard library, allowing functions to accept multiple types generically using C11's `_Generic` under the hood.
+All variables in Flint are boxed into this structure when interacting with the standard library, allowing functions to accept multiple types generically using C11's `_Generic` combined with Variadic Macros (`__VA_ARGS__`) under the hood to ensure safe compile-time polymorphism.
 
 ## 3. Key Language Features
 
 ### The Pipeline Operator `~>`
 
-Flint's signature feature is the pipeline operator. At the AST level, `a ~> b(c)` is syntactically transformed into `b(a, c)`. The Emitter resolves this during code generation, meaning there is zero runtime overhead for using pipelines. It is pure syntactic sugar for function composition.
+Flint's signature feature is the pipeline operator. At the AST level, `a ~> b(c)` is syntactically transformed into `b(a, c)`. The Emitter resolves this during code generation, meaning there is **zero runtime overhead** for using pipelines. It is pure syntactic sugar for function composition.
+
+### Pipeline Safety (`expect` and `fallback`)
+
+To maintain the visual flow of the pipeline without verbose `try/catch` blocks, Flint embeds zero-cost C macros directly into the runtime:
+
+- `~> expect("msg")`: Checks if the preceding `FlintValue` is an error or null. If so, it intercepts the CPU, formats a stack trace with the native OS error, and triggers `exit(1)`.
+- `~> fallback(alt_val)`: If the preceding value fails, it silently swaps it for the `alt_val` and keeps the pipeline moving safely.
 
 ### AOT JSON Struct Mapping
 
 Parsing JSON dynamically in Python is slow due to dictionary lookups and reflection. Flint solves this by doing **Ahead-Of-Time Struct Mapping**.
+
 When you define a `struct` in Flint, the Emitter generates a specialized, static C function (e.g., `__parse_Config_from_dict()`). This function maps JSON keys directly to physical C struct memory offsets, bypassing dynamic reflection entirely.
 
 ### Zero-Copy Strings (`flint_str`)
@@ -96,6 +105,7 @@ Strings in Flint are "fat pointers" (a pointer to the data and a length `size_t`
 ## 4. Error Handling
 
 Flint does not have exceptions. It uses Zig-inspired `catch` blocks.
+
 At the C level, errors are just `FlintValue` structs with the type `FLINT_VAL_ERROR`. The `catch` block simply checks the enum type: if it's an error, it unwraps the string message and executes the fallback block; otherwise, it returns the value.
 
 ---

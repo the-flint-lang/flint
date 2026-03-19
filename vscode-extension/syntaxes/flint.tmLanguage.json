@@ -18,6 +18,12 @@
             "include": "#builtins"
         },
         {
+            "include": "#function-calls"
+        },
+        {
+            "include": "#namespaces"
+        },
+        {
             "include": "#operators"
         },
         {
@@ -61,7 +67,7 @@
                 },
                 {
                     "name": "keyword.other.flint",
-                    "match": "\\b(fn|var|const|import|struct)\\b"
+                    "match": "\\b(fn|var|const|import|struct|extern|as)\\b"
                 },
                 {
                     "name": "constant.language.flint",
@@ -72,8 +78,8 @@
         "types": {
             "patterns": [
                 {
-                    "name": "support.type.flint",
-                    "match": "\\b(int|string|bool|void)\\b"
+                    "name": "storage.type.flint",
+                    "match": "\\b(int|string|bool|void|val|arr)\\b"
                 }
             ]
         },
@@ -81,7 +87,37 @@
             "patterns": [
                 {
                     "name": "support.function.builtin.flint",
-                    "match": "\\b(grep|join|trim|split|replace|concat|get|set|count_matches|to_str|int_to_str|to_int|lines|args|len|range|push|print|exec|spawn|read_file|write_file|file_exists|mkdir|rm|mv|copy|rm_dir|touch|ls|is_dir|is_file|file_size|env|exit|fetch|parse_json|is_err|get_err)\\b(?=\\s*\\()"
+                    "match": "\\b(print|len|push|range|get|set|parse_json_as|expect|fallback)\\b(?=\\s*\\()"
+                }
+            ]
+        },
+        "function-calls": {
+            "patterns": [
+                {
+                    "name": "entity.name.function.flint",
+                    "match": "(?<![.])\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()"
+                }
+            ]
+        },
+        "namespaces": {
+            "patterns": [
+                {
+                    "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)(\\.)([ a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()",
+                    "captures": {
+                        "1": {
+                            "name": "entity.name.namespace.flint"
+                        },
+                        "2": {
+                            "name": "punctuation.accessor.flint"
+                        },
+                        "3": {
+                            "name": "entity.name.function.flint"
+                        }
+                    }
+                },
+                {
+                    "name": "entity.name.namespace.flint",
+                    "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)(?=\\.)"
                 }
             ]
         },
@@ -93,7 +129,7 @@
                 },
                 {
                     "name": "keyword.operator.flint",
-                    "match": "(\\+|-|\\*|/|%|==|!=|<=|>=|<|>|=|\\|)"
+                    "match": "(!=|==|<=|>=|~>|\\+|-|\\*|/|%|<|>|=|!|\\|)"
                 }
             ]
         },

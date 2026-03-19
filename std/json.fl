@@ -1,0 +1,8 @@
+# std/json.jl
+
+extern fn flint_parse_json(text: string) val;
+
+# public API
+fn parse(text: string) val { 
+    return flint_parse_json(text); 
+}

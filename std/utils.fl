@@ -1,0 +1,6 @@
+# std/utils.fl
+extern fn flint_is_err(v: val) bool;
+extern fn flint_get_err(v: val) string;
+
+fn is_err(v: val) bool { return flint_is_err(v); }
+fn get_err(v: val) string { return flint_get_err(v); }

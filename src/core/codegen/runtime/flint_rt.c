@@ -67,7 +67,14 @@ void flint_arena_reset()
 void *flint_alloc_raw(size_t size)
 {
     size = (size + 7) & ~7;
-    void *ptr = arena_base + arena_offset;
+    if (arena_offset + size > ARENA_CAPACITY)
+    {
+        void *p = malloc(size);
+        if (p)
+            return p;
+        flint_panic("Arena out of memory");
+    }
+    void *ptr = (void *)(arena_base + arena_offset);
     arena_offset += size;
     return ptr;
 }
@@ -77,6 +84,19 @@ void *flint_alloc_zero(size_t size)
     void *ptr = flint_alloc_raw(size);
     memset(ptr, 0, size);
     return ptr;
+}
+
+typedef size_t FlintArenaMark;
+
+FlintArenaMark flint_arena_mark(void)
+{
+    return arena_offset;
+}
+
+void flint_arena_release(FlintArenaMark m)
+{
+    if (m <= arena_offset)
+        arena_offset = m;
 }
 
 void flint_panic(const char *msg)
@@ -113,6 +133,7 @@ flint_str flint_get_err(FlintValue v)
 void flint_print_str(flint_str text)
 {
     printf("%.*s\n", (int)text.len, text.ptr);
+    fflush(stdout);
 }
 void flint_print_int(long long v) { printf("%lld\n", v); }
 void flint_print_dict(FlintDict *d) { printf("[Flint Dictionary: %zu keys]\n", d ? d->count : 0); }
@@ -600,7 +621,7 @@ FlintValue flint_mv(flint_str old_path, flint_str new_path)
    STRINGS
    ========================= */
 
-static bool flint_str_eq(flint_str a, flint_str b)
+bool flint_str_eql(flint_str a, flint_str b)
 {
     if (a.len != b.len)
         return false;
@@ -893,7 +914,7 @@ void flint_dict_set(FlintDict *d, flint_str key, FlintValue val)
 
     while (d->entries[i].hash != 0)
     {
-        if (d->entries[i].hash == h && flint_str_eq(d->entries[i].key, key))
+        if (d->entries[i].hash == h && flint_str_eql(d->entries[i].key, key))
             break;
 
         i = (i + 1) % d->capacity;
@@ -919,7 +940,7 @@ FlintValue flint_dict_get(FlintDict *d, flint_str key)
     size_t i = h % d->capacity;
     while (d->entries[i].hash != 0)
     {
-        if (d->entries[i].hash == h && flint_str_eq(d->entries[i].key, key))
+        if (d->entries[i].hash == h && flint_str_eql(d->entries[i].key, key))
             return d->entries[i].value;
         i = (i + 1) % d->capacity;
     }
@@ -1026,6 +1047,7 @@ static flint_str json_parse_str(const char **p)
 }
 
 static FlintValue json_parse_value(const char **p);
+
 static FlintDict *json_parse_object(const char **p, size_t estimated_cap)
 {
     (*p)++;
@@ -1110,10 +1132,10 @@ static FlintValue json_parse_value(const char **p)
     return (FlintValue){FLINT_VAL_NULL, .as.i = 0};
 }
 
-FlintDict *flint_parse_json(flint_str text)
+FlintValue flint_parse_json(flint_str text)
 {
     if (text.len == 0 || !text.ptr)
-        return NULL;
+        return (FlintValue){FLINT_VAL_NULL};
 
     size_t estimated = text.len / 30;
     if (estimated < 256)
@@ -1123,9 +1145,9 @@ FlintDict *flint_parse_json(flint_str text)
     json_skip_ws(&p);
     if (*p == '{')
     {
-        return json_parse_object(&p, estimated);
+        return (FlintValue){FLINT_VAL_DICT, .as.d = json_parse_object(&p, estimated)};
     }
-    return flint_dict_new(16);
+    return (FlintValue){FLINT_VAL_DICT, .as.d = flint_dict_new(16)};
 }
 
 static long long fast_atoll(const char **p)

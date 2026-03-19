@@ -1,13 +1,18 @@
+import io;
+import http;
+import os;
+import strings;
+
 print("Filtering only Login via Pipeline:");
 
-(fetch("https://api.github.com/users/lucaas-d3v") 
-    catch |e| { print("Erro de rede"); exit(1); })
-    ~> to_str()
-    ~> split(",")
-    ~> grep("\"login\":")
-    ~> join("")
-    ~> replace("{", "")
-    ~> replace("\"", "")
-    ~> replace(":", " -> ")
-    ~> trim()
+(http.fetch("https://api.github.com/users/lucaas-d3v") 
+    catch |e| { print("Erro de rede"); os.exit(1); })
+    ~> strings.to_str()
+    ~> strings.split(",")
+    ~> strings.grep("\"login\":")
+    ~> strings.join("")
+    ~> strings.replace("{", "")
+    ~> strings.replace("\"", "")
+    ~> strings.replace(":", " -> ")
+    ~> strings.trim()
     ~> print();

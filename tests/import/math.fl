@@ -1,5 +1,7 @@
-fn sum(a: int, b: int) void {
-    const sum = a + b;
-    print("To imported sum is: ");
-    print(sum);
+fn somar(a: int, b: int) int {
+    return a + b;
+}
+
+fn dobro(a: int) int {
+    return somar(a, a); 
 }

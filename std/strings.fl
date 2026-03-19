@@ -1,0 +1,63 @@
+# std/strings.fl
+
+extern fn flint_lines(text: string) arr;
+extern fn flint_split(text: string, delim: string) arr;
+extern fn flint_join(a: arr, sep: string) string;
+extern fn flint_trim(text: string) string;
+extern fn flint_grep(linhas: arr, pattern: string) arr;
+extern fn flint_count_matches(text: string, pattern: string) int;
+extern fn flint_replace(text: string, target: string, repl: string) string;
+extern fn flint_to_str(v: val) string;
+extern fn flint_int_to_str(num: int) string;
+extern fn flint_concat(a: string, b: string) string;
+extern fn flint_to_int(v: val) int;
+extern fn flint_str_eql(a: string, b: string) bool; 
+
+# public API 
+fn lines(text: string) arr {
+    return flint_lines(text);
+}
+
+fn split(text: string, delim: string) arr {
+    return flint_split(text, delim);
+}
+
+fn join(a: arr, sep: string) string {
+    return flint_join(a, sep);
+}
+
+fn trim(text: string) string {
+    return flint_trim(text);
+}
+
+fn grep(linhas: arr, pattern: string) arr {
+    return flint_grep(linhas, pattern);
+}
+
+fn count_matches(text: string, pattern: string) int {
+    return flint_count_matches(text, pattern);
+}
+
+fn replace(text: string, target: string, repl: string) string {
+    return flint_replace(text, target, repl);
+}
+
+fn to_str(v: val) string {
+    return flint_to_str(v);
+}
+
+fn int_to_str(num: int) string {
+    return flint_int_to_str(num);
+}
+
+fn concat(a: string, b: string) string {
+    return flint_concat(a, b);
+}
+
+fn to_int(v: val) int {
+    return flint_to_int(v);
+}
+
+fn equals(a: string, b: string) bool {
+    return flint_str_eql(a, b);
+}

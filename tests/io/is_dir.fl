@@ -1,19 +1,22 @@
-_ = mkdir("test") catch |err| {
+import io;
+import os;
+
+_ = os.mkdir("test") catch |err| {
     print(err);
-    exit(1);
+    os.exit(1);
 };
 
-if is_dir("test") {
+if os.is_dir("test") {
     print("Is a dir");
     rm_();
-    exit(0);
+    os.exit(0);
 } 
 
 print("Not is a dir");
 rm_();
 
 fn rm_() void {
-    _ = rm_dir("test") catch |err| {
+    _ = os.rm_dir("test") catch |err| {
         print(err);
     };
 }

@@ -1,6 +1,8 @@
-(read_file("bench_data.log") catch |err| {
-     print(err); exit(1); 
-    }) 
-    ~> to_str()
-    ~> count_matches("ERROR")
+import io;
+import str;
+import os;
+
+(io.read_file("bench_data.log") catch |err| { print(err); os.exit(1); }) 
+    ~> strings.to_str()
+    ~> strings.count_matches("ERROR")
     ~> print();

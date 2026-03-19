@@ -1,10 +1,10 @@
-print("Starting Process Spawn Storm (Flint)...");
+import os;
 
+print("Starting Process Spawn Storm (Flint)...");
 for i in range(0, 500) {
-     _ = spawn("/bin/true") catch |err| {
+     _ = os.spawn("/bin/true") catch |err| {
          print(err);
-         exit(1);
+         os.exit(1);
      };
 }
-
 print("Flint spawn storm completed.");

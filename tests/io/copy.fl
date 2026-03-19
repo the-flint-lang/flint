@@ -1,9 +1,12 @@
-_ = copy("tests/io/copy.fl", "tests/io/copy_temp.out") catch |err| {
+import io;
+import os;
+
+_ = os.copy("tests/io/copy.fl", "tests/io/copy_temp.out") catch |err| {
     print(err);
-    exit(1);
+    os.exit(1);
 };
 
-_ = rm("tests/io/copy_temp.out") catch |err| {
+_ = os.rm("tests/io/copy_temp.out") catch |err| {
     print(err);
-    exit(1);
+    os.exit(1);
 };
