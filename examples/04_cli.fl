@@ -1,0 +1,16 @@
+import os;
+import strings;
+
+print("--- Argument Injection Test (v1.7) ---");
+
+# Capture the arguments that the OS sent to the binary
+const arguments = os.args();
+
+const qty = len(arguments);
+print("Total arguments received: " ~> strings.concat(strings.int_to_str(qty)));
+
+print("\nDumping arguments:");
+
+for arg in arguments {
+    print(" -> " ~> strings.concat(arg));
+}
