@@ -1,13 +1,13 @@
-import "std/json.fl" as json;
-import "std/strings.fl" as str;
+import json;
+import strings;
 
 print("Starting Memory Stress Test (Rehashing)...");
 const my_json = json.parse("{}");
 print("Injecting 1,000 keys into the dictionary...");
 
 for i in range(0, 1000) {
-    const num_str = str.int_to_str(i);
-    const final_key = str.concat("key_", num_str);
+    const num_str = strings.int_to_str(i);
+    const final_key = strings.concat("key_", num_str);
     set(my_json, final_key, i);
 }
 

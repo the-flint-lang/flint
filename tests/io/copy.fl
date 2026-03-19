@@ -1,5 +1,5 @@
-import "std/io.fl" as io;
-import "std/os.fl" as os;
+import io;
+import os;
 
 _ = os.copy("tests/io/copy.fl", "tests/io/copy_temp.out") catch |err| {
     print(err);

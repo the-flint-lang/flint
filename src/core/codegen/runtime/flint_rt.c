@@ -67,7 +67,14 @@ void flint_arena_reset()
 void *flint_alloc_raw(size_t size)
 {
     size = (size + 7) & ~7;
-    void *ptr = arena_base + arena_offset;
+    if (arena_offset + size > ARENA_CAPACITY)
+    {
+        void *p = malloc(size);
+        if (p)
+            return p;
+        flint_panic("Arena out of memory");
+    }
+    void *ptr = (void *)(arena_base + arena_offset);
     arena_offset += size;
     return ptr;
 }
@@ -77,6 +84,19 @@ void *flint_alloc_zero(size_t size)
     void *ptr = flint_alloc_raw(size);
     memset(ptr, 0, size);
     return ptr;
+}
+
+typedef size_t FlintArenaMark;
+
+FlintArenaMark flint_arena_mark(void)
+{
+    return arena_offset;
+}
+
+void flint_arena_release(FlintArenaMark m)
+{
+    if (m <= arena_offset)
+        arena_offset = m;
 }
 
 void flint_panic(const char *msg)

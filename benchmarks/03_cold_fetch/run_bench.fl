@@ -1,4 +1,4 @@
-import "std/os.fl" as os;
+import os;
 
 print("====================================================");
 print("        FLINT BENCHMARK ORCHESTRATOR v1.6           ");

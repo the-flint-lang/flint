@@ -1,5 +1,7 @@
 # std/os.fl
 
+import strings;
+
 extern fn flint_file_exists(path: string) bool;
 extern fn flint_mkdir(path: string) val;
 extern fn flint_rm(path: string) val;
@@ -80,4 +82,22 @@ fn exit(code: int) void {
 
 fn args() arr {
     return flint_args(); 
+}
+
+fn assert(proc: val, error_msg: string) val {
+    const code = strings.to_int(get(proc, "exit_code"));
+    
+    if (code != 0) {
+        print(" [FLINT] FATAL PROCESS ASSERTION FAILED ");
+        print("Message: " ~> strings.concat(error_msg));
+        
+        const code_str = strings.int_to_str(code);
+        print("Exit Code: " ~> strings.concat(code_str));
+        
+        print("STDERR:");
+        print(strings.to_str(get(proc, "stderr")));
+        exit(code);
+    }
+    
+    return proc;
 }

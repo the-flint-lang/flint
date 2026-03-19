@@ -20,7 +20,11 @@ const PipelineResult = struct {
     ast: *AstNode,
 };
 
-fn runCompilerPipeline(alloc: std.mem.Allocator, file_path: []const u8, io: IoHelper) !PipelineResult {
+fn runCompilerPipeline(
+    alloc: std.mem.Allocator,
+    file_path: []const u8,
+    io: IoHelper,
+) !PipelineResult {
     const source = try std.fs.cwd().readFileAlloc(alloc, file_path, 1024 * 1024);
     errdefer alloc.free(source);
 
@@ -35,17 +39,17 @@ fn runCompilerPipeline(alloc: std.mem.Allocator, file_path: []const u8, io: IoHe
     };
     const tokens = try lex.tokenize();
 
-    var parse = Parser.init(alloc, tokens, source, file_path, io);
-    parse.allocator = parse.arena.allocator();
+    var parser = Parser.init(alloc, tokens, source, file_path, io);
+    parser.allocator = parser.arena.allocator();
 
-    const ast = parse.parse() catch {
+    const ast = parser.parse() catch {
         return error.ParseFailed;
     };
 
     return PipelineResult{
         .source = source,
         .tokens = tokens,
-        .parser = parse,
+        .parser = parser,
         .ast = ast,
     };
 }
@@ -87,7 +91,7 @@ const Linker = struct {
 
     pub fn linkFile(self: *Linker, file_path: []const u8, current_alias: ?[]const u8) !void {
         const abs_path = std.fs.cwd().realpathAlloc(self.allocator, file_path) catch {
-            try self.io.stderr.print("Erro Fatal: Nao foi possivel importar o arquivo '{s}'.\n", .{file_path});
+            try self.io.stderr.print("Fatal Error: Unable to import file '{s}'.\n", .{file_path});
             self.has_error = true;
             return;
         };
@@ -115,36 +119,56 @@ const Linker = struct {
         var local_stmts = std.ArrayList(*AstNode).empty;
         defer local_stmts.deinit(self.allocator);
 
-        // 1. Dicionário para catalogar os aliases importados NESTE arquivo
-        var local_aliases = std.StringHashMap(void).init(self.allocator);
+        var local_aliases = std.StringHashMap([]const u8).init(self.allocator);
         defer local_aliases.deinit();
 
         for (result_ptr.ast.program.statements) |stmt| {
             if (stmt.* == .import_stmt) {
                 const import_raw = stmt.import_stmt.path;
-                const clean_path = import_raw[0..import_raw.len];
                 const next_alias = stmt.import_stmt.alias;
+
+                const basename = std.fs.path.basename(import_raw);
+                const canon_name = basename[0 .. std.mem.indexOf(u8, basename, ".") orelse basename.len];
+
+                var formatted_path: []const u8 = undefined;
+
+                if (!std.mem.endsWith(u8, import_raw, ".fl")) {
+                    formatted_path = try std.fmt.allocPrint(self.allocator, "std/{s}.fl", .{import_raw});
+                } else {
+                    formatted_path = try self.allocator.dupe(u8, import_raw);
+                }
+                defer self.allocator.free(formatted_path);
 
                 var next_file: []const u8 = undefined;
 
-                if (std.mem.startsWith(u8, clean_path, "./") or std.mem.startsWith(u8, clean_path, "../")) {
-                    next_file = try std.fs.path.join(self.allocator, &.{ base_dir, clean_path });
+                if (std.mem.startsWith(u8, formatted_path, "./") or std.mem.startsWith(u8, formatted_path, "../")) {
+                    next_file = try std.fs.path.join(self.allocator, &.{ base_dir, formatted_path });
                 } else {
-                    const std_base = std.posix.getenv("FLINT_LIB_PATH") orelse "/usr/local/lib/flint";
-                    next_file = try std.fs.path.join(self.allocator, &.{ std_base, clean_path });
+                    var std_base: []const u8 = "/usr/local/lib/flint";
+
+                    var dir = std.fs.cwd().openDir("std", .{});
+                    if (std.posix.getenv("FLINT_LIB_PATH")) |env_path| {
+                        std_base = env_path;
+                    } else {
+                        if (dir) |*dir_| {
+                            dir_.close();
+                            std_base = ".";
+                        } else |_| {}
+                    }
+
+                    next_file = try std.fs.path.join(self.allocator, &.{ std_base, formatted_path });
                 }
 
                 defer self.allocator.free(next_file);
-                try self.linkFile(next_file, next_alias);
 
-                // Cadastra o alias localmente para sabermos quem ele é
-                if (next_alias) |a| try local_aliases.put(a, {});
+                try self.linkFile(next_file, canon_name);
+
+                if (next_alias) |a| try local_aliases.put(a, canon_name);
             } else {
                 try local_stmts.append(self.allocator, stmt);
             }
         }
 
-        // 2. Resolve os acessos a namespace ANTES de aplicar o escopo global
         for (local_stmts.items) |stmt| {
             try self.resolveAliases(stmt, &local_aliases);
         }
@@ -167,9 +191,10 @@ const Linker = struct {
                 if (!stmt.function_decl.is_extern) try local_symbols.put(stmt.function_decl.name, {});
             } else if (stmt.* == .struct_decl) {
                 try local_symbols.put(stmt.struct_decl.name, {});
-            } else if (stmt.* == .var_decl) { // <--- ADICIONE ISTO
+            } else if (stmt.* == .var_decl) {
                 try local_symbols.put(stmt.var_decl.name, {});
             }
+            try self.walkAndPrefix(stmt, &local_symbols, alias);
         }
 
         for (statements) |stmt| {
@@ -181,13 +206,13 @@ const Linker = struct {
                 if (!stmt.function_decl.is_extern) stmt.function_decl.name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ alias, stmt.function_decl.name });
             } else if (stmt.* == .struct_decl) {
                 stmt.struct_decl.name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ alias, stmt.struct_decl.name });
-            } else if (stmt.* == .var_decl) { // <--- ADICIONE ISTO
+            } else if (stmt.* == .var_decl) {
                 stmt.var_decl.name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ alias, stmt.var_decl.name });
             }
         }
     }
 
-    fn resolveAliases(self: *Linker, node: *AstNode, aliases: *std.StringHashMap(void)) anyerror!void {
+    fn resolveAliases(self: *Linker, node: *AstNode, aliases: *std.StringHashMap([]const u8)) anyerror!void {
         switch (node.*) {
             .function_decl => |*f| {
                 for (f.body) |stmt| try self.resolveAliases(stmt, aliases);
@@ -238,8 +263,8 @@ const Linker = struct {
             .property_access_expr => |*p| {
                 try self.resolveAliases(p.object, aliases);
                 if (p.object.* == .identifier) {
-                    if (aliases.contains(p.object.identifier.name)) {
-                        const new_name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ p.object.identifier.name, p.property_name });
+                    if (aliases.get(p.object.identifier.name)) |canon_name| {
+                        const new_name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ canon_name, p.property_name });
                         node.* = .{
                             .identifier = .{
                                 ._type = .{ ._type = .identifier_token, .value = new_name, .line = 0, .column = 0 },
@@ -422,7 +447,8 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
     var merged_ast = AstNode{ .program = .{ .statements = linker.statements.items } };
 
     var emitter = CEmitter.init(alloc, file_path);
-    const out_filename = ".flint_temp.c";
+    const out_filename = try std.fmt.allocPrint(alloc, ".flint_temp_{x}.c", .{std.hash.Wyhash.hash(0, file_path)});
+    defer alloc.free(out_filename);
 
     var out_file = try std.fs.cwd().createFile(out_filename, .{});
     var buffer: [4096]u8 = undefined;
@@ -566,7 +592,7 @@ fn testSingleFile(alloc: std.mem.Allocator, file_path: []const u8, io: IoHelper)
     const basename = std.fs.path.basename(file_path);
     const name_only = basename[0 .. std.mem.indexOf(u8, basename, ".") orelse basename.len];
 
-    const out_filename = try std.fmt.allocPrint(alloc, ".temp_test_{s}.c", .{name_only});
+    const out_filename = try std.fmt.allocPrint(alloc, ".flint_temp_{x}.c", .{std.hash.Wyhash.hash(0, file_path)});
     defer alloc.free(out_filename);
     const exe_name = try std.fmt.allocPrint(alloc, ".bin_test_{s}", .{name_only});
     defer alloc.free(exe_name);

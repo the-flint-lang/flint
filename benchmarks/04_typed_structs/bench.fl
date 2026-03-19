@@ -1,4 +1,4 @@
-import "std/io.fl" as io;
+import io;
 
 struct Config {
     target_id: int,

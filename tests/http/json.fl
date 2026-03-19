@@ -1,9 +1,9 @@
-import "std/io.fl" as io;
-import "std/http.fl" as http;
-import "std/json.fl" as json;
-import "std/strings.fl" as str;
-import "std/utils.fl" as utils;
-import "std/os.fl" as os;
+import io;
+import http;
+import json;
+import strings;
+import utils;
+import os;
 
 print("Fetching data from GitHub...");
 
@@ -12,7 +12,7 @@ const raw_payload = http.fetch("https://api.github.com/users/lucaas-d3v") catch 
     os.exit(1);
 };
 
-const my_profile = json.parse(str.to_str(raw_payload));
+const my_profile = json.parse(strings.to_str(raw_payload));
 
 print("\n=== DEVELOPER PROFILE ===");
 print("Login:");

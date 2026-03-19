@@ -1,5 +1,5 @@
-import "std/io.fl" as io;
-import "std/utils.fl" as ut;
+import io;
+import utils;
 
 var log_erros = ["timeout", "404"];
 

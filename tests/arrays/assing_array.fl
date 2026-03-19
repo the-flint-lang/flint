@@ -1,10 +1,10 @@
-import "std/io.fl" as io;
-import "std/strings.fl" as str;
+import io;
+import strings;
 
 var numbers = [10, 20, 30, 40];
 print("Before mutation:");
-print(str.int_to_str(numbers[2]));
+print(strings.int_to_str(numbers[2]));
 
 numbers[2] = 99;
 print("After mutation:");
-print(str.int_to_str(numbers[2]));
+print(strings.int_to_str(numbers[2]));

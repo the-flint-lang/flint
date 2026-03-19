@@ -1,13 +1,13 @@
-import "std/io.fl" as io;
-import "std/utils.fl" as utils;
-import "std/strings.fl" as str;
+import io;
+import utils;
+import strings;
 
 const limits = [10, 20, 30, 40, 50];
 
 print("The array size is:");
-print(str.int_to_str(len(limits)));
+print(strings.int_to_str(len(limits)));
 
 print("Iterating with range:");
 for i in range(1, 5) {
-    print(str.int_to_str(i));
+    print(strings.int_to_str(i));
 }
