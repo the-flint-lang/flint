@@ -1,46 +1,18 @@
-# examples/03_ci_pipeline.fl
-# This script simulates a real CI/CD step: searching for the latest release, 
-# validate the JSON, download the artifact and move it to the deploy folder.
-
-import os;
 import http;
 import strings;
-import io;
 
 struct ReleaseData {
     tag_name: string,
-    tarball_url: string,
-    draft: bool
+    tarball_url: string
 }
 
 print("=== CI/CD: Starting Deploy ===");
 
-# 1. Fetches release metadata (Fails and stops CI if network goes down)
-const api_url = "https://api.github.com/repos/lucaas-d3v/flint/releases/latest";
-const payload = http.fetch(api_url) 
+# 1. Native Fetch with Error Interception in the Pipeline
+const payload = http.fetch("https://api.github.com/repos/lucaas-d3v/flint/releases/latest") 
     ~> expect("CI error: Failed to fetch Release metadata.");
 
-# 2. Deserialize JSON statically
+# 2. AOT deserialization (O(1) memory mapping, without reflection)
 const release = parse_json_as(ReleaseData, strings.to_str(payload));
 
-if (release.draft) {
-    print("Release marked as draft. Aborting deploy safely.");
-    os.exit(0);
-}
-
-print("Deploying the version: " ~> strings.concat(release.tag_name));
-
-# 3. Download the simulated artifact and write it to disk
-const tarball = http.fetch(release.tarball_url) 
-    ~> expect("CI error: Failed to download artifact.");
-    
-_ = io.write_file(strings.to_str(tarball), "build.tar.gz")
-    ~> expect("CI error: No permission to write to disk.");
-
-#4. Orchestrates the OS to extract and clean (os.spawn returns 'val', os.assert validates the exit_code)
-_ = os.spawn("tar -xzf build.tar.gz > /dev/null 2>&1") 
-    ~> os.assert("CI error: Failed to extract artifact.");
-    
-_ = os.rm("build.tar.gz");
-
-print("=== CI/CD: Deploy completed successfully! ===");
+print("Deploying version: " ~> strings.concat(release.tag_name));
