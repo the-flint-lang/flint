@@ -101,10 +101,11 @@ void flint_arena_release(FlintArenaMark m)
 
 void flint_panic(const char *msg)
 {
-    fprintf(stderr, "\033[1;31m[Flint Panic]\033[0m %s\n", msg);
+    fprintf(stderr, "\n\033[41;37;1m [RUNTIME PANIC] \033[0m\n");
+    fprintf(stderr, "  \033[1;36m~~>\033[0m %s\n", msg);
+    fprintf(stderr, "  \033[1;36m~~>\033[0m Halting execution.\n\n");
     exit(1);
 }
-
 void flint_exit(int code)
 {
     flint_deinit();
@@ -161,7 +162,7 @@ void flint_print_val(FlintValue v)
         printf("[Array]\n");
         break;
     case FLINT_VAL_ERROR:
-        printf("\033[1;31m[Caught Error]\033[0m %.*s\n", (int)v.as.s.len, v.as.s.ptr);
+        printf("\033[1;31mERROR\033[0m: %.*s\n", (int)v.as.s.len, v.as.s.ptr);
         break;
     }
 }

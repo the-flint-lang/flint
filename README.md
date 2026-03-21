@@ -144,7 +144,7 @@ See `./benchmarks/` for full details and reproducible tests.
 ```bash
 git clone https://codeberg.org/lucaas-d3v/flint.git
 cd flint
-./bootstrap.sh
+./ignite.sh
 ```
 
 ### Run your first script

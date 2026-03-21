@@ -284,10 +284,8 @@ FlintValue flint_parse_json(flint_str text);
 FlintValue flint_dict_get(FlintDict *d, flint_str key);
 static long long fast_atoll(const char **p);
 
-//==
-
 // ============================================================================
-// A BLINDAGEM DO AUTO-BOXING E MACROS VARIÁDICAS
+// THE ARMOR OF AUTO-BOXING AND VARIADIC MACROS
 // ============================================================================
 
 static inline FlintValue flint_box_str_safe(flint_str s)
@@ -323,19 +321,25 @@ static inline FlintValue flint_expect_inner(FlintValue v, flint_str msg)
 {
     if (v.type == FLINT_VAL_ERROR || v.type == FLINT_VAL_NULL)
     {
-        printf("\033[31m[FLINT] FATAL PIPELINE EXPECTATION FAILED\033[0m\n");
-
-        printf("\033[31mMessage: %.*s\033[0m\n", (int)msg.len, msg.ptr);
+        printf("\033[1;31mERROR\033[0m: \033[1mPipeline Expectation Failed\033[0m\n");
+        printf("  \033[1;36m-->\033[0m \033[38;5;208m~\033[1m> expect()\033[0m\n");
+        printf("   \033[1;36m|\033[0m\n");
+        printf("   \033[1;36m|\033[0m \033[1mMessage:\033[0m %.*s\n", (int)msg.len, msg.ptr);
 
         if (v.type == FLINT_VAL_ERROR && v.as.s.ptr)
         {
-            printf("\033[33mDetails: %.*s\033[0m\n", (int)v.as.s.len, v.as.s.ptr);
+            printf("   \033[1;36m|\033[0m \033[1mSystem :\033[0m %.*s\n", (int)v.as.s.len, v.as.s.ptr);
         }
+        else
+        {
+            printf("   \033[1;36m|\033[0m \033[1mSystem :\033[0m Received a null or invalid value\n");
+        }
+
+        printf("   \033[1;36m|\033[0m\n\n");
         exit(1);
     }
     return v;
 }
-
 static inline FlintValue flint_fallback_inner(FlintValue v, FlintValue alt)
 {
     if (v.type == FLINT_VAL_ERROR || v.type == FLINT_VAL_NULL)

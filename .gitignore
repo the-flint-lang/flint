@@ -6,6 +6,8 @@ copy.fl
 erro
 .venv
 
+install
+
 vscode-extension/flint-lang-*
 
 # Release Tools

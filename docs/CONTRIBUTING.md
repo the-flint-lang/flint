@@ -28,7 +28,7 @@ cd flint
 
 # Trigger bootstrap to build the initial compiler 
 # this will generate the flint binary and the native flint installation binary and run it afterwards
-./bootstrap.sh
+./ignite.sh
 ```
 
 ### Codebase Anatomy
