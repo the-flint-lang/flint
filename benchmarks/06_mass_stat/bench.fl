@@ -1,7 +1,7 @@
 import os;
 import strings;
 
-const files = os.ls(".") catch |err| { os.exit(1); };
+const files = os.ls("files/") catch |err| { os.exit(1); };
 var count = 0;
 var total_size = 0;
 

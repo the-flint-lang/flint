@@ -1,5 +1,5 @@
 import io;
-import string;
+import strings;
 import os;
 
 (io.read_file("bench_data.log") catch |err| { print(err); os.exit(1); }) 

@@ -2,7 +2,7 @@
 count=0
 total_size=0
 
-for f in *; do
+for f in files/*; do
     if [ -f "$f" ]; then
         # Bash needs to call an external binary to get the size
         s=$(stat -c %s "$f")
