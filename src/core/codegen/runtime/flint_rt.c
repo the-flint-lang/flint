@@ -1167,3 +1167,12 @@ static long long fast_atoll(const char **p)
     }
     return res * sign;
 }
+
+FlintValue flint_ensure(FlintValue val, bool condition, flint_str err_msg)
+{
+    if (!condition)
+    {
+        return flint_make_error(err_msg);
+    }
+    return val;
+}

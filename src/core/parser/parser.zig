@@ -1,5 +1,6 @@
 const std = @import("std");
 const Token = @import("../lexer/structs/token.zig").Token;
+const Lexer = @import("../lexer/lexer.zig").Lexer;
 const TokenType = @import("../lexer/enums/token_type.zig").TokenType;
 const AstNode = @import("./ast.zig").AstNode;
 const IoHelpers = @import("../helpers/structs/structs.zig").IoHelpers;
@@ -315,6 +316,10 @@ pub const Parser = struct {
     }
 
     fn parsePrimary(self: *Parser) anyerror!*AstNode {
+        if (self.match(&.{.interpolated_string_token})) {
+            return try self.parseInterpolatedString(self.previous());
+        }
+
         if (self.match(&.{ .false_literal_token, .true_literal_token, .integer_literal_token, .string_literal_token, .char_literal_token, .multile_string_literal_token })) {
             const node = try self.allocator.create(AstNode);
             node.* = .{ .literal = .{ .token = self.previous() } };
@@ -707,5 +712,111 @@ pub const Parser = struct {
 
             _ = self.advance();
         }
+    }
+
+    fn createStringLiteralNode(self: *Parser, text: []const u8) !*AstNode {
+        const node = try self.allocator.create(AstNode);
+        node.* = .{ .literal = .{ .token = .{
+            ._type = .string_literal_token,
+            .value = text,
+            .line = self.previous().line,
+            .column = self.previous().column,
+        } } };
+        return node;
+    }
+
+    fn wrapInToStr(self: *Parser, expr: *AstNode) !*AstNode {
+        const func_id = try self.allocator.create(AstNode);
+        func_id.* = .{ .identifier = .{ ._type = Token{ ._type = .identifier_token, .value = "to_str", .line = 0, .column = 0 }, .name = "to_str" } };
+
+        const call = try self.allocator.create(AstNode);
+        var args = try self.allocator.alloc(*AstNode, 1);
+        args[0] = expr;
+        call.* = .{ .call_expr = .{ .line = 0, .callee = func_id, .arguments = args } };
+
+        return call;
+    }
+
+    fn createConcatNode(self: *Parser, left: *AstNode, right: *AstNode) !*AstNode {
+        const func_id = try self.allocator.create(AstNode);
+        func_id.* = .{ .identifier = .{ ._type = Token{ ._type = .identifier_token, .value = "concat", .line = 0, .column = 0 }, .name = "concat" } };
+
+        const call = try self.allocator.create(AstNode);
+        var args = try self.allocator.alloc(*AstNode, 2);
+        args[0] = left;
+        args[1] = right;
+        call.* = .{ .call_expr = .{ .line = 0, .callee = func_id, .arguments = args } };
+
+        return call;
+    }
+
+    fn parseInterpolatedString(self: *Parser, token: Token) anyerror!*AstNode {
+        var parts = std.ArrayList(*AstNode).empty;
+        defer parts.deinit(self.allocator);
+
+        const raw = token.value;
+        var i: usize = 0;
+        var start: usize = 0;
+        var brace_depth: usize = 0;
+        var in_expr = false;
+
+        while (i < raw.len) : (i += 1) {
+            const c = raw[i];
+            if (c == '\\') {
+                i += 1;
+                continue;
+            }
+
+            if (!in_expr) {
+                if (c == '{') {
+                    if (i > start) {
+                        try parts.append(self.allocator, try self.createStringLiteralNode(raw[start..i]));
+                    }
+                    in_expr = true;
+                    brace_depth = 1;
+                    start = i + 1;
+                }
+            } else {
+                if (c == '{') brace_depth += 1;
+                if (c == '}') {
+                    brace_depth -= 1;
+                    if (brace_depth == 0) {
+                        const expr_str = raw[start..i];
+
+                        var sub_lexer = Lexer{
+                            .alloc = self.allocator,
+                            .io = self.io,
+                            .position = 0,
+                            .column = 0,
+                            .line = token.line,
+                            .source = expr_str,
+                            .tokens = std.ArrayList(Token).empty,
+                        };
+                        const sub_tokens = try sub_lexer.tokenize();
+                        var sub_parser = Parser.init(self.allocator, sub_tokens, expr_str, self.file_path, self.io);
+                        sub_parser.allocator = self.allocator;
+
+                        const expr_node = try sub_parser.parseExpression();
+                        try parts.append(self.allocator, try self.wrapInToStr(expr_node));
+
+                        in_expr = false;
+                        start = i + 1;
+                    }
+                }
+            }
+        }
+
+        if (start < raw.len) {
+            try parts.append(self.allocator, try self.createStringLiteralNode(raw[start..raw.len]));
+        }
+
+        if (parts.items.len == 0) return self.createStringLiteralNode("");
+
+        var result = parts.items[0];
+        for (parts.items[1..]) |part| {
+            result = try self.createConcatNode(result, part);
+        }
+
+        return result;
     }
 };

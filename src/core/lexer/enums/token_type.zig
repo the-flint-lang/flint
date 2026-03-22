@@ -19,6 +19,7 @@ pub const TokenType = enum {
     false_literal_token,
     void_token,
 
+    interpolated_string_token,
     not_token,
     fn_token,
     var_token,

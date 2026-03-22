@@ -7,10 +7,10 @@ print("Injecting 1,000 keys into the dictionary...");
 
 for i in range(0, 1000) {
     const num_str = strings.int_to_str(i);
-    const final_key = strings.concat("key_", num_str);
+    const final_key = $"key_{num_str}";
     set(my_json, final_key, i);
 }
 
 print("Proven expansion capacity!");
 print("Reading key_999:");
-print(get(my_json, "key_999"));
+print(my_json["key_999"]);

@@ -1,14 +1,10 @@
-import io;
 import os;
 import strings;
 
-const f = os.ls(".") catch |err| {
-    print(err);
-    os.exit(1);
-};
+const f = os.ls(".") ~> expect("Unable to read current directory");
 
 var i = 0;
 for line in strings.to_str(f) ~> strings.lines() {
-    strings.int_to_str(i) ~> strings.concat(". ") ~> strings.concat(line) ~> print();
+    print($"{i}. {line}");
     i = i + 1;
 }

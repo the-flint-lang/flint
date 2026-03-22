@@ -31,11 +31,9 @@ Flint sits in the middle:
 
 ```flint
 import os;
-import strings;
 
 const user = os.env("USER") ~> fallback("Stranger");
-
-print("Hello, " ~> strings.concat(user) ~> strings.concat("!"));
+print($"Hello, {user}!");
 ````
 
 Run instantly:
@@ -199,7 +197,8 @@ os.exec("ps aux")
     ~> strings.lines()
     ~> strings.grep("root")
     ~> strings.join("\n")
-    ~> io.write_file("root_processes.log")
+    ~> ensure(len(_) > 0, "No root processes found!")
+    ~> io.write_file(_, "root_processes.log")
     ~> expect("failed to write file");
 ```
 

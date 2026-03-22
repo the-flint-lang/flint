@@ -109,6 +109,29 @@ pub const Lexer = struct {
                 continue;
             }
 
+            if (c == '$') {
+                if (!self.isAtEnd() and (self.peek(0) == '"' or self.peek(0) == '`')) {
+                    const quote_char = self.consume().?;
+                    const content = self.readInterpolatedString(quote_char);
+
+                    try self.tokens.append(self.alloc, Token{
+                        ._type = .interpolated_string_token,
+                        .value = content,
+                        .column = self.column,
+                        .line = self.line,
+                    });
+                    continue;
+                } else {
+                    try self.tokens.append(self.alloc, Token{
+                        ._type = .error_token,
+                        .value = "$",
+                        .column = self.column,
+                        .line = self.line,
+                    });
+                    continue;
+                }
+            }
+
             var _type: TokenType = .init;
 
             switch (c) {
@@ -265,6 +288,49 @@ pub const Lexer = struct {
 
         if (!self.isAtEnd()) self.advance();
 
+        return self.source[init .. self.position - 1];
+    }
+
+    fn readInterpolatedString(self: *Lexer, quote: u8) []const u8 {
+        const init = self.position;
+        var brace_depth: i32 = 0;
+        var in_inner_string: bool = false;
+        var inner_string_quote: u8 = 0;
+
+        while (!self.isAtEnd()) {
+            const char = self.source[self.position];
+
+            if (char == '\\') {
+                self.advance();
+                if (!self.isAtEnd()) self.advance();
+                continue;
+            }
+
+            if (in_inner_string) {
+                if (char == inner_string_quote) {
+                    in_inner_string = false;
+                }
+            } else {
+                if (char == '"' or char == '\'' or char == '`') {
+                    if (char == quote and brace_depth == 0) {
+                        break;
+                    }
+
+                    if (brace_depth > 0) {
+                        in_inner_string = true;
+                        inner_string_quote = char;
+                    }
+                } else if (char == '{') {
+                    brace_depth += 1;
+                } else if (char == '}') {
+                    brace_depth -= 1;
+                }
+            }
+
+            self.advance();
+        }
+
+        if (!self.isAtEnd()) self.advance();
         return self.source[init .. self.position - 1];
     }
 

@@ -19,6 +19,20 @@ Flint enforces strict typing at the boundary, but allows dynamic payloads via th
 | `arr` | `flint_array` | Dynamic array structure with `items`, `count`, and `capacity`. |
 | `void` | `void` | Used strictly for function return signatures that yield no value. |
 
+### 2.1. String Interpolation
+Flint supports robust string interpolation using the `$` prefix for both standard strings and multiline strings (backticks). Expressions inside `{}` are automatically evaluated and safely boxed.
+
+```flint
+const code = 200;
+const log = $"API returned status {code}";
+
+const html = $`
+<div>
+    <h1>{payload["title"]}</h1>
+</div>
+`;
+```
+
 ## 3. Variables & Mutability
 
 Flint enforces explicit immutability by default.
@@ -89,6 +103,17 @@ exec("ps aux")
 
 *Restriction:* The right side of a pipeline operator `~>` **must** be a function call.
 
+### 6.1. The Pipeline Placeholder (`_`)
+By default, the pipeline operator passes the left expression as the *first* argument to the right function. If you need to route the data to a different argument, or access its properties mid-pipeline, use the `_` placeholder.
+
+```flint
+# Routing to a specific argument
+const data = fetch("[https://api.dev](https://api.dev)")
+    ~> parse_json(_)
+    ~> ensure(_["code"] == 200, "API Failed") # Mid-pipeline validation!
+    ~> print(_["data"]);
+```
+
 ## 7. Error Handling (`catch`)
 
 Flint does not have exceptions or stack unwinding. Errors are values propagated inside the `val` box. The `catch` operator intercepts `FLINT_VAL_ERROR` types inline.
@@ -116,6 +141,18 @@ Operators in Flint are evaluated according to the following precedence hierarchy
 | 6 | `==` `!=` | Equality | Left-to-Right |
 | 7 | `~>` | **Pipeline Operator** | Left-to-Right |
 | 8 | `=` `catch` | Assignment, Error Interception | Right-to-Left |
+
+### 8.1 Universal Indexing & Equality
+Flint uses a universal bracket notation `[]` to access `arr`, `struct`, and dynamic JSON `val` types without explicit type casting.
+Deep equality (`==`, `!=`) is safely evaluated at runtime even across different boxed types.
+
+```flint
+const user_name = json_payload["data"]["users"][0]["name"];
+
+if (user_name == "Admin") {
+    print("Welcome!");
+}
+```
 
 ## 9. Modules and Imports
 

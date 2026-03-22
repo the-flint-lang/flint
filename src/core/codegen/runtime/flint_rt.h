@@ -145,8 +145,8 @@ static inline FlintValue flint_dict_get_from_val(FlintValue v, flint_str key)
     FlintValue: flint_dict_get_from_val)(obj, key)
 
 /* =========================
-   VALUE CONSTRUCTORS
-   ========================= */
+VALUE CONSTRUCTORS
+========================= */
 
 FlintValue flint_make_int(long long v);
 FlintValue flint_make_bool(bool v);
@@ -348,5 +348,94 @@ static inline FlintValue flint_fallback_inner(FlintValue v, FlintValue alt)
     }
     return v;
 }
+
+// ============================================================================
+// INDEXAÇÃO UNIVERSAL (BRACKET NOTATION)
+// ============================================================================
+
+static inline long long flint_idx_int_arr(flint_int_array a, FlintValue k)
+{
+    return a.items[flint_to_int(k)];
+}
+static inline flint_str flint_idx_str_arr(flint_str_array a, FlintValue k)
+{
+    return a.items[flint_to_int(k)];
+}
+static inline FlintValue flint_idx_dict(FlintDict *d, FlintValue k)
+{
+    return flint_dict_get(d, flint_to_str(k));
+}
+static inline FlintValue flint_idx_val(FlintValue v, FlintValue k)
+{
+    if (v.type == FLINT_VAL_DICT && v.as.d)
+        return flint_dict_get(v.as.d, flint_to_str(k));
+
+    // json dynamic arrays will come here later
+    return (FlintValue){FLINT_VAL_NULL};
+}
+
+#define FLINT_INDEX(obj, idx) _Generic((obj), \
+    flint_int_array: flint_idx_int_arr,       \
+    flint_str_array: flint_idx_str_arr,       \
+    FlintDict *: flint_idx_dict,              \
+    FlintValue: flint_idx_val)((obj), FLINT_BOX(idx))
+
+// ============================================================================
+// UNIVERSAL COMPARISON (DEEP EQUALITY)
+// ============================================================================
+
+static inline bool flint_val_eq(FlintValue a, FlintValue b)
+{
+    if (a.type != b.type)
+        return false;
+    switch (a.type)
+    {
+    case FLINT_VAL_NULL:
+        return true;
+    case FLINT_VAL_INT:
+        return a.as.i == b.as.i;
+    case FLINT_VAL_BOOL:
+        return a.as.b == b.as.b;
+    case FLINT_VAL_STR:
+        return flint_str_eql(a.as.s, b.as.s);
+    default:
+        return false;
+    }
+}
+
+#define FLINT_EQ(a, b) flint_val_eq(FLINT_BOX(a), FLINT_BOX(b))
+#define FLINT_NEQ(a, b) (!flint_val_eq(FLINT_BOX(a), FLINT_BOX(b)))
+
+FlintValue flint_ensure(FlintValue val, bool condition, flint_str err_msg);
+
+// ============================================================================
+// UNIVERSAL ASSIGNMENT (SET INDEX)
+// ============================================================================
+
+static inline void flint_set_idx_int_arr(flint_int_array a, FlintValue k, FlintValue v)
+{
+    a.items[flint_to_int(k)] = flint_to_int(v);
+}
+static inline void flint_set_idx_str_arr(flint_str_array a, FlintValue k, FlintValue v)
+{
+    a.items[flint_to_int(k)] = flint_to_str(v);
+}
+static inline void flint_set_idx_dict(FlintDict *d, FlintValue k, FlintValue v)
+{
+    flint_dict_set(d, flint_to_str(k), v);
+}
+static inline void flint_set_idx_val(FlintValue v, FlintValue k, FlintValue val)
+{
+    if (v.type == FLINT_VAL_DICT && v.as.d)
+    {
+        flint_dict_set(v.as.d, flint_to_str(k), val);
+    }
+}
+
+#define FLINT_SET_INDEX(obj, idx, val) _Generic((obj), \
+    flint_int_array: flint_set_idx_int_arr,            \
+    flint_str_array: flint_set_idx_str_arr,            \
+    FlintDict *: flint_set_idx_dict,                   \
+    FlintValue: flint_set_idx_val)((obj), FLINT_BOX(idx), FLINT_BOX(val))
 
 #endif

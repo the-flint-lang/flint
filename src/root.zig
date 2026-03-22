@@ -386,12 +386,26 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper) !void {
     if (checker.strEquals(cmd, "lex")) {
         const file_path = try getFlFile(&args, io);
 
-        var result = runCompilerPipeline(alloc, file_path, io) catch return;
-        defer alloc.free(result.source);
-        defer result.parser.deinit();
-        defer alloc.free(result.tokens);
+        const source = try std.fs.cwd().readFileAlloc(alloc, file_path, 1024 * 1024);
+        defer alloc.free(source);
 
-        for (result.tokens) |t| {
+        var lexer = Lexer{
+            .alloc = alloc,
+            .io = io,
+            .position = 0,
+            .column = 0,
+            .line = 0,
+            .tokens = .empty,
+            .source = source,
+        };
+
+        const tokens = lexer.tokenize() catch |err| {
+            try io.stderr.print("Lexer error: {}\n", .{err});
+            return;
+        };
+        defer alloc.free(tokens);
+
+        for (tokens) |t| {
             const a = try t.toString(alloc);
             defer alloc.free(a);
             try io.stdout.print("{s}\n", .{a});

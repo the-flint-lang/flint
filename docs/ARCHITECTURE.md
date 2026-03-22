@@ -46,6 +46,8 @@ The compiler itself is written in Zig to leverage its memory safety, `comptime` 
 - **Parsing:** A recursive descent parser (`src/core/parser.zig`). It builds a strictly typed AST (`src/core/parser/ast.zig`).
 - **Canonical Module Resolution (Linker):** Flint prevents the "Diamond Alias Bug" by decoupling the user's alias from the canonical module name. If `io.fl` is imported multiple times under different aliases, the linker routes all C-calls to a single, consolidated C-compilation unit, eliminating binary bloat and reference errors.
 
+- **Name Mangling (Keyword Clashing):** Because Flint emits C99 code, users could theoretically crash the C compiler by naming variables `double`, `struct`, or `int`. The Emitter implements an automated Name Mangler (AST Shield) that sanitizes user identifiers against a strict list of C/POSIX reserved keywords before code generation, ensuring 100% compilation safety.
+
 ## 2. The Runtime (C99)
 
 This is where Flint's true philosophy lies. The generated code relies heavily on `flint_rt.c` and `flint_rt.h`.
@@ -78,6 +80,8 @@ typedef struct {
 ```
 
 All variables in Flint are boxed into this structure when interacting with the standard library, allowing functions to accept multiple types generically using C11's `_Generic` combined with Variadic Macros (`__VA_ARGS__`) under the hood to ensure safe compile-time polymorphism.
+
+To provide a modern Developer Experience (DX) like universal bracket indexing (`arr[0]` or `dict["key"]`) and deep equality (`==`), the Flint runtime heavily leverages C11's `_Generic`. The C compiler statically routes the syntax to the correct memory access pattern (array pointer arithmetic vs. hash map lookups) with zero runtime reflection penalty.
 
 ## 3. Key Language Features
 
