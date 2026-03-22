@@ -1,4 +1,5 @@
 import "./get_default_browser.fl";
+
 import io;
 import http;
 import json;
@@ -18,18 +19,19 @@ const req = http.fetch("https://dummyjson.com/quotes/random") catch |e| {
 };
 const data = json.parse(strings.to_str(req));
 
-const quote = strings.to_str(get(data, "quote"));
-const author = strings.to_str(get(data, "author"));
+const quote = strings.to_str(data["quote"]);
+const author = strings.to_str(data["author"]);
 
 print("2. Compiling HTML artifact in RAM...");
 
-var html = "<!DOCTYPE html><html><body style='font-family: system-ui; padding: 4rem; background: #1a1a1a; color: #fff;'>"
-    ~> strings.concat("<h1 style='color: #4ade80;'>Flint Philosophy</h1>")
-    ~> strings.concat("<blockquote style='font-size: 1.5rem; border-left: 4px solid #4ade80; padding-left: 1rem;'>")
-    ~> strings.concat(quote)
-    ~> strings.concat("</blockquote><p><b>- ")
-    ~> strings.concat(author)
-    ~> strings.concat("</b></p></body></html>");
+var html = $`<!DOCTYPE html><html><body style='font-family: system-ui; padding: 4rem; background: #1a1a1a; color: #fff;'>
+<h1 style='color: #4ade80;'>Flint Philosophy</h1>
+<blockquote style='font-size: 1.5rem; border-left: 4px solid #4ade80; padding-left: 1rem;'>
+{quote}
+</blockquote><p><b>
+{author}
+</b></p></body></html>
+`;
 
 print("3. Writing to hard drive...");
 io.write_file(html, "philosophy.html");

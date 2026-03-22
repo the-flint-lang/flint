@@ -383,26 +383,29 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper) !void {
         return;
     }
 
-    const file_path = args.next() orelse {
-        try io.stderr.print("Error: Provide the path of the .fl file\n", .{});
-        return;
-    };
-
-    if (std.mem.lastIndexOfScalar(u8, file_path, '.')) |idx| {
-        const ext = file_path[idx..];
-        if (!std.mem.eql(u8, ext, ".fl")) {
-            try io.stderr.print("Error: Provide a .fl file\n", .{});
-            return;
-        }
-    }
-
     if (checker.strEquals(cmd, "lex")) {
-        var result = runCompilerPipeline(alloc, file_path, io) catch return;
-        defer alloc.free(result.source);
-        defer result.parser.deinit();
-        defer alloc.free(result.tokens);
+        const file_path = try getFlFile(&args, io);
 
-        for (result.tokens) |t| {
+        const source = try std.fs.cwd().readFileAlloc(alloc, file_path, 1024 * 1024);
+        defer alloc.free(source);
+
+        var lexer = Lexer{
+            .alloc = alloc,
+            .io = io,
+            .position = 0,
+            .column = 0,
+            .line = 0,
+            .tokens = .empty,
+            .source = source,
+        };
+
+        const tokens = lexer.tokenize() catch |err| {
+            try io.stderr.print("Lexer error: {}\n", .{err});
+            return;
+        };
+        defer alloc.free(tokens);
+
+        for (tokens) |t| {
             const a = try t.toString(alloc);
             defer alloc.free(a);
             try io.stdout.print("{s}\n", .{a});
@@ -411,6 +414,8 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper) !void {
     }
 
     if (checker.strEquals(cmd, "parse")) {
+        const file_path = try getFlFile(&args, io);
+
         var result = runCompilerPipeline(alloc, file_path, io) catch return;
         defer alloc.free(result.source);
         defer result.parser.deinit();
@@ -421,17 +426,38 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper) !void {
     }
 
     if (checker.strEquals(cmd, "build")) {
+        const file_path = try getFlFile(&args, io);
+
         try runner(alloc, &args, file_path, io, false);
         return;
     }
 
     if (checker.strEquals(cmd, "run")) {
+        const file_path = try getFlFile(&args, io);
+
         try runner(alloc, &args, file_path, io, true);
         return;
     }
 
     try help(io);
-    try io.stderr.print("\nUnknown command: '{s}'\n", .{cmd});
+    try io.stderr.print("\n\x1b[1;31merror:\x1b[0m Unknown command '{s}'\n", .{cmd});
+}
+
+fn getFlFile(args: *std.process.ArgIterator, io: anytype) ![]const u8 {
+    const file_path = args.next() orelse {
+        try io.stderr.print("\x1b[1;31merror:\x1b[0m Provide the path of the .fl file\n", .{});
+        return "";
+    };
+
+    if (std.mem.lastIndexOfScalar(u8, file_path, '.')) |idx| {
+        const ext = file_path[idx..];
+        if (!std.mem.eql(u8, ext, ".fl")) {
+            try io.stderr.print("\x1b[1;31merror:\x1b[0m File must have a .fl extension\n", .{});
+            return "";
+        }
+    }
+
+    return file_path;
 }
 
 fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: []const u8, io: anytype, is_run: bool) !void {
@@ -459,7 +485,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
     out_file.close();
 
     if (!is_run) {
-        try io.stdout.print("Transpiled. Compiling native binary...\n", .{});
+        try io.stdout.print("\x1b[38;5;208m[FLINT]\x1b[0m Transpiling and compiling native binary...\n", .{});
         _ = try io.stdout.flush();
     }
 
@@ -488,6 +514,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
         exe_name,
         "-O3",
         "-march=native",
+        "-Wno-unused-value",
     };
 
     var child = std.process.Child.init(argv, alloc);
@@ -497,7 +524,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
         .Exited => |code| {
             if (code == 0) {
                 if (!is_run) {
-                    try io.stdout.print("Success! Executable '{s}' generated.\n", .{exe_name});
+                    try io.stdout.print("\x1b[1;32m[SUCCESS]\x1b[0m Executable '{s}' generated.\n", .{exe_name});
                 }
                 std.fs.cwd().deleteFile(out_filename) catch {};
             } else {
@@ -630,6 +657,7 @@ fn testSingleFile(alloc: std.mem.Allocator, file_path: []const u8, io: IoHelper)
         exe_name,
         "-O3",
         "-march=native",
+        "-Wno-unused-value",
     };
 
     var child_clang = std.process.Child.init(clang_argv, alloc);

@@ -1,10 +1,7 @@
-import io;
-import strings;
-
 var numbers = [10, 20, 30, 40];
 print("Before mutation:");
-print(strings.int_to_str(numbers[2]));
+print(numbers[2]);
 
 numbers[2] = 99;
 print("After mutation:");
-print(strings.int_to_str(numbers[2]));
+print(numbers[2]);

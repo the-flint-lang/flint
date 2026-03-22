@@ -1,7 +1,7 @@
-fn somar(a: int, b: int) int {
+fn sum(a: int, b: int) int {
     return a + b;
 }
 
-fn dobro(a: int) int {
-    return somar(a, a); 
+fn _double(a: int) int {
+    return sum(a, a); 
 }

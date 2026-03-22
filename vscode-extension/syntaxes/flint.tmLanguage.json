@@ -43,19 +43,74 @@
             "patterns": [
                 {
                     "name": "string.quoted.double.flint",
-                    "begin": "\"",
+                    "begin": "(\\$)?\"",
+                    "beginCaptures": {
+                        "1": {
+                            "name": "keyword.control.interpolation.flint"
+                        }
+                    },
                     "end": "\"",
                     "patterns": [
                         {
                             "name": "constant.character.escape.flint",
                             "match": "\\\\."
+                        },
+                        {
+                            "name": "meta.embedded.line.flint",
+                            "begin": "\\{",
+                            "beginCaptures": {
+                                "0": {
+                                    "name": "punctuation.section.embedded.begin.flint"
+                                }
+                            },
+                            "end": "\\}",
+                            "endCaptures": {
+                                "0": {
+                                    "name": "punctuation.section.embedded.end.flint"
+                                }
+                            },
+                            "patterns": [
+                                {
+                                    "include": "$self"
+                                }
+                            ]
                         }
                     ]
                 },
                 {
                     "name": "string.quoted.other.multiline.flint",
-                    "begin": "`",
-                    "end": "`"
+                    "begin": "(\\$)?`",
+                    "beginCaptures": {
+                        "1": {
+                            "name": "keyword.control.interpolation.flint"
+                        }
+                    },
+                    "end": "`",
+                    "patterns": [
+                        {
+                            "include": "meta.embedded.line.flint"
+                        },
+                        {
+                            "name": "meta.embedded.block.flint",
+                            "begin": "\\{",
+                            "beginCaptures": {
+                                "0": {
+                                    "name": "punctuation.section.embedded.begin.flint"
+                                }
+                            },
+                            "end": "\\}",
+                            "endCaptures": {
+                                "0": {
+                                    "name": "punctuation.section.embedded.end.flint"
+                                }
+                            },
+                            "patterns": [
+                                {
+                                    "include": "$self"
+                                }
+                            ]
+                        }
+                    ]
                 }
             ]
         },
@@ -87,7 +142,11 @@
             "patterns": [
                 {
                     "name": "support.function.builtin.flint",
-                    "match": "\\b(print|len|push|range|get|set|parse_json_as|expect|fallback)\\b(?=\\s*\\()"
+                    "match": "\\b(print|len|push|range|parse_json|parse_json_as|expect|fallback|ensure|to_str)\\b"
+                },
+                {
+                    "name": "variable.language.placeholder.flint",
+                    "match": "\\b_\\b"
                 }
             ]
         },

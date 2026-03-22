@@ -2,8 +2,8 @@ import "./math.fl" as m;
 import io;
 import strings;
 
-fn somar(a: int, b: int) int {
+fn sum(a: int, b: int) int {
     return 0; 
 }
 
-print(strings.int_to_str(m.dobro(5)));
+print(strings.int_to_str(m._double(5)));

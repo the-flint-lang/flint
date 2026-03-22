@@ -8,7 +8,9 @@ pub const CEmitter = struct {
     temp_counter: usize = 0,
     source_file: []const u8,
 
-    built_ins: [6][]const u8,
+    built_ins: [10][]const u8,
+
+    current_placeholder_name: ?[]const u8 = null,
 
     pub fn init(allocator: std.mem.Allocator, source_file: []const u8) CEmitter {
         return .{
@@ -21,7 +23,12 @@ pub const CEmitter = struct {
                 "range",
                 "expect",
                 "fallback",
+                "concat",
+                "to_str",
+                "parse_json",
+                "ensure",
             },
+            .current_placeholder_name = null,
         };
     }
 
@@ -63,6 +70,44 @@ pub const CEmitter = struct {
         try writer.print("    return 0;\n}}\n", .{});
     }
 
+    fn containsPlaceholder(self: *CEmitter, node: *AstNode) bool {
+        switch (node.*) {
+            .identifier => return std.mem.eql(u8, node.identifier.name, "_"),
+            .binary_expr => return self.containsPlaceholder(node.binary_expr.left) or self.containsPlaceholder(node.binary_expr.right),
+            .unary_expr => return self.containsPlaceholder(node.unary_expr.right),
+            .call_expr => {
+                if (self.containsPlaceholder(node.call_expr.callee)) return true;
+                for (node.call_expr.arguments) |arg| {
+                    if (self.containsPlaceholder(arg)) return true;
+                }
+                return false;
+            },
+            .property_access_expr => return self.containsPlaceholder(node.property_access_expr.object),
+            .index_expr => return self.containsPlaceholder(node.index_expr.left) or self.containsPlaceholder(node.index_expr.index),
+            .array_expr => {
+                for (node.array_expr.elements) |el| {
+                    if (self.containsPlaceholder(el)) return true;
+                }
+                return false;
+            },
+            .dict_expr => {
+                for (node.dict_expr.entries) |entry| {
+                    if (self.containsPlaceholder(entry.key) or self.containsPlaceholder(entry.value)) return true;
+                }
+                return false;
+            },
+            .pipeline_expr => return self.containsPlaceholder(node.pipeline_expr.left) or self.containsPlaceholder(node.pipeline_expr.right_call),
+            .catch_expr => {
+                if (self.containsPlaceholder(node.catch_expr.expression)) return true;
+                for (node.catch_expr.body) |stmt| {
+                    if (self.containsPlaceholder(stmt)) return true;
+                }
+                return false;
+            },
+            else => return false,
+        }
+    }
+
     fn visitFunctionDecl(self: *CEmitter, node: *AstNode, writer: anytype) !void {
         const func = node.function_decl;
 
@@ -77,10 +122,12 @@ pub const CEmitter = struct {
             .array_type_token => "flint_str_array",
             .boolean_type_token => "bool",
 
-            else => "flint_str", // Default fallback
+            else => "flint_str", // default fallback
         };
 
-        try writer.print("{s} {s}(", .{ ret_type, func.name });
+        try writer.print("{s} ", .{ret_type});
+        try emitSafeName(writer, func.name);
+        try writer.print("(", .{});
 
         for (func.arguments, 0..) |arg, i| {
             const arg_type_tok = arg.identifier._type._type;
@@ -93,7 +140,8 @@ pub const CEmitter = struct {
                 else => "flint_str",
             };
 
-            try writer.print("{s} {s}", .{ c_type, arg.identifier.name });
+            try writer.print("{s} ", .{c_type});
+            try emitSafeName(writer, arg.identifier.name);
 
             if (i < func.arguments.len - 1) {
                 try writer.print(", ", .{});
@@ -165,29 +213,38 @@ pub const CEmitter = struct {
         try writer.print("typedef struct {{\n", .{});
         for (struct_node.fields) |field| {
             const c_type = self.getCTypeFromToken(field._type);
-            try writer.print("    {s} {s};\n", .{ c_type, field.name });
+            try writer.print("    {s} ", .{c_type});
+            try emitSafeName(writer, field.name);
+            try writer.print(";\n", .{});
         }
-        try writer.print("}} {s};\n\n", .{struct_node.name});
+        try writer.print("}} ", .{});
+        try emitSafeName(writer, struct_node.name);
+        try writer.print(";\n\n", .{});
 
-        // 1. A MÁGICA DE DESEMPACOTAMENTO ACONTECE AQUI
-        // Agora a função interna recebe o FlintValue empacotado que o parser JSON devolve
-        try writer.print("static {s} __parse_{s}_from_val(FlintValue v_envelope) {{\n", .{ struct_node.name, struct_node.name });
+        try writer.print("static ", .{});
+        try emitSafeName(writer, struct_node.name);
+        try writer.print(" __parse_{s}_from_val(FlintValue v_envelope) {{\n", .{struct_node.name});
 
-        // Proteção contra Null Pointers se o JSON vier quebrado
         try writer.print("    FlintDict* d = (v_envelope.type == FLINT_VAL_DICT) ? v_envelope.as.d : NULL;\n", .{});
-        try writer.print("    {s} _obj;\n", .{struct_node.name});
+
+        try writer.print("    ", .{});
+        try emitSafeName(writer, struct_node.name);
+        try writer.print(" _obj;\n", .{});
 
         for (struct_node.fields) |field| {
             try writer.print("    FlintValue _v_{s} = d ? flint_dict_get(d, FLINT_STR(\"{s}\")) : (FlintValue){{FLINT_VAL_NULL}};\n", .{ field.name, field.name });
 
+            try writer.print("    _obj.", .{});
+            try emitSafeName(writer, field.name);
+
             if (field._type._type == .string_type_token) {
-                try writer.print("    _obj.{s} = (_v_{s}.type == FLINT_VAL_STR) ? _v_{s}.as.s : FLINT_STR(\"\");\n", .{ field.name, field.name, field.name });
+                try writer.print(" = (_v_{s}.type == FLINT_VAL_STR) ? _v_{s}.as.s : FLINT_STR(\"\");\n", .{ field.name, field.name });
             } else if (field._type._type == .integer_type_token) {
-                try writer.print("    _obj.{s} = (_v_{s}.type == FLINT_VAL_INT) ? _v_{s}.as.i : 0;\n", .{ field.name, field.name, field.name });
+                try writer.print(" = (_v_{s}.type == FLINT_VAL_INT) ? _v_{s}.as.i : 0;\n", .{ field.name, field.name });
             } else if (field._type._type == .boolean_type_token) {
-                try writer.print("    _obj.{s} = (_v_{s}.type == FLINT_VAL_BOOL) ? _v_{s}.as.b : false;\n", .{ field.name, field.name, field.name });
+                try writer.print(" = (_v_{s}.type == FLINT_VAL_BOOL) ? _v_{s}.as.b : false;\n", .{ field.name, field.name });
             } else {
-                try writer.print("    // TODO: Nested structs not mapped yet\n", .{});
+                try writer.print(" // TODO: Nested structs not mapped yet\n", .{});
             }
         }
 
@@ -224,7 +281,9 @@ pub const CEmitter = struct {
             try writer.print("const ", .{});
         }
 
-        try writer.print("__auto_type {s} = ", .{decl.name});
+        try writer.print("__auto_type ", .{});
+        try emitSafeName(writer, decl.name);
+        try writer.print(" = ", .{});
         try self.visitNode(decl.value, writer);
     }
 
@@ -232,6 +291,13 @@ pub const CEmitter = struct {
         const call = node.call_expr;
 
         try writer.print("\n    #line {d} \"{s}\"\n    ", .{ call.line, self.source_file });
+
+        if (call.callee.* == .identifier and std.mem.eql(u8, call.callee.identifier.name, "to_str")) {
+            try writer.print("flint_to_str(FLINT_BOX(", .{});
+            try self.visitNode(call.arguments[0], writer);
+            try writer.print("))", .{});
+            return;
+        }
 
         if (call.callee.* == .identifier and std.mem.eql(u8, call.callee.identifier.name, "parse_json_as")) {
             if (call.arguments.len != 2) return error.InvalidArgumentCount;
@@ -259,22 +325,46 @@ pub const CEmitter = struct {
         const pipe = node.pipeline_expr;
         const right_call = pipe.right_call.call_expr;
 
-        try self.visitNode(right_call.callee, writer);
-        try writer.print("(", .{});
+        const has_placeholder = self.containsPlaceholder(pipe.right_call);
 
-        try self.visitNode(pipe.left, writer);
+        if (has_placeholder) {
+            self.temp_counter += 1;
+            const temp_name = try std.fmt.allocPrint(self.allocator, "_pipe_val_{d}", .{self.temp_counter});
+            defer self.allocator.free(temp_name);
 
-        if (right_call.arguments.len > 0) {
-            try writer.print(", ", .{});
-            for (right_call.arguments, 0..) |arg, i| {
-                try self.visitNode(arg, writer);
-                if (i < right_call.arguments.len - 1) {
-                    try writer.print(", ", .{});
+            try writer.print("({{\n", .{});
+            try writer.print("        __auto_type {s} = ", .{temp_name});
+            try self.visitNode(pipe.left, writer);
+            try writer.print(";\n", .{});
+
+            const prev_placeholder = self.current_placeholder_name;
+            self.current_placeholder_name = temp_name;
+
+            try writer.print("        ", .{});
+            try self.visitNode(pipe.right_call, writer);
+            try writer.print(";\n", .{});
+
+            self.current_placeholder_name = prev_placeholder;
+
+            try writer.print("    }})", .{});
+        } else {
+            try self.visitNode(right_call.callee, writer);
+            try writer.print("(", .{});
+
+            try self.visitNode(pipe.left, writer);
+
+            if (right_call.arguments.len > 0) {
+                try writer.print(", ", .{});
+                for (right_call.arguments, 0..) |arg, i| {
+                    try self.visitNode(arg, writer);
+                    if (i < right_call.arguments.len - 1) {
+                        try writer.print(", ", .{});
+                    }
                 }
             }
-        }
 
-        try writer.print(")", .{});
+            try writer.print(")", .{});
+        }
     }
 
     fn visitIfStmt(self: *CEmitter, node: *AstNode, writer: anytype) !void {
@@ -328,13 +418,35 @@ pub const CEmitter = struct {
     fn visitBinaryExpr(self: *CEmitter, node: *AstNode, writer: anytype) !void {
         const bin = node.binary_expr;
 
-        if (bin.operator._type == .assign_token and bin.left.* == .identifier) {
-            if (std.mem.eql(u8, bin.left.identifier.name, "_")) {
+        if (bin.operator._type == .assign_token) {
+            if (bin.left.* == .identifier and std.mem.eql(u8, bin.left.identifier.name, "_")) {
                 try writer.print("(void)(", .{});
                 try self.visitNode(bin.right, writer);
                 try writer.print(")", .{});
                 return;
             }
+
+            if (bin.left.* == .index_expr) {
+                try writer.print("FLINT_SET_INDEX(", .{});
+                try self.visitNode(bin.left.index_expr.left, writer); // array/dict
+                try writer.print(", ", .{});
+                try self.visitNode(bin.left.index_expr.index, writer); // índice
+                try writer.print(", ", .{});
+                try self.visitNode(bin.right, writer); // valor
+                try writer.print(")", .{});
+                return;
+            }
+        }
+
+        if (bin.operator._type == .equal_token or bin.operator._type == .bang_equal_token) {
+            const macro_name = if (bin.operator._type == .equal_token) "FLINT_EQ" else "FLINT_NEQ";
+
+            try writer.print("{s}(", .{macro_name});
+            try self.visitNode(bin.left, writer);
+            try writer.print(", ", .{});
+            try self.visitNode(bin.right, writer);
+            try writer.print(")", .{});
+            return;
         }
 
         try writer.print("(", .{});
@@ -347,8 +459,6 @@ pub const CEmitter = struct {
             .star_token => "*",
             .remainder_token => "%",
             .slash_token => "/",
-            .equal_token => "==",
-            .bang_equal_token => "!=",
             .less_token => "<",
             .greater_token => ">",
             .less_equal_token => "<=",
@@ -373,24 +483,28 @@ pub const CEmitter = struct {
         _ = self;
         const tok = node.literal.token;
 
-        if (tok._type == .string_literal_token) {
-            try writer.print("FLINT_STR(\"{s}\")", .{tok.value});
-        } else if (tok._type == .multile_string_literal_token) {
-            try writer.print("\"", .{});
+        if (tok._type == .string_literal_token or tok._type == .multile_string_literal_token) {
+            try writer.print("FLINT_STR(\"", .{});
 
-            for (tok.value) |char| {
-                if (char == '\n') {
-                    try writer.print("\\n", .{});
-                } else if (char == '\r') {} else if (char == '"') {
-                    try writer.print("\\\"", .{});
-                } else {
-                    try writer.print("{c}", .{char});
+            for (tok.value, 0..) |char, i| {
+                switch (char) {
+                    '\n' => try writer.print("\\n", .{}),
+                    '\r' => {},
+                    '"' => {
+                        if (i > 0 and tok.value[i - 1] == '\\') {
+                            try writer.print("\"", .{});
+                        } else {
+                            try writer.print("\\\"", .{});
+                        }
+                    },
+                    else => try writer.print("{c}", .{char}),
                 }
             }
 
-            try writer.print("\"", .{});
+            try writer.print("\")", .{});
         } else {
-            try writer.print("{s}", .{tok.value}); // Numbers, true, false
+            // Números, true, false, null
+            try writer.print("{s}", .{tok.value});
         }
     }
 
@@ -435,13 +549,15 @@ pub const CEmitter = struct {
     fn visitIndexExpr(self: *CEmitter, node: *AstNode, writer: anytype) !void {
         const idx = node.index_expr;
 
+        try writer.print("FLINT_INDEX(", .{});
+
         try self.visitNode(idx.left, writer);
 
-        try writer.print(".items[", .{});
+        try writer.print(", ", .{});
 
         try self.visitNode(idx.index, writer);
 
-        try writer.print("]", .{});
+        try writer.print(")", .{});
     }
 
     fn emitBoxedValue(self: *CEmitter, node: *AstNode, writer: anytype) !void {
@@ -514,6 +630,12 @@ pub const CEmitter = struct {
     }
 
     fn visitIdentifier(self: *CEmitter, node: *AstNode, writer: anytype) !void {
+        if (std.mem.eql(u8, node.identifier.name, "_")) {
+            if (self.current_placeholder_name) |p_name| {
+                try writer.print("{s}", .{p_name});
+                return;
+            }
+        }
         try self.writeMappedIdentifier(node.identifier.name, writer);
     }
 
@@ -531,6 +653,31 @@ pub const CEmitter = struct {
         for (self.built_ins) |built| {
             if (std.mem.eql(u8, built, name)) {
                 try writer.print("flint_{s}", .{name});
+                return;
+            }
+        }
+
+        try emitSafeName(writer, name);
+    }
+
+    fn emitSafeName(writer: anytype, name: []const u8) !void {
+        const c_keywords = [_][]const u8{
+            // C reserved words
+            "auto",     "break",  "case",   "char",     "const",    "continue", "default",  "do",
+            "double",   "else",   "enum",   "extern",   "float",    "for",      "goto",     "if",
+            "inline",   "int",    "long",   "register", "restrict", "return",   "short",    "signed",
+            "sizeof",   "static", "struct", "switch",   "typedef",  "union",    "unsigned", "void",
+            "volatile", "while",
+
+            // LibC/POSIX dangerous functions
+             "printf", "malloc",   "free",     "exit",     "read",     "write",
+            "open",     "close",  "main",   "stdin",    "stdout",   "stderr",   "math",     "sin",
+            "cos",
+        };
+
+        for (c_keywords) |kw| {
+            if (std.mem.eql(u8, name, kw)) {
+                try writer.print("{s}_", .{name});
                 return;
             }
         }

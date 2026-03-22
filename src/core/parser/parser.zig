@@ -1,5 +1,6 @@
 const std = @import("std");
 const Token = @import("../lexer/structs/token.zig").Token;
+const Lexer = @import("../lexer/lexer.zig").Lexer;
 const TokenType = @import("../lexer/enums/token_type.zig").TokenType;
 const AstNode = @import("./ast.zig").AstNode;
 const IoHelpers = @import("../helpers/structs/structs.zig").IoHelpers;
@@ -38,9 +39,20 @@ pub const Parser = struct {
         var statements: std.ArrayList(*AstNode) = .empty;
 
         while (!self.isAtEnd()) {
-            const stmt = try self.parseDeclaration();
-            try statements.append(self.allocator, stmt);
+            if (self.parseDeclaration()) |stmt| {
+                try statements.append(self.allocator, stmt);
+            } else |err| {
+                if (err == error.ParseError) {
+                    self.synchronize();
+                } else {
+                    return err;
+                }
+            }
         }
+
+        // if we had ANY errors during the process, we cannot generate a valid AST.
+        // we return error here to prevent CEmitter from trying to generate broken code.
+        if (self.had_error) return error.ParseError;
 
         const program_node = try self.allocator.create(AstNode);
         program_node.* = .{
@@ -304,6 +316,10 @@ pub const Parser = struct {
     }
 
     fn parsePrimary(self: *Parser) anyerror!*AstNode {
+        if (self.match(&.{.interpolated_string_token})) {
+            return try self.parseInterpolatedString(self.previous());
+        }
+
         if (self.match(&.{ .false_literal_token, .true_literal_token, .integer_literal_token, .string_literal_token, .char_literal_token, .multile_string_literal_token })) {
             const node = try self.allocator.create(AstNode);
             node.* = .{ .literal = .{ .token = self.previous() } };
@@ -637,25 +653,38 @@ pub const Parser = struct {
         }
 
         const raw_len: u32 = switch (token._type) {
-            .string_literal_token => @intCast(token.value.len + 2), // +2 para as aspas
-            .char_literal_token => @intCast(token.value.len + 2), // +2 para as aspas
+            .string_literal_token => @intCast(token.value.len + 2),
+            .char_literal_token => @intCast(token.value.len + 2),
+            .eof_token => 1,
             else => @intCast(if (token.value.len > 0) token.value.len else 1),
         };
 
         const token_len = raw_len;
         const start_col = if (token.column >= raw_len) token.column - raw_len else 0;
 
-        try self.io.stderr.print("\n\x1b[1;31m[Syntax Error]\x1b[0m {s}:{d}:{d}\n", .{ self.file_path, token.line + 1, start_col + 1 });
-        try self.io.stderr.print("    |\n", .{});
-        try self.io.stderr.print("{d:3} | {s}\n", .{ token.line + 1, target_line_text });
-        try self.io.stderr.print("    | ", .{});
+        const red = "\x1b[1;31m";
+        const cyan = "\x1b[1;36m";
+        const bold = "\x1b[1m";
+        const reset = "\x1b[0m";
 
+        try self.io.stderr.print("[{s}ERROR{s}]: {s}{s}{s}\n", .{ red, reset, bold, message, reset });
+
+        try self.io.stderr.print("  {s}~~>{s} {s}:{d}:{d}\n", .{ cyan, reset, self.file_path, token.line + 1, start_col + 1 });
+
+        try self.io.stderr.print("   {s}|{s}\n", .{ cyan, reset });
+
+        try self.io.stderr.print("{d:2} {s}|{s} {s}\n", .{ token.line + 1, cyan, reset, target_line_text });
+
+        try self.io.stderr.print("   {s}|{s} ", .{ cyan, reset });
         for (0..start_col) |_| try self.io.stderr.print(" ", .{});
 
-        try self.io.stderr.print("\x1b[1;31m^\x1b[0m", .{});
-        for (1..token_len) |_| try self.io.stderr.print("\x1b[1;31m~\x1b[0m", .{});
+        try self.io.stderr.print("{s}^{s}", .{ red, reset });
+        if (token_len > 1) {
+            for (1..token_len) |_| try self.io.stderr.print("{s}~{s}", .{ red, reset });
+        }
 
-        try self.io.stderr.print("\n    | \x1b[1;31m{s}\x1b[0m\n\n", .{message});
+        try self.io.stderr.print("\n   {s}|{s}\n\n", .{ cyan, reset });
+
         _ = try self.io.stderr.flush();
     }
 
@@ -667,5 +696,127 @@ pub const Parser = struct {
     fn reportErrorT(self: *Parser, token: Token, message: []const u8) anyerror!Token {
         try self.printErrorContext(token, message);
         return error.ParseError;
+    }
+
+    fn synchronize(self: *Parser) void {
+        _ = self.advance();
+
+        while (!self.isAtEnd()) {
+            // if the previous token was a semicolon, the next line is probably safe
+            if (self.previous()._type == .semicolon_token) return;
+
+            switch (self.peek()._type) {
+                .struct_token, .fn_token, .extern_token, .var_token, .const_token, .if_token, .for_token, .return_token => return,
+                else => {},
+            }
+
+            _ = self.advance();
+        }
+    }
+
+    fn createStringLiteralNode(self: *Parser, text: []const u8) !*AstNode {
+        const node = try self.allocator.create(AstNode);
+        node.* = .{ .literal = .{ .token = .{
+            ._type = .string_literal_token,
+            .value = text,
+            .line = self.previous().line,
+            .column = self.previous().column,
+        } } };
+        return node;
+    }
+
+    fn wrapInToStr(self: *Parser, expr: *AstNode) !*AstNode {
+        const func_id = try self.allocator.create(AstNode);
+        func_id.* = .{ .identifier = .{ ._type = Token{ ._type = .identifier_token, .value = "to_str", .line = 0, .column = 0 }, .name = "to_str" } };
+
+        const call = try self.allocator.create(AstNode);
+        var args = try self.allocator.alloc(*AstNode, 1);
+        args[0] = expr;
+        call.* = .{ .call_expr = .{ .line = 0, .callee = func_id, .arguments = args } };
+
+        return call;
+    }
+
+    fn createConcatNode(self: *Parser, left: *AstNode, right: *AstNode) !*AstNode {
+        const func_id = try self.allocator.create(AstNode);
+        func_id.* = .{ .identifier = .{ ._type = Token{ ._type = .identifier_token, .value = "concat", .line = 0, .column = 0 }, .name = "concat" } };
+
+        const call = try self.allocator.create(AstNode);
+        var args = try self.allocator.alloc(*AstNode, 2);
+        args[0] = left;
+        args[1] = right;
+        call.* = .{ .call_expr = .{ .line = 0, .callee = func_id, .arguments = args } };
+
+        return call;
+    }
+
+    fn parseInterpolatedString(self: *Parser, token: Token) anyerror!*AstNode {
+        var parts = std.ArrayList(*AstNode).empty;
+        defer parts.deinit(self.allocator);
+
+        const raw = token.value;
+        var i: usize = 0;
+        var start: usize = 0;
+        var brace_depth: usize = 0;
+        var in_expr = false;
+
+        while (i < raw.len) : (i += 1) {
+            const c = raw[i];
+            if (c == '\\') {
+                i += 1;
+                continue;
+            }
+
+            if (!in_expr) {
+                if (c == '{') {
+                    if (i > start) {
+                        try parts.append(self.allocator, try self.createStringLiteralNode(raw[start..i]));
+                    }
+                    in_expr = true;
+                    brace_depth = 1;
+                    start = i + 1;
+                }
+            } else {
+                if (c == '{') brace_depth += 1;
+                if (c == '}') {
+                    brace_depth -= 1;
+                    if (brace_depth == 0) {
+                        const expr_str = raw[start..i];
+
+                        var sub_lexer = Lexer{
+                            .alloc = self.allocator,
+                            .io = self.io,
+                            .position = 0,
+                            .column = 0,
+                            .line = token.line,
+                            .source = expr_str,
+                            .tokens = std.ArrayList(Token).empty,
+                        };
+                        const sub_tokens = try sub_lexer.tokenize();
+                        var sub_parser = Parser.init(self.allocator, sub_tokens, expr_str, self.file_path, self.io);
+                        sub_parser.allocator = self.allocator;
+
+                        const expr_node = try sub_parser.parseExpression();
+                        try parts.append(self.allocator, try self.wrapInToStr(expr_node));
+
+                        in_expr = false;
+                        start = i + 1;
+                    }
+                }
+            }
+        }
+
+        if (start < raw.len) {
+            try parts.append(self.allocator, try self.createStringLiteralNode(raw[start..raw.len]));
+        }
+
+        if (parts.items.len == 0) return self.createStringLiteralNode("");
+
+        var result = parts.items[0];
+        for (parts.items[1..]) |part| {
+            result = try self.createConcatNode(result, part);
+        }
+
+        return result;
     }
 };

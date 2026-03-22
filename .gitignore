@@ -1,12 +1,13 @@
 *zig-*
 zemit/
-tests/teste.fl
+teste.fl
 .c.sh
 copy.fl
 erro
 .venv
 
-vscode-extension/flint-lang-*
+install
+
 
 # Release Tools
 zemit

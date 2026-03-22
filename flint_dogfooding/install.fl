@@ -6,8 +6,8 @@ print("      FLINT COMPILER INSTALLER          ");
 print("========================================");
 
 const SCRIPT_DIR = os.exec("pwd") ~> strings.trim();
-const BIN_SRC = SCRIPT_DIR ~> strings.concat("/zig-out/bin/flint");
-const STD_SRC_DIR = SCRIPT_DIR ~> strings.concat("/std");
+const BIN_SRC = $"{SCRIPT_DIR}/zig-out/bin/flint";
+const STD_SRC_DIR = $"{SCRIPT_DIR}/std";
 
 const DEST_BIN = "/usr/local/bin/flint";
 const LIB_DEST_DIR = "/usr/local/lib/flint";
@@ -16,10 +16,7 @@ os.spawn("zig version")
     ~> os.assert("Zig is not installed or could not be found. Zig 0.15.2 is recommended.");
 
 print("\n1. Installing binary to /usr/local/bin...");
-const cmd_install = "sudo install -m 0755 "
-    ~> strings.concat(BIN_SRC) 
-    ~> strings.concat(" ") 
-    ~> strings.concat(DEST_BIN);
+const cmd_install = $"sudo install -m 0755 {BIN_SRC} {DEST_BIN}";
 
 os.spawn(cmd_install) 
     ~> os.assert("No permission to install the binary. Did you cancel sudo?");
@@ -28,9 +25,9 @@ print("\n2. Installing Standard Library to /usr/local/lib/flint...");
 os.spawn("sudo mkdir -p /usr/local/lib/flint") ~> os.assert("Failed to create lib directory.");
 
 if (os.is_dir(STD_SRC_DIR)) {
-    const cmd_cp = "sudo cp -r " ~> strings.concat(STD_SRC_DIR) ~> strings.concat(" /usr/local/lib/flint/");
+    const cmd_cp = $"sudo cp -r {STD_SRC_DIR} /usr/local/lib/flint/";
+
     os.spawn(cmd_cp) ~> os.assert("Failed to copy the STD.");
-    
     os.spawn("sudo chown -R root:root /usr/local/lib/flint") ~> os.assert("Chown failed.");
     os.spawn("sudo chmod -R 755 /usr/local/lib/flint") ~> os.assert("Chmod failed.");
 } else {

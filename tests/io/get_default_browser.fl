@@ -6,6 +6,6 @@ fn get_brwoser_bin_path_and_exec(name: string) void {
         ~> strings.trim() 
         ~> strings.split(".");
     
-    const cmd = path[0] ~> strings.concat(" ") ~> strings.concat(name);
+    const cmd = $"{path[0]} {name}";
     os.exec(cmd);
 }
