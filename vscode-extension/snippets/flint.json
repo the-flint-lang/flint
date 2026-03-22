@@ -8,80 +8,46 @@
         ],
         "description": "Declare a strongly typed custom Struct"
     },
-    "Fetch API Call": {
+    "Fetch API Pipeline": {
         "prefix": "fetch",
         "body": [
-            "const ${1:payload} = http.fetch(\"${2:https://api.example.com}\")",
-            "    ~> expect(\"Network Error\");$0"
+            "const ${1:data} = http.fetch(\"${2:https://api.example.com}\")",
+            "    ~> parse_json(_)",
+            "    ~> ensure(_[\"status\"] == 200, \"API Error\")",
+            "    ~> expect(\"Network Failure\");$0"
         ],
-        "description": "Make an HTTP request with pipeline assertion"
+        "description": "Modern Fetch pipeline with JSON parsing and safety"
     },
-    "Parse JSON to Struct": {
-        "prefix": "parse",
+    "String Interpolation": {
+        "prefix": "interp",
         "body": [
-            "const ${1:obj} = parse_json_as(${2:StructName}, ${3:payload_string});$0"
+            "const ${1:msg} = $\"Value is: {${2:expression}}\";$0"
         ],
-        "description": "Parse JSON string directly into a typed Struct"
+        "description": "Create an interpolated string"
     },
-    "Execute OS Command (Raw)": {
-        "prefix": "exec",
+    "Multiline Interpolation": {
+        "prefix": "html",
         "body": [
-            "const ${1:output} = os.exec(\"${2:ls -la}\");$0"
+            "const ${1:template} = $`",
+            "<div>",
+            "    <h1>{${2:title}}</h1>",
+            "</div>",
+            "`;$0"
         ],
-        "description": "Run an OS command and get stdout as string (Fast/Raw)"
+        "description": "Create a multiline interpolated template"
     },
-    "Read File Pipeline": {
-        "prefix": "read",
-        "body": [
-            "const ${1:content} = io.read_file(\"${2:data.log}\")",
-            "    ~> expect(\"Fatal: Could not read file from disk.\");$0"
-        ],
-        "description": "Read a file from disk with zero-copy mmap"
-    },
-    "Spawn Process (Dict)": {
-        "prefix": "spawn",
-        "body": [
-            "const ${1:proc} = os.spawn(\"${2:process_command}\")",
-            "    ~> os.assert(\"KERNEL ERROR: Subprocess failed\");",
-            "",
-            "const ${3:out} = strings.to_str(get(${1:proc}, \"stdout\"));$0"
-        ],
-        "description": "Orchestrate a subprocess safely with built-in assert"
-    },
-    "Zero-Copy File Clone": {
-        "prefix": "copy",
-        "body": [
-            "_ = os.copy(\"${1:source.txt}\", \"${2:dest.txt}\")",
-            "    ~> expect(\"IO Error: Failed to copy file.\");$0"
-        ],
-        "description": "Clone a file using Kernel Space zero-copy (sendfile)"
-    },
-    "Iterate Directory Metadata": {
+    "Iterate Directory Modern": {
         "prefix": "ls",
         "body": [
             "const ${1:files} = os.ls(\"${2:.}\") ~> expect(\"Failed to list directory.\");",
             "",
-            "for f in strings.to_str(${1:files}) ~> strings.lines() {",
+            "for f in to_str(${1:files}) ~> strings.lines() {",
             "    if (os.is_file(f)) {",
-            "        const ${3:size} = os.file_size(f);",
+            "        print($\"File: {f} | Size: {os.file_size(f)}\");",
             "        $0",
             "    }",
             "}"
         ],
-        "description": "List directory and iterate over files with O(1) stack allocation"
-    },
-    "Import Canonical Library": {
-        "prefix": "import",
-        "body": [
-            "import ${1|os,io,strings,http,json,math|};$0"
-        ],
-        "description": "Import a standard library module cleanly"
-    },
-    "Import Custom File": {
-        "prefix": "impc",
-        "body": [
-            "import \"${1:./lib.fl}\" as ${2:alias};$0"
-        ],
-        "description": "Import a custom user file"
+        "description": "List directory using interpolation and modern indexing"
     }
 }
