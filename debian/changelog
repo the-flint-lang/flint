@@ -1,0 +1,7 @@
+flint (1.7.4) unstable; urgency=low
+
+  * Initial Debian packaging.
+  * Includes pre-compiled binary for amd64.
+  * Installs standard library to /usr/share/flint/std/.
+
+ -- Lucas Paulino Da Silva <lucas.workps@gmail.com>  Sun, 22 Mar 2026 00:28:00 -0300

@@ -12,3 +12,10 @@ install
 # Release Tools
 zemit
 zemit.toml
+
+debian/flint/
+debian/.debhelper/
+debian/debhelper-build-stamp
+debian/files
+debian/*.log
+debian/*.substvars
