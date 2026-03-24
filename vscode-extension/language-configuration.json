@@ -1,5 +1,40 @@
 {
+    "comments": {
+        "lineComment": {
+            "comment": "#"
+        },
+    },
     "autoClosingPairs": [
+        {
+            "open": "(",
+            "close": ")"
+        },
+        {
+            "open": "[",
+            "close": "]"
+        },
+        {
+            "open": "{",
+            "close": "}"
+        },
+        {
+            "open": "\"",
+            "close": "\""
+        },
+        {
+            "open": "`",
+            "close": "`"
+        },
+        {
+            "open": "$\"",
+            "close": "\""
+        },
+        {
+            "open": "$`",
+            "close": "`"
+        }
+    ],
+    "surroundingPairs": [
         [
             "(",
             ")"
@@ -19,14 +54,20 @@
         [
             "`",
             "`"
+        ]
+    ],
+    "brackets": [
+        [
+            "{",
+            "}"
         ],
-        {
-            "open": "$\"",
-            "close": "\""
-        },
-        {
-            "open": "$`",
-            "close": "`"
-        }
+        [
+            "[",
+            "]"
+        ],
+        [
+            "(",
+            ")"
+        ]
     ]
 }
