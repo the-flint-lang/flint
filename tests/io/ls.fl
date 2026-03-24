@@ -4,7 +4,7 @@ import strings;
 const f = os.ls(".") ~> expect("Unable to read current directory");
 
 var i = 0;
-for line in strings.to_str(f) ~> strings.lines() {
+for line in strings.to_str(f) ~> lines() {
     print($"{i}. {line}");
     i = i + 1;
 }

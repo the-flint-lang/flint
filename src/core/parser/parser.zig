@@ -12,7 +12,7 @@ pub const Parser = struct {
     current: usize = 0,
     source: []const u8,
     file_path: []const u8,
-    arena: std.heap.ArenaAllocator,
+
     allocator: std.mem.Allocator,
 
     io: IoHelpers,
@@ -24,15 +24,14 @@ pub const Parser = struct {
             .source = source,
             .file_path = file_path,
             .current = 0,
-            .arena = std.heap.ArenaAllocator.init(allocator),
-            .allocator = undefined,
+            .allocator = allocator,
             .io = io,
             .had_error = false,
         };
     }
 
     pub fn deinit(self: *Parser) void {
-        self.arena.deinit();
+        _ = self;
     }
 
     pub fn parse(self: *Parser) anyerror!*AstNode {
@@ -737,19 +736,6 @@ pub const Parser = struct {
         return call;
     }
 
-    fn createConcatNode(self: *Parser, left: *AstNode, right: *AstNode) !*AstNode {
-        const func_id = try self.allocator.create(AstNode);
-        func_id.* = .{ .identifier = .{ ._type = Token{ ._type = .identifier_token, .value = "concat", .line = 0, .column = 0 }, .name = "concat" } };
-
-        const call = try self.allocator.create(AstNode);
-        var args = try self.allocator.alloc(*AstNode, 2);
-        args[0] = left;
-        args[1] = right;
-        call.* = .{ .call_expr = .{ .line = 0, .callee = func_id, .arguments = args } };
-
-        return call;
-    }
-
     fn parseInterpolatedString(self: *Parser, token: Token) anyerror!*AstNode {
         var parts = std.ArrayList(*AstNode).empty;
         defer parts.deinit(self.allocator);
@@ -793,8 +779,8 @@ pub const Parser = struct {
                             .tokens = std.ArrayList(Token).empty,
                         };
                         const sub_tokens = try sub_lexer.tokenize();
+
                         var sub_parser = Parser.init(self.allocator, sub_tokens, expr_str, self.file_path, self.io);
-                        sub_parser.allocator = self.allocator;
 
                         const expr_node = try sub_parser.parseExpression();
                         try parts.append(self.allocator, try self.wrapInToStr(expr_node));
@@ -812,11 +798,16 @@ pub const Parser = struct {
 
         if (parts.items.len == 0) return self.createStringLiteralNode("");
 
-        var result = parts.items[0];
-        for (parts.items[1..]) |part| {
-            result = try self.createConcatNode(result, part);
-        }
+        const func_id = try self.allocator.create(AstNode);
+        func_id.* = .{ .identifier = .{ ._type = Token{ ._type = .identifier_token, .value = "build_str", .line = 0, .column = 0 }, .name = "build_str" } };
 
-        return result;
+        const call = try self.allocator.create(AstNode);
+        call.* = .{ .call_expr = .{
+            .line = token.line,
+            .callee = func_id,
+            .arguments = try parts.toOwnedSlice(self.allocator),
+        } };
+
+        return call;
     }
 };

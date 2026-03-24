@@ -22,7 +22,7 @@ What did you expect to happen? (e.g., "It should print 'Hello', but it crashed w
 Environment
 OS & Architecture: [e.g. Linux x86_64, macOS aarch64]
 
-Flint Version: [e.g. v1.7.4]
+Flint Version: [e.g. v1.7.5]
 
 Compiler used to build Flint: [e.g. Zig 0.11.0, Clang 16]
 

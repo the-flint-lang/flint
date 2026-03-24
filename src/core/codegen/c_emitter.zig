@@ -8,7 +8,7 @@ pub const CEmitter = struct {
     temp_counter: usize = 0,
     source_file: []const u8,
 
-    built_ins: [10][]const u8,
+    built_ins: [12][]const u8,
 
     current_placeholder_name: ?[]const u8 = null,
 
@@ -27,6 +27,8 @@ pub const CEmitter = struct {
                 "to_str",
                 "parse_json",
                 "ensure",
+                "lines",
+                "grep",
             },
             .current_placeholder_name = null,
         };
@@ -398,21 +400,53 @@ pub const CEmitter = struct {
         self.temp_counter += 1;
         const iter_name = self.temp_counter;
 
-        try writer.print("{{\n        __auto_type _arr_{d} = ", .{iter_name});
+        try writer.print("{{\n        __auto_type _iter_{d} = ", .{iter_name});
         try self.visitNode(for_node.iterable, writer);
         try writer.print(";\n", .{});
 
-        try writer.print("        for (size_t _i_{d} = 0; _i_{d} < _arr_{d}.count; _i_{d}++) {{\n", .{ iter_name, iter_name, iter_name, iter_name });
+        try writer.print("        _Generic((_iter_{d}), \\\n", .{iter_name});
 
-        try writer.print("            __auto_type {s} = _arr_{d}.items[_i_{d}];\n", .{ for_node.iterator_name, iter_name, iter_name });
-
+        try writer.print("            flint_int_array: ({{ \\\n", .{});
+        try writer.print("                flint_int_array* _arr_{d} = (flint_int_array*)(void*)&_iter_{d}; \\\n", .{ iter_name, iter_name });
+        try writer.print("                for (size_t _i_{d} = 0, _mark_{d} = flint_arena_mark(); _i_{d} < _arr_{d}->count; flint_arena_release(_mark_{d}), _mark_{d} = flint_arena_mark(), _i_{d}++) {{ \\\n", .{ iter_name, iter_name, iter_name, iter_name, iter_name, iter_name, iter_name });
+        try writer.print("                    __auto_type {s} = _arr_{d}->items[_i_{d}]; \\\n", .{ for_node.iterator_name, iter_name, iter_name });
         for (for_node.body) |stmt| {
-            try writer.print("            ", .{});
+            try writer.print("                    ", .{});
             try self.visitNode(stmt, writer);
-            try writer.print(";\n", .{});
+            try writer.print("; \\\n", .{});
         }
+        try writer.print("                }} \\\n", .{});
+        try writer.print("            }}), \\\n", .{});
 
-        try writer.print("        }}\n    }}", .{});
+        try writer.print("            flint_str_array: ({{ \\\n", .{});
+        try writer.print("                flint_str_array* _arr_{d} = (flint_str_array*)(void*)&_iter_{d}; \\\n", .{ iter_name, iter_name });
+        try writer.print("                for (size_t _i_{d} = 0, _mark_{d} = flint_arena_mark(); _i_{d} < _arr_{d}->count; flint_arena_release(_mark_{d}), _mark_{d} = flint_arena_mark(), _i_{d}++) {{ \\\n", .{ iter_name, iter_name, iter_name, iter_name, iter_name, iter_name, iter_name });
+        try writer.print("                    __auto_type {s} = _arr_{d}->items[_i_{d}]; \\\n", .{ for_node.iterator_name, iter_name, iter_name });
+        for (for_node.body) |stmt| {
+            try writer.print("                    ", .{});
+            try self.visitNode(stmt, writer);
+            try writer.print("; \\\n", .{});
+        }
+        try writer.print("                }} \\\n", .{});
+        try writer.print("            }}), \\\n", .{});
+
+        try writer.print("            FlintValue: ({{ \\\n", .{});
+        try writer.print("                FlintValue* _val_{d} = (FlintValue*)(void*)&_iter_{d}; \\\n", .{ iter_name, iter_name });
+        try writer.print("                if (_val_{d}->type == FLINT_VAL_STREAM) {{ \\\n", .{iter_name});
+        try writer.print("                    flint_stream* _stream_{d} = &_val_{d}->as.stream; \\\n", .{ iter_name, iter_name });
+
+        try writer.print("                    for (size_t _mark_{d} = flint_arena_mark(); _stream_{d}->has_next; flint_arena_release(_mark_{d}), _mark_{d} = flint_arena_mark()) {{ \\\n", .{ iter_name, iter_name, iter_name, iter_name });
+        try writer.print("                        __auto_type {s} = flint_stream_next(_stream_{d}); \\\n", .{ for_node.iterator_name, iter_name });
+        for (for_node.body) |stmt| {
+            try writer.print("                        ", .{});
+            try self.visitNode(stmt, writer);
+            try writer.print("; \\\n", .{});
+        }
+        try writer.print("                    }} \\\n", .{});
+        try writer.print("                }} \\\n", .{});
+        try writer.print("            }}) \\\n", .{});
+
+        try writer.print("        );\n    }}", .{});
     }
 
     fn visitBinaryExpr(self: *CEmitter, node: *AstNode, writer: anytype) !void {
@@ -547,17 +581,22 @@ pub const CEmitter = struct {
     }
 
     fn visitIndexExpr(self: *CEmitter, node: *AstNode, writer: anytype) !void {
-        const idx = node.index_expr;
+        const index_node = node.index_expr.index;
 
-        try writer.print("FLINT_INDEX(", .{});
+        if (index_node.* == .literal and index_node.literal.token._type == .string_literal_token) {
+            const key_str = index_node.literal.token.value;
+            const hash_val = computeFnv1aHash(key_str);
 
-        try self.visitNode(idx.left, writer);
-
-        try writer.print(", ", .{});
-
-        try self.visitNode(idx.index, writer);
-
-        try writer.print(")", .{});
+            try writer.print("FLINT_GET_HASHED(", .{});
+            try self.visitNode(node.index_expr.left, writer);
+            try writer.print(", \"{s}\", {d}ULL)", .{ key_str, hash_val });
+        } else {
+            try writer.print("FLINT_INDEX(", .{});
+            try self.visitNode(node.index_expr.left, writer);
+            try writer.print(", ", .{});
+            try self.visitNode(index_node, writer);
+            try writer.print(")", .{});
+        }
     }
 
     fn emitBoxedValue(self: *CEmitter, node: *AstNode, writer: anytype) !void {
@@ -683,5 +722,15 @@ pub const CEmitter = struct {
         }
 
         try writer.print("{s}", .{name});
+    }
+
+    fn computeFnv1aHash(str: []const u8) u64 {
+        var h: u64 = 1469598103934665603;
+        for (str) |c| {
+            // use *% to allow natural overflow without Zig panicking
+            h = (h ^ @as(u64, c)) *% 1099511628211;
+        }
+
+        return if (h == 0) 1 else h;
     }
 };

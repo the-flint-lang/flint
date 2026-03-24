@@ -1,13 +1,13 @@
 import os;
 import strings;
 
-const files = os.ls(".") catch |err| { os.exit(1); };
+const files = os.ls("files/") catch |err| { os.exit(1); };
 var count = 0;
 var total_size = 0;
 
-for f in strings.to_str(files) ~> strings.lines() {
-    if (os.is_file(f)) {
-        total_size = total_size + strings.to_int(os.file_size(f));
+for f in strings.to_str(files) ~> lines() {
+    if (os.is_file(to_str(f))) {
+        total_size = total_size + strings.to_int(os.file_size(to_str(f)));
         count = count + 1;
     }
 }

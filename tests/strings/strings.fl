@@ -11,5 +11,5 @@ const partes = log_sujo
 
 for pedaco in partes {
     print("Encontrado:");
-    print(strings.trim(pedaco)); 
+    print(strings.trim(to_str(pedaco))); 
 }

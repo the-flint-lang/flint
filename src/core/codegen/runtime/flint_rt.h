@@ -11,11 +11,20 @@
 // ==========================================
 // STRING SLICES
 // ==========================================
+
 typedef struct
 {
     const char *ptr;
     size_t len;
 } flint_str;
+
+typedef struct
+{
+    flint_str source;
+    size_t current_pos;
+    bool has_next;
+    flint_str filter_pattern;
+} flint_stream;
 
 #define FLINT_STR(literal) (flint_str){.ptr = (literal), .len = sizeof(literal) - 1}
 
@@ -31,7 +40,9 @@ typedef enum
     FLINT_VAL_STR,
     FLINT_VAL_DICT,
     FLINT_VAL_ARRAY,
-    FLINT_VAL_ERROR
+    FLINT_VAL_ERROR,
+    FLINT_VAL_STREAM,
+    FLINT_VAL_JSON_LAZY,
 } FlintValType;
 
 typedef struct
@@ -44,6 +55,7 @@ typedef struct
         bool b;
         flint_str s;
         FlintDict *d;
+        flint_stream stream;
     } as;
 
 } FlintValue;
@@ -61,6 +73,10 @@ void *flint_alloc_zero(size_t size);
 
 void flint_panic(const char *msg);
 void flint_exit(int code);
+
+typedef size_t FlintArenaMark;
+FlintArenaMark flint_arena_mark(void);
+void flint_arena_release(FlintArenaMark m);
 
 /* =========================
    ARRAYS
@@ -240,21 +256,39 @@ flint_str flint_env(flint_str name);
 flint_str_array flint_args();
 
 /* =========================
+   STREAMS
+   ========================= */
+
+flint_stream flint_str_stream(flint_str text);
+flint_str flint_stream_next(flint_stream *stream);
+
+FlintValue flint_lines_inner(FlintValue text_val);
+
+#define flint_lines(X) flint_lines_inner(FLINT_BOX(X))
+
+FlintValue flint_grep_inner(FlintValue iterable, FlintValue pattern_val);
+#define flint_grep(iter, pat) flint_grep_inner(FLINT_BOX(iter), FLINT_BOX(pat))
+
+/* =========================
    STRINGS
    ========================= */
 
-flint_str_array flint_lines(flint_str text);
 flint_str_array flint_split(flint_str text, flint_str delimiter);
 flint_str flint_join(flint_str_array arr, flint_str sep);
 
 flint_str flint_trim(flint_str text);
-flint_str_array flint_grep(flint_str_array lines, flint_str pattern);
 long long flint_count_matches(flint_str text, flint_str pattern);
 flint_str flint_replace(flint_str text, flint_str target, flint_str repl);
 
 flint_str flint_to_str(FlintValue v);
 flint_str flint_int_to_str(long long num);
 flint_str flint_concat(flint_str a, flint_str b);
+
+flint_str flint_build_str_array(flint_str *parts, size_t count);
+
+#define flint_build_str(...) flint_build_str_array((flint_str[]){__VA_ARGS__}, sizeof((flint_str[]){__VA_ARGS__}) / sizeof(flint_str))
+
+#define build_str(...) flint_build_str(__VA_ARGS__)
 
 static inline long long flint_to_int(FlintValue v)
 {
@@ -350,27 +384,35 @@ static inline FlintValue flint_fallback_inner(FlintValue v, FlintValue alt)
 }
 
 // ============================================================================
-// INDEXAÇÃO UNIVERSAL (BRACKET NOTATION)
+// UNIVERSAL INDEXING (BRACKET NOTATION)
 // ============================================================================
 
-static inline long long flint_idx_int_arr(flint_int_array a, FlintValue k)
-{
-    return a.items[flint_to_int(k)];
-}
-static inline flint_str flint_idx_str_arr(flint_str_array a, FlintValue k)
-{
-    return a.items[flint_to_int(k)];
-}
-static inline FlintValue flint_idx_dict(FlintDict *d, FlintValue k)
-{
-    return flint_dict_get(d, flint_to_str(k));
-}
+static inline long long flint_idx_int_arr(flint_int_array a, FlintValue k) { return a.items[flint_to_int(k)]; }
+static inline flint_str flint_idx_str_arr(flint_str_array a, FlintValue k) { return a.items[flint_to_int(k)]; }
+static inline FlintValue flint_idx_dict(FlintDict *d, FlintValue k) { return flint_dict_get(d, flint_to_str(k)); }
+
+FlintValue flint_lazy_json_get(flint_str json_str, flint_str key);
+FlintValue flint_dict_get_hashed(FlintDict *d, flint_str key, uint64_t hash);
+
 static inline FlintValue flint_idx_val(FlintValue v, FlintValue k)
 {
     if (v.type == FLINT_VAL_DICT && v.as.d)
         return flint_dict_get(v.as.d, flint_to_str(k));
 
-    // json dynamic arrays will come here later
+    if (v.type == FLINT_VAL_JSON_LAZY)
+        return flint_lazy_json_get(v.as.s, flint_to_str(k));
+
+    return (FlintValue){FLINT_VAL_NULL};
+}
+
+static inline FlintValue flint_idx_val_hashed(FlintValue v, flint_str key, uint64_t hash)
+{
+    if (v.type == FLINT_VAL_DICT && v.as.d)
+        return flint_dict_get_hashed(v.as.d, key, hash);
+
+    if (v.type == FLINT_VAL_JSON_LAZY)
+        return flint_lazy_json_get(v.as.s, key);
+
     return (FlintValue){FLINT_VAL_NULL};
 }
 
@@ -379,6 +421,10 @@ static inline FlintValue flint_idx_val(FlintValue v, FlintValue k)
     flint_str_array: flint_idx_str_arr,       \
     FlintDict *: flint_idx_dict,              \
     FlintValue: flint_idx_val)((obj), FLINT_BOX(idx))
+
+#define FLINT_GET_HASHED(obj, key, hash) _Generic((obj), \
+    FlintDict *: flint_dict_get_hashed,                  \
+    FlintValue: flint_idx_val_hashed)((obj), FLINT_STR(key), (hash))
 
 // ============================================================================
 // UNIVERSAL COMPARISON (DEEP EQUALITY)

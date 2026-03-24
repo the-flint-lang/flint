@@ -1,0 +1,15 @@
+#!/usr/bin/make -f
+%:
+	dh $@
+
+override_dh_auto_build:
+	# Pre-compiled binary — nothing to build.
+
+override_dh_auto_install:
+	install -D -m 0755 zemit/dist/flint-x86_64-linux-gnu \
+		debian/flint/usr/bin/flint
+	install -d debian/flint/usr/share/flint/std
+	cp -r std/. debian/flint/usr/share/flint/std/
+	
+override_dh_auto_test:
+	# Skip tests during packaging.

@@ -5,6 +5,7 @@ teste.fl
 copy.fl
 erro
 .venv
+.flint*
 
 install
 
@@ -12,3 +13,10 @@ install
 # Release Tools
 zemit
 zemit.toml
+
+debian/flint/
+debian/.debhelper/
+debian/debhelper-build-stamp
+debian/files
+debian/*.log
+debian/*.substvars

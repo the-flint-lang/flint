@@ -1,0 +1,23 @@
+Source: flint
+Section: devel
+Priority: optional
+Maintainer: Lucas Paulino Da Silva <lucas.workps@gmail.com>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+Homepage: https://github.com/lucaas-d3v/flint
+Rules-Requires-Root: no
+
+Package: flint
+Architecture: amd64
+Depends: ${misc:Depends}, libc6, libcurl4 | libcurl3, clang | gcc
+Description: Pipeline-oriented systems programming language
+ Flint is a statically-typed, pipeline-oriented language that transpiles
+ to C99. Designed as a modern replacement for Bash and Python in DevOps
+ and CLI automation contexts.
+ .
+ Features include: pipeline operator (~>), string interpolation, universal
+ bracket indexing for Array/Dict/JSON, multiline template strings, explicit
+ error handling, and a built-in standard library for I/O, HTTP, JSON, and
+ OS operations.
+ .
+ Homepage: https://github.com/lucaas-d3v/flint

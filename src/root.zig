@@ -40,7 +40,6 @@ fn runCompilerPipeline(
     const tokens = try lex.tokenize();
 
     var parser = Parser.init(alloc, tokens, source, file_path, io);
-    parser.allocator = parser.arena.allocator();
 
     const ast = parser.parse() catch {
         return error.ParseFailed;
@@ -144,7 +143,7 @@ const Linker = struct {
                 if (std.mem.startsWith(u8, formatted_path, "./") or std.mem.startsWith(u8, formatted_path, "../")) {
                     next_file = try std.fs.path.join(self.allocator, &.{ base_dir, formatted_path });
                 } else {
-                    var std_base: []const u8 = "/usr/local/lib/flint";
+                    var std_base: []const u8 = "/usr/share/flint";
 
                     var dir = std.fs.cwd().openDir("std", .{});
                     if (std.posix.getenv("FLINT_LIB_PATH")) |env_path| {

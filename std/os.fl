@@ -88,11 +88,11 @@ fn assert(proc: val, error_msg: string) val {
     const code = strings.to_int(proc["exit_code"]);
     
     if (code != 0) {
-        print(" [FLINT] FATAL PROCESS ASSERTION FAILED ");
+        print("[FLINT] FATAL PROCESS ASSERTION FAILED ");
         print($"Message: {error_msg}");
         
         const code_str = strings.int_to_str(code);
-        print("Exit Code: {code_str}");
+        print($"Exit Code: {code_str}");
         
         print("STDERR:");
         print(strings.to_str(proc["stderr"]));

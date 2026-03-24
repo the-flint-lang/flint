@@ -1,10 +1,8 @@
 # std/strings.fl
 
-extern fn flint_lines(text: string) arr;
 extern fn flint_split(text: string, delim: string) arr;
 extern fn flint_join(a: arr, sep: string) string;
 extern fn flint_trim(text: string) string;
-extern fn flint_grep(linhas: arr, pattern: string) arr;
 extern fn flint_count_matches(text: string, pattern: string) int;
 extern fn flint_replace(text: string, target: string, repl: string) string;
 extern fn flint_to_str(v: val) string;
@@ -14,10 +12,6 @@ extern fn flint_to_int(v: val) int;
 extern fn flint_str_eql(a: string, b: string) bool; 
 
 # public API 
-fn lines(text: string) arr {
-    return flint_lines(text);
-}
-
 fn split(text: string, delim: string) arr {
     return flint_split(text, delim);
 }
@@ -28,10 +22,6 @@ fn join(a: arr, sep: string) string {
 
 fn trim(text: string) string {
     return flint_trim(text);
-}
-
-fn grep(linhas: arr, pattern: string) arr {
-    return flint_grep(linhas, pattern);
 }
 
 fn count_matches(text: string, pattern: string) int {

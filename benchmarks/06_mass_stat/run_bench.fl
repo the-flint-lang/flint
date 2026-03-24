@@ -4,9 +4,14 @@ import strings;
 print("====================================================");
 print("        FLINT BENCHMARK ORCHESTRATOR v1.6           ");
 print("====================================================");
-print("1. [COMPILATION] Optimizing Flint binary...");
+
+print("1. [Preparation] Generating 10k files...");
+os.exec("bash gen_10k_files.sh") ~> print();
+
+print("2. [COMPILATION] Optimizing Flint binary...");
 os.exec("flint build bench.fl") ~> print();
-print("2. [DUEL] Starting Hyperfine (3 runs)...");
+
+print("3. [DUEL] Starting Hyperfine (3 runs)...");
 print("----------------------------------------------------\n\n");
 for i in range(1, 5){
     const result = os.exec("hyperfine --warmup 3 './bench' 'python3 bench.py' 'bash bench.sh'");
