@@ -1,4 +1,4 @@
-flint (1.7.4) unstable; urgency=low
+flint (1.7.5) unstable; urgency=low
 
   * Initial Debian packaging.
   * Includes pre-compiled binary for amd64.

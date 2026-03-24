@@ -75,4 +75,4 @@ These functions are natively injected by the Flint compiler (AST). They are glob
 * **`range(start: int, end: int) array`**: Generates an iterable sequence of integers. Typically used in `for` loops (e.g., `for i in range(0, 10)`).
 
 ### 6.5. Strings
-* **`concat(a: string, b: string) string`**: Concatenates two strings. *(Note: In v1.7.4+, prefer using String Interpolation `$"{a}{b}"` instead).*
+* **`concat(a: string, b: string) string`**: Concatenates two strings. *(Note: In v1.7.5+, prefer using String Interpolation `$"{a}{b}"` instead).*

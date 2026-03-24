@@ -21,10 +21,11 @@ pub const Lexer = struct {
     io: IoHelpers,
 
     pub fn tokenize(self: *Lexer) ![]const Token {
+        try self.tokens.ensureTotalCapacity(self.alloc, self.source.len / 5);
         var c: u8 = 0;
 
         while (!self.isAtEnd()) {
-            c = self.consume().?;
+            c = self.consume();
 
             if (c == '\n') {
                 self.line += 1;
@@ -111,7 +112,7 @@ pub const Lexer = struct {
 
             if (c == '$') {
                 if (!self.isAtEnd() and (self.peek(0) == '"' or self.peek(0) == '`')) {
-                    const quote_char = self.consume().?;
+                    const quote_char = self.consume();
                     const content = self.readInterpolatedString(quote_char);
 
                     try self.tokens.append(self.alloc, Token{
@@ -265,8 +266,14 @@ pub const Lexer = struct {
     fn readIdentifier(self: *Lexer) []const u8 {
         const init = self.position - 1;
 
-        while (!self.isAtEnd() and (std.ascii.isAlphabetic(self.source[self.position]) or self.source[self.position] == '_' or std.ascii.isDigit(self.source[self.position]))) {
-            self.advance();
+        while (self.position < self.source.len) {
+            const c = self.source[self.position];
+            if (std.ascii.isAlphabetic(c) or c == '_' or std.ascii.isDigit(c)) {
+                self.position += 1;
+                self.column += 1;
+            } else {
+                break;
+            }
         }
 
         return self.source[init..self.position];
@@ -281,12 +288,17 @@ pub const Lexer = struct {
             if (char == '"') break;
 
             if (char == '\\' and self.position + 1 < self.source.len) {
-                self.advance();
+                self.position += 1;
+                self.column += 1;
             }
-            self.advance();
+            self.position += 1;
+            self.column += 1;
         }
 
-        if (!self.isAtEnd()) self.advance();
+        if (!self.isAtEnd()) {
+            self.position += 1;
+            self.column += 1;
+        }
 
         return self.source[init .. self.position - 1];
     }
@@ -353,9 +365,11 @@ pub const Lexer = struct {
         }
 
         if (!self.isAtEnd() and self.source[self.position] == '.') {
-            self.advance();
+            self.position += 1;
+            self.column += 1;
             while (!self.isAtEnd() and std.ascii.isDigit(self.source[self.position])) {
-                self.advance();
+                self.position += 1;
+                self.column += 1;
             }
             return self.source[init..self.position];
         }
@@ -376,38 +390,30 @@ pub const Lexer = struct {
         return self.source[init..self.position];
     }
 
-    fn match(self: *Lexer, c: u8) bool {
-        if (self.isAtEnd()) return false;
-        if (self.source[self.position] != c) return false;
-
-        self.position += 1;
-        self.column += 1;
-        return true;
-    }
-
-    fn isAtEnd(self: *Lexer) bool {
+    inline fn isAtEnd(self: *Lexer) bool {
         return self.position >= self.source.len;
     }
 
-    fn consume(self: *Lexer) ?u8 {
-        if (self.isAtEnd()) return null;
+    inline fn consume(self: *Lexer) u8 {
         const ch = self.source[self.position];
         self.advance();
         return ch;
     }
 
-    fn advance(self: *Lexer) void {
-        if (!self.isAtEnd()) {
-            self.position += 1;
-            self.column += 1;
-        }
+    inline fn advance(self: *Lexer) void {
+        self.position += 1;
+        self.column += 1;
     }
 
-    fn peek(self: Lexer, offset: u8) u8 {
+    inline fn match(self: *Lexer, c: u8) bool {
+        if (self.isAtEnd() or self.source[self.position] != c) return false;
+        self.advance();
+        return true;
+    }
+
+    inline fn peek(self: *Lexer, offset: u32) u8 {
         const index = self.position + offset;
-
-        if (index >= self.source.len) return '#';
-
+        if (index >= self.source.len) return 0;
         return self.source[index];
     }
 };

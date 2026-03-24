@@ -41,9 +41,6 @@ ARENA E RUNTIME
 static char *arena_base = NULL;
 static size_t arena_offset = 0;
 
-static int global_argc;
-static char **global_argv;
-
 void flint_init(int argc, char **argv)
 {
     global_argc = argc;
@@ -69,10 +66,7 @@ void *flint_alloc_raw(size_t size)
     size = (size + 7) & ~7;
     if (arena_offset + size > ARENA_CAPACITY)
     {
-        void *p = malloc(size);
-        if (p)
-            return p;
-        flint_panic("Arena out of memory");
+        flint_panic("Arena out of memory! Maximum capacity (4GB) exceeded.");
     }
     void *ptr = (void *)(arena_base + arena_offset);
     arena_offset += size;
@@ -127,6 +121,15 @@ flint_str flint_get_err(FlintValue v)
     return v.type == FLINT_VAL_ERROR ? v.as.s : FLINT_STR("");
 }
 
+static inline FlintValue flint_make_stream(flint_stream s)
+{
+    FlintValue v;
+    v.type = FLINT_VAL_STREAM;
+    v.as.stream = s;
+
+    return v;
+}
+
 /* =========================
    PRINT
    ========================= */
@@ -158,8 +161,14 @@ void flint_print_val(FlintValue v)
     case FLINT_VAL_DICT:
         printf("[Dict]\n");
         break;
+    case FLINT_VAL_STREAM:
+        printf("[Stream]\n");
+        break;
     case FLINT_VAL_ARRAY:
         printf("[Array]\n");
+        break;
+    case FLINT_VAL_JSON_LAZY:
+        printf("[Lazy JSON Document]\n");
         break;
     case FLINT_VAL_ERROR:
         printf("\033[1;31mERROR\033[0m: %.*s\n", (int)v.as.s.len, v.as.s.ptr);
@@ -176,7 +185,6 @@ void flint_print_bool(bool b)
    FILE I/O
    ========================= */
 
-// Macro de Alta Performance: Copia a string para a Stack (0 alocações na Heap/Arena)
 #define FLINT_C_PATH(dest_name, fstr)                                            \
     char dest_name[PATH_MAX];                                                    \
     do                                                                           \
@@ -186,24 +194,9 @@ void flint_print_bool(bool b)
         dest_name[_len] = '\0';                                                  \
     } while (0)
 
-static char *to_c_string(flint_str s)
-{
-    if (s.len == 0)
-        return "";
-    if (s.ptr[s.len] == '\0')
-    {
-        return (char *)s.ptr;
-    }
-
-    char *buf = flint_alloc_raw(s.len + 1);
-    memcpy(buf, s.ptr, s.len);
-    buf[s.len] = '\0';
-    return buf;
-}
-
 FlintValue flint_read_file(flint_str path)
 {
-    char *c_path = to_c_string(path);
+    FLINT_C_PATH(c_path, path);
     int fd = open(c_path, O_RDONLY);
 
     if (fd < 0)
@@ -228,25 +221,12 @@ FlintValue flint_read_file(flint_str path)
     if (mapped == MAP_FAILED)
         return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
 
-    long page_size = sysconf(_SC_PAGESIZE);
-    if (sb.st_size % page_size != 0)
-    {
-        return flint_make_str(FLINT_SLICE(mapped, sb.st_size));
-    }
-
-    char *buf = flint_alloc_raw(sb.st_size + 1);
-    int fd2 = open(c_path, O_RDONLY);
-    read(fd2, buf, sb.st_size);
-    buf[sb.st_size] = '\0';
-    close(fd2);
-    munmap(mapped, sb.st_size);
-
-    return flint_make_str(FLINT_SLICE(buf, sb.st_size));
+    return flint_make_str(FLINT_SLICE(mapped, sb.st_size));
 }
 
 FlintValue flint_write_file(flint_str text, flint_str filepath)
 {
-    char *c_path = to_c_string(filepath);
+    FLINT_C_PATH(c_path, filepath);
     FILE *f = fopen(c_path, "wb");
 
     if (!f)
@@ -263,7 +243,7 @@ FlintValue flint_write_file(flint_str text, flint_str filepath)
 
 bool flint_file_exists(flint_str filepath)
 {
-    char *c_path = to_c_string(filepath);
+    FLINT_C_PATH(c_path, filepath);
     FILE *f = fopen(c_path, "r");
     if (f)
     {
@@ -381,7 +361,7 @@ FlintValue flint_ls(flint_str path)
 
 flint_str flint_env(flint_str name)
 {
-    char *c_name = to_c_string(name);
+    FLINT_C_PATH(c_name, name);
     char *v = getenv(c_name);
     if (!v)
         return FLINT_STR("");
@@ -405,15 +385,25 @@ flint_str flint_exec(flint_str cmd)
     if (cmd.len == 0)
         return FLINT_STR("");
 
-    char *c_cmd = to_c_string(cmd);
+    char *c_cmd = malloc(cmd.len + 1);
+    if (!c_cmd)
+        flint_panic("Out of memory preparing exec");
+    memcpy(c_cmd, cmd.ptr, cmd.len);
+    c_cmd[cmd.len] = '\0';
+
     FILE *pipe = popen(c_cmd, "r");
+    free(c_cmd);
+
     if (!pipe)
         flint_panic("popen failed");
 
     char temp_buf[1024];
     size_t total_read = 0;
     size_t max_size = 4096;
-    char *buf = flint_alloc_raw(max_size);
+
+    char *buf = malloc(max_size);
+    if (!buf)
+        flint_panic("Out of memory in exec (malloc)");
 
     while (fgets(temp_buf, sizeof(temp_buf), pipe) != NULL)
     {
@@ -421,16 +411,27 @@ flint_str flint_exec(flint_str cmd)
         if (total_read + len >= max_size)
         {
             max_size *= 2;
-            char *new_buf = flint_alloc_raw(max_size);
-            memcpy(new_buf, buf, total_read);
+
+            char *new_buf = realloc(buf, max_size);
+            if (!new_buf)
+            {
+                free(buf);
+                flint_panic("Out of memory in exec (realloc)");
+            }
             buf = new_buf;
         }
+
         memcpy(buf + total_read, temp_buf, len);
         total_read += len;
     }
     pclose(pipe);
 
-    return FLINT_SLICE(buf, total_read);
+    char *final_arena_buf = flint_alloc_raw(total_read);
+    memcpy(final_arena_buf, buf, total_read);
+
+    free(buf);
+
+    return FLINT_SLICE(final_arena_buf, total_read);
 }
 
 FlintValue flint_spawn(flint_str cmd)
@@ -505,9 +506,9 @@ FlintValue flint_spawn(flint_str cmd)
                 if (*len + 1024 >= *cap)
                 {
                     *cap *= 2;
-                    char *new_buf = malloc(*cap);
-                    memcpy(new_buf, *buf, *len);
-                    free(*buf);
+                    char *new_buf = realloc(*buf, *cap);
+                    if (!new_buf)
+                        flint_panic("Out of memory in spawn (realloc)");
                     *buf = new_buf;
                 }
 
@@ -619,6 +620,93 @@ FlintValue flint_mv(flint_str old_path, flint_str new_path)
 }
 
 /* =========================
+   STREAMS
+   ========================= */
+
+flint_stream flint_str_stream(flint_str text)
+{
+    return (flint_stream){
+        .source = text,
+        .current_pos = 0,
+        .has_next = (text.len > 0),
+        .filter_pattern = FLINT_STR(""),
+    };
+}
+
+flint_str flint_stream_next(flint_stream *stream)
+{
+    while (stream->has_next)
+    {
+        size_t start = stream->current_pos;
+        size_t end = start;
+
+        // scans the bytes until it reaches the next '\n' or the end of the content
+        while (end < stream->source.len && stream->source.ptr[end] != '\n')
+        {
+            end++;
+        }
+
+        flint_str line;
+        line.ptr = stream->source.ptr + start;
+        line.len = end - start;
+
+        // if the last character before \n is a \r, we cut it from the slice
+        if (line.len > 0 && line.ptr[line.len - 1] == '\r')
+        {
+            line.len--;
+        }
+
+        if (end < stream->source.len)
+        {
+            stream->current_pos = end + 1;
+        }
+        else
+        {
+            stream->has_next = false;
+        }
+
+        if (stream->filter_pattern.len > 0)
+        {
+            // if line not contains a patter skip
+            if (!memmem(line.ptr, line.len, stream->filter_pattern.ptr, stream->filter_pattern.len))
+            {
+                continue;
+            }
+        }
+
+        return line;
+    }
+
+    return FLINT_STR("");
+}
+
+FlintValue flint_grep_inner(FlintValue iterable, FlintValue pattern_val)
+{
+    if (pattern_val.type != FLINT_VAL_STR)
+    {
+        return flint_make_error(FLINT_STR("Grep Error: pattern must be a string"));
+    }
+
+    flint_str pattern = pattern_val.as.s;
+
+    if (iterable.type == FLINT_VAL_STREAM)
+    {
+        flint_stream s = iterable.as.stream;
+        s.filter_pattern = pattern;
+        return flint_make_stream(s);
+    }
+
+    if (iterable.type == FLINT_VAL_STR)
+    {
+        flint_stream s = flint_str_stream(iterable.as.s);
+        s.filter_pattern = pattern;
+        return flint_make_stream(s);
+    }
+
+    return flint_make_error(FLINT_STR("Grep Error: Invalid iterable type"));
+}
+
+/* =========================
    STRINGS
    ========================= */
 
@@ -674,6 +762,41 @@ flint_str flint_concat(flint_str a, flint_str b)
     return FLINT_SLICE(buf, total_len);
 }
 
+flint_str flint_build_str_array(flint_str *parts, size_t count)
+{
+    if (count == 0)
+    {
+        return FLINT_STR("");
+    }
+
+    // calc lenth
+    size_t total_len = 0;
+    for (size_t i = 0; i < count; i++)
+    {
+        total_len += parts[i].len;
+    }
+
+    if (total_len == 0)
+    {
+        return FLINT_STR("");
+    }
+
+    char *buf = flint_alloc_raw(total_len + 1);
+    char *dest = buf;
+
+    for (size_t i = 0; i < count; i++)
+    {
+        if (parts[i].len > 0)
+        {
+            memcpy(dest, parts[i].ptr, parts[i].len);
+            dest += parts[i].len;
+        }
+    }
+
+    *dest = '\0';
+    return FLINT_SLICE(buf, total_len);
+}
+
 flint_str_array flint_split(flint_str text, flint_str delimiter)
 {
     flint_str_array arr;
@@ -707,28 +830,16 @@ flint_str_array flint_split(flint_str text, flint_str delimiter)
     return arr;
 }
 
-flint_str_array flint_lines(flint_str text)
+FlintValue flint_lines_inner(FlintValue text_val)
 {
-    return flint_split(text, FLINT_STR("\n"));
-}
-
-flint_str_array flint_grep(flint_str_array lines, flint_str pattern)
-{
-    flint_str_array arr;
-    flint_array_init(arr);
-
-    if (pattern.len == 0 || !pattern.ptr)
-        return arr;
-
-    for (size_t i = 0; i < lines.count; i++)
+    if (text_val.type != FLINT_VAL_STR)
     {
-        flint_str line = lines.items[i];
-        if (memmem(line.ptr, line.len, pattern.ptr, pattern.len))
-        {
-            flint_push(arr, line);
-        }
+        return flint_make_error(FLINT_STR("Type Error: lines() expects a string"));
     }
-    return arr;
+
+    flint_stream s = flint_str_stream(text_val.as.s);
+
+    return flint_make_stream(s);
 }
 
 long long flint_count_matches(flint_str text, flint_str pattern)
@@ -825,9 +936,31 @@ flint_str flint_join(flint_str_array arr, flint_str sep)
 
 flint_str flint_int_to_str(long long num)
 {
-    char *buf = flint_alloc_zero(32);
-    int len = snprintf(buf, 32, "%lld", num);
-    return FLINT_SLICE(buf, (size_t)len);
+    if (num == 0)
+        return FLINT_STR("0");
+
+    char temp[32];
+    char *p = temp + 31;
+    *p = '\0';
+
+    unsigned long long n = (num < 0) ? (unsigned long long)(-num) : (unsigned long long)num;
+
+    while (n > 0)
+    {
+        *(--p) = '0' + (n % 10);
+        n /= 10;
+    }
+
+    if (num < 0)
+    {
+        *(--p) = '-';
+    }
+
+    size_t len = (temp + 31) - p;
+    char *buf = flint_alloc_raw(len + 1);
+    memcpy(buf, p, len + 1);
+
+    return FLINT_SLICE(buf, len);
 }
 
 flint_str flint_to_str(FlintValue v)
@@ -901,7 +1034,14 @@ void flint_dict_set(FlintDict *d, flint_str key, FlintValue val)
         {
             if (old_entries[j].hash != 0)
             {
-                flint_dict_set(d, old_entries[j].key, old_entries[j].value);
+
+                size_t idx = old_entries[j].hash % d->capacity;
+                while (d->entries[idx].hash != 0)
+                {
+                    idx = (idx + 1) % d->capacity;
+                }
+                d->entries[idx] = old_entries[j];
+                d->count++;
             }
         }
     }
@@ -935,6 +1075,22 @@ void flint_dict_set(FlintDict *d, flint_str key, FlintValue val)
 FlintValue flint_dict_get(FlintDict *d, flint_str key)
 {
     uint64_t h = flint_hash(key);
+    if (h == 0)
+        h = 1;
+
+    size_t i = h % d->capacity;
+    while (d->entries[i].hash != 0)
+    {
+        if (d->entries[i].hash == h && flint_str_eql(d->entries[i].key, key))
+            return d->entries[i].value;
+        i = (i + 1) % d->capacity;
+    }
+    return (FlintValue){FLINT_VAL_NULL};
+}
+
+// new gen 1.7.5
+FlintValue flint_dict_get_hashed(FlintDict *d, flint_str key, uint64_t h)
+{
     if (h == 0)
         h = 1;
 
@@ -989,7 +1145,8 @@ FlintValue flint_fetch(flint_str url)
         return flint_make_error(FLINT_STR("Failed to init curl"));
 
     struct FetchMemoryStruct chunk = {.memory = malloc(1), .size = 0};
-    char *c_url = to_c_string(url);
+
+    FLINT_C_PATH(c_url, url);
 
     curl_easy_setopt(curl, CURLOPT_URL, c_url);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, flint_fetch_callback);
@@ -1017,8 +1174,67 @@ FlintValue flint_fetch(flint_str url)
 }
 
 /* =========================
-   JSON PARSER (v1.4)
+   JSON PARSER (v1.7.5)
    ========================= */
+
+static long long fast_atoll(const char **p)
+{
+    long long res = 0;
+    int sign = 1;
+    if (**p == '-')
+    {
+        sign = -1;
+        (*p)++;
+    }
+    while (**p >= '0' && **p <= '9')
+    {
+        res = res * 10 + (**p - '0');
+        (*p)++;
+    }
+    return res * sign;
+}
+
+static FlintValue json_parse_value(const char **p);
+
+FlintValue flint_lazy_json_get(flint_str json_str, flint_str key)
+{
+    if (json_str.len == 0 || key.len == 0)
+        return (FlintValue){FLINT_VAL_NULL};
+
+    char search_buf[256];
+    size_t search_len = key.len + 2;
+    if (search_len >= sizeof(search_buf))
+        return (FlintValue){FLINT_VAL_NULL};
+
+    search_buf[0] = '"';
+    memcpy(search_buf + 1, key.ptr, key.len);
+    search_buf[key.len + 1] = '"';
+
+    const char *match = memmem(json_str.ptr, json_str.len, search_buf, search_len);
+    if (match)
+    {
+        const char *p = match + search_len;
+
+        while (p < json_str.ptr + json_str.len && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r'))
+            p++;
+
+        if (p < json_str.ptr + json_str.len && *p == ':')
+        {
+            p++;
+
+            return json_parse_value(&p);
+        }
+    }
+    return (FlintValue){FLINT_VAL_NULL};
+}
+
+FlintValue flint_parse_json(flint_str text)
+{
+    if (text.len == 0 || !text.ptr)
+        return (FlintValue){FLINT_VAL_NULL};
+
+    return (FlintValue){FLINT_VAL_JSON_LAZY, .as.s = text};
+}
 
 static void json_skip_ws(const char **p)
 {
@@ -1034,15 +1250,21 @@ static flint_str json_parse_str(const char **p)
     (*p)++;
     const char *start = *p;
 
-    const char *quote = memchr(start, '"', 0x7FFFFFFF);
-
-    while (quote && *(quote - 1) == '\\')
+    while (**p && **p != '"')
     {
-        quote = memchr(quote + 1, '"', 0x7FFFFFFF);
+        if (**p == '\\' && *(*p + 1))
+        {
+            (*p) += 2;
+        }
+        else
+        {
+            (*p)++;
+        }
     }
 
-    size_t len = quote - start;
-    *p = quote + 1;
+    size_t len = *p - start;
+    if (**p == '"')
+        (*p)++;
 
     return FLINT_SLICE(start, len);
 }
@@ -1131,41 +1353,6 @@ static FlintValue json_parse_value(const char **p)
     }
     (*p)++;
     return (FlintValue){FLINT_VAL_NULL, .as.i = 0};
-}
-
-FlintValue flint_parse_json(flint_str text)
-{
-    if (text.len == 0 || !text.ptr)
-        return (FlintValue){FLINT_VAL_NULL};
-
-    size_t estimated = text.len / 30;
-    if (estimated < 256)
-        estimated = 256;
-
-    const char *p = text.ptr;
-    json_skip_ws(&p);
-    if (*p == '{')
-    {
-        return (FlintValue){FLINT_VAL_DICT, .as.d = json_parse_object(&p, estimated)};
-    }
-    return (FlintValue){FLINT_VAL_DICT, .as.d = flint_dict_new(16)};
-}
-
-static long long fast_atoll(const char **p)
-{
-    long long res = 0;
-    int sign = 1;
-    if (**p == '-')
-    {
-        sign = -1;
-        (*p)++;
-    }
-    while (**p >= '0' && **p <= '9')
-    {
-        res = res * 10 + (**p - '0');
-        (*p)++;
-    }
-    return res * sign;
 }
 
 FlintValue flint_ensure(FlintValue val, bool condition, flint_str err_msg)
