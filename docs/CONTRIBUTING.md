@@ -11,7 +11,13 @@ Flint is a transpiler. It is crucial to understand the boundary between the **Co
 1. **The Compiler (Zig):** Parses the `.fl` files and generates C99 code. It uses Zig's `std.heap.ArenaAllocator`.
 2. **The Runtime (C99):** The standard library (`flint_rt.c` and `flint_rt.h`) embedded into every compiled Flint script. **It uses a custom 4GB Virtual Arena via `mmap`.**
 
-**Golden Rule for the Runtime:** Do NOT use standard `malloc()` or `free()` in `flint_rt.c`. You must use `flint_alloc_raw()` or `flint_alloc_zero()`. The OS will reap the memory when the script exits.
+**Golden Rule for the Runtime (Memory Management):**
+Do NOT use standard `malloc()` or `free()` for final data structures. You must use `flint_alloc_raw()`. 
+*However*, if you are reading an incoming stream of unknown size (like `os.exec` or `os.spawn`), **you must NOT grow buffers inside the Arena**. 
+1. Use `malloc/realloc` as a temporary scratchpad.
+2. Build the full data.
+3. Call `flint_alloc_raw()` exactly once to copy the final data to the Arena.
+4. Call `free()` on the scratchpad. This prevents Arena fragmentation and leaks!
 
 ## Development Setup
 
@@ -23,7 +29,7 @@ To build and test Flint locally, you need:
 
 ### Building from Source (Self-Hosting)
 ```bash
-git clone https://codeberg.org/lucaas-d3v/flint.git
+git clone [https://codeberg.org/lucaas-d3v/flint.git](https://codeberg.org/lucaas-d3v/flint.git)
 cd flint
 
 # Trigger bootstrap to build the initial compiler 
@@ -47,32 +53,5 @@ Flint uses a snapshot/sanity testing approach. All tests are `.fl` files located
 
 Before submitting any Pull Request, you must ensure the test battery passes:
 ```bash
-# Run the built-in test orchestrator
 flint test
 ```
-
-### Adding a New Test
-
-If you fix a bug or add a feature, please add a new `.fl` file to the `./tests/` directory demonstrating the change. The test orchestrator will automatically pick it up, transpile it, compile it with Clang, and verify if the exit code is 0.
-
-## Coding Standards
-
-### Zig Code (The Compiler)
-
-- Always run `zig fmt src/` before committing.
-- Avoid raw pointers; use slices whenever possible.
-- Handle memory leaks using `std.heap.GeneralPurposeAllocator` in `main.zig` (it's already set up to scream if you leak memory during compilation).
-
-### C Code (The Runtime)
-
-- Adhere strictly to C99. No compiler-specific extensions unless absolutely necessary (like `__auto_type`, which we currently rely on).
-- Do not use Garbage Collection concepts. Rely on the bump allocator (`flint_alloc_zero`).
-- Prefix all new runtime functions and structs with `flint_` to avoid namespace collisions in the final C output.
-
-## Pull Request Process
-
-1. Fork the repository and create your branch from `main`.
-2. **Discuss first:** If you are proposing a massive syntax change or a core architectural shift, please open an Issue first to discuss it. We want to avoid you wasting hours on a PR that doesn't align with Flint's roadmap.
-3. **Commit:** Write clear, descriptive commit messages.
-4. **Test:** Ensure `flint test` reports all green.
-5. **Open the PR:** Describe the problem you are solving and link to any relevant Issues.
