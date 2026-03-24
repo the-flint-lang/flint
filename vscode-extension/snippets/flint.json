@@ -41,7 +41,7 @@
         "body": [
             "const ${1:files} = os.ls(\"${2:.}\") ~> expect(\"Failed to list directory.\");",
             "",
-            "for f in to_str(${1:files}) ~> strings.lines() {",
+            "for f in to_str(${1:files}) ~> lines() {",
             "    if (os.is_file(f)) {",
             "        print($\"File: {f} | Size: {os.file_size(f)}\");",
             "        $0",

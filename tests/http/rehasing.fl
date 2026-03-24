@@ -6,7 +6,7 @@ const my_json = json.parse("{}");
 print("Injecting 1,000 keys into the dictionary...");
 
 for i in range(0, 1000) {
-    const num_str = strings.int_to_str(i);
+    const num_str = to_str(i);
     const final_key = $"key_{num_str}";
     set(my_json, final_key, i);
 }

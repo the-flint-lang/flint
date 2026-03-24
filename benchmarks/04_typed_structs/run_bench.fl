@@ -17,6 +17,6 @@ for i in range(1, 4){
 print("\n----------------------------------------------------");
 print("Benchmark completed.");
 
-_ = os.rm("bench") catch |err| { print("Error: " ~> strings.concat(err)); os.exit(1); };
-_ = os.rm("typed_data.json") catch |err| { print("Error: " ~> strings.concat(err)); os.exit(1); };
-_ = os.rm("run_bench") catch |err| { print("Error: " ~> strings.concat(err)); os.exit(1); };
+_ = os.rm("bench") catch |err| { print($"Error: {err}"); os.exit(1); };
+_ = os.rm("typed_data.json") catch |err| { print($"Error: {err}"); os.exit(1); };
+_ = os.rm("run_bench") catch |err| { print($"Error: {err}"); os.exit(1); };

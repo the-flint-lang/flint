@@ -5,6 +5,7 @@ teste.fl
 copy.fl
 erro
 .venv
+.flint*
 
 install
 

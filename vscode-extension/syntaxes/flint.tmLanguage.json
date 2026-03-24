@@ -142,7 +142,7 @@
             "patterns": [
                 {
                     "name": "support.function.builtin.flint",
-                    "match": "\\b(print|len|push|range|parse_json|parse_json_as|expect|fallback|ensure|to_str)\\b"
+                    "match": "\\b(print|len|push|range|parse_json|parse_json_as|expect|fallback|ensure|to_str|to_int|lines|grep|concat)\\b"
                 },
                 {
                     "name": "variable.language.placeholder.flint",

@@ -1,11 +1,4 @@
 import os;
-import strings;
 
-const cmd = "hyperfine "
-    ~> strings.concat(" --min-runs 5")
-    ~> strings.concat(" --show-output")
-    ~> strings.concat(" --prepare 'sync; echo 3 | tee /proc/sys/vm/drop_caches || true' ")
-    ~> strings.concat(" --cleanup 'rm -f clone*.bin' ")
-    ~> strings.concat(" './bench' 'python3 bench.py' 'bash bench.sh'");
-
-const result = os.exec(cmd);
+const result = os.exec("hyperfine --min-runs 5 --show-output --prepare 'sync; echo 3 | tee /proc/sys/vm/drop_caches || true'  --cleanup 'rm -f clone*.bin'  './bench' 'python3 bench.py' 'bash bench.sh'");
+print(result);

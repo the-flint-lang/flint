@@ -1,5 +1,5 @@
 <div align="center">
-<img src="assets/favicon_transparent_bg.svg" alt="Flint Logo" width="200">
+<img src="assets/favicon_transparent_bg.svg" alt="Flint Logo" width="120">
 </div>
 
 # > flint
@@ -34,7 +34,7 @@ import os;
 
 const user = os.env("USER") ~> fallback("Stranger");
 print($"Hello, {user}!");
-````
+```
 
 Run instantly:
 
@@ -80,8 +80,8 @@ Avoid Flint for:
 
 ```flint
 os.exec("ps aux")
-    ~> strings.lines()
-    ~> strings.grep("root")
+    ~> lines()
+    ~> grep("root")
     ~> strings.join("\n")
 ```
 
@@ -99,31 +99,30 @@ Flint compiles to C99 and produces small native binaries.
 
 ---
 
-### Zero-copy strings
+### Zero-copy I/O & Strings
 
-String operations work on slices (`ptr + len`), avoiding unnecessary allocations.
+String operations work on slices (`ptr + len`), avoiding unnecessary allocations. File reads bypass the heap entirely using pure kernel-space `mmap`.
 
 ---
 
 ### Predictable memory model
 
-Flint uses a virtual arena allocator:
+Flint uses a 4GB virtual arena allocator:
 
 * fast allocations (pointer bump)
 * no fragmentation
-* no garbage collection pauses
+* auto-garbage collection inside loops
+* zero GC pauses globally
 
 ---
 
 ## Performance (Summary)
 
-Flint is designed for fast startup and efficient data processing.
+Flint is engineered for maximum throughput in DevOps workloads. In our v1.7.5 benchmarks:
 
-In internal benchmarks:
-
-* faster than Python for JSON and I/O-heavy workloads
-* comparable to native tools like `grep` in throughput
-* significantly lower CPU overhead in file operations
+* **JSON Extraction:** ~29x faster than Node.js and ~22x faster than Python (parses 17MB in ~13ms using O(1) Lazy Scanning).
+* **Mass File Stat:** ~650x faster than Bash when inspecting 10,000 files.
+* **File Cloning:** Outperforms GNU `cp` on cold-cache huge files using Kernel-Space `sendfile`.
 
 See `./benchmarks/` for full details and reproducible tests.
 
@@ -140,7 +139,7 @@ See `./benchmarks/` for full details and reproducible tests.
 ### Build from source
 
 ```bash
-git clone https://codeberg.org/lucaas-d3v/flint.git
+git clone https://github.com/lucaas-d3v/flint.git
 cd flint
 ./ignite.sh
 ```
@@ -155,11 +154,11 @@ flint run my_script.fl
 
 ## Stability
 
-Current version: **v1.7.x**
+Current version: **v1.7.5**
 
 * Core syntax → stable
 * Memory model → stable
-* Standard library → evolving (breaking changes possible)
+* Standard library → stable (but expanding)
 
 ---
 
@@ -174,7 +173,7 @@ Flint is a transpiler:
 Key components:
 
 * Lexer + Recursive Descent Parser (Zig)
-* C99 code generation
+* C99 code generation (with Compile-Time Hashing)
 * Embedded runtime (`flint_rt.c`)
 * Virtual memory arena (mmap-based)
 
@@ -194,26 +193,13 @@ import strings;
 import io;
 
 os.exec("ps aux")
-    ~> strings.lines()
-    ~> strings.grep("root")
+    ~> lines()
+    ~> grep("root")
     ~> strings.join("\n")
     ~> ensure(len(_) > 0, "No root processes found!")
     ~> io.write_file(_, "root_processes.log")
     ~> expect("failed to write file");
 ```
-
----
-
-## Project Status
-
-Flint is actively developed and optimized for its core use case:
-**fast, reliable system scripting.**
-
-Planned:
-
-* streaming pipelines (large files)
-* async/network improvements
-* LSP support
 
 ---
 

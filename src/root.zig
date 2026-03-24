@@ -40,7 +40,6 @@ fn runCompilerPipeline(
     const tokens = try lex.tokenize();
 
     var parser = Parser.init(alloc, tokens, source, file_path, io);
-    parser.allocator = parser.arena.allocator();
 
     const ast = parser.parse() catch {
         return error.ParseFailed;
