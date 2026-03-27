@@ -280,7 +280,7 @@ flint_str flint_trim(flint_str text);
 long long flint_count_matches(flint_str text, flint_str pattern);
 flint_str flint_replace(flint_str text, flint_str target, flint_str repl);
 
-flint_str flint_to_str(FlintValue v);
+flint_str flint_to_str_func(FlintValue v);
 flint_str flint_int_to_str(long long num);
 flint_str flint_concat(flint_str a, flint_str b);
 
@@ -290,12 +290,15 @@ flint_str flint_build_str_array(flint_str *parts, size_t count);
 
 #define build_str(...) flint_build_str(__VA_ARGS__)
 
-static inline long long flint_to_int(FlintValue v)
+static inline long long flint_to_int_func(FlintValue v)
 {
     if (v.type == FLINT_VAL_INT)
         return v.as.i;
     return 0;
 }
+
+#define flint_to_int(X) flint_to_int_func(FLINT_BOX(X))
+#define flint_to_str(X) flint_to_str_func(FLINT_BOX(X))
 
 /* =========================
    UTIL
@@ -348,7 +351,7 @@ static inline FlintValue flint_box_val_safe(FlintValue v)
     flint_str: flint_box_str_safe,             \
     FlintValue: flint_box_val_safe)(__VA_ARGS__)
 
-#define flint_expect(v, ...) flint_expect_inner((v), (__VA_ARGS__))
+#define flint_if_fail(v, ...) flint_expect_inner((v), (__VA_ARGS__))
 #define flint_fallback(v, ...) flint_fallback_inner((v), FLINT_BOX(__VA_ARGS__))
 
 static inline FlintValue flint_expect_inner(FlintValue v, flint_str msg)
@@ -356,7 +359,7 @@ static inline FlintValue flint_expect_inner(FlintValue v, flint_str msg)
     if (v.type == FLINT_VAL_ERROR || v.type == FLINT_VAL_NULL)
     {
         printf("\033[1;31mERROR\033[0m: \033[1mPipeline Expectation Failed\033[0m\n");
-        printf("  \033[1;36m-->\033[0m \033[38;5;208m~\033[1m> expect()\033[0m\n");
+        printf("  \033[1;36m-->\033[0m \033[38;5;208m~\033[1m> if_fail()\033[0m\n");
         printf("   \033[1;36m|\033[0m\n");
         printf("   \033[1;36m|\033[0m \033[1mMessage:\033[0m %.*s\n", (int)msg.len, msg.ptr);
 

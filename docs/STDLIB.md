@@ -1,4 +1,4 @@
-# Flint Standard Library Reference (v1.7.5)
+# Flint Standard Library Reference (v1.8.0)
 
 Flint's Standard Library is written in Flint itself (`std/*.fl`) and binds directly to the zero-dependency C99 runtime (`flint_rt.c`). 
 
@@ -59,7 +59,7 @@ These functions are natively injected by the Flint compiler. They are globally a
 * **`grep(lines: arr, pattern: string) arr`**: Fast-filters an array of strings, returning only those containing the pattern.
 
 ### 6.2. Pipeline Safety (Railway-Oriented)
-* **`expect(val: any, err_msg: string) val`**: Halts the pipeline if `val` is an error. Prints stack trace and exits.
+* **`if_fail(val: any, err_msg: string) val`**: Halts the pipeline if `val` is an error. Prints stack trace and exits.
 * **`fallback(val: any, alt_val: any) val`**: Intercepts a failure and silently replaces it with `alt_val`.
 * **`ensure(val: any, condition: bool, err_msg: string) val`**: A mid-pipeline verifier. If false, ejects a `FLINT_VAL_ERROR`.
 
@@ -73,5 +73,5 @@ These functions are natively injected by the Flint compiler. They are globally a
 * **`to_int(val: any) int`**: Safely extracts or converts a boxed value into a native integer.
 
 ### 6.5. Arrays & Iteration
-* **`push(arr: array, val: any)`**: Appends an element to the end of a dynamic array.
+* **`push(array: arr, val: any)`**: Appends an element to the end of a dynamic array.
 * **`range(start: int, end: int) array`**: Generates an iterable sequence of integers.

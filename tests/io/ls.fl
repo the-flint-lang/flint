@@ -1,7 +1,7 @@
 import os;
 import strings;
 
-const f = os.ls(".") ~> expect("Unable to read current directory");
+const f = os.ls(".") ~> if_fail("Unable to read current directory");
 
 var i = 0;
 for line in strings.to_str(f) ~> lines() {

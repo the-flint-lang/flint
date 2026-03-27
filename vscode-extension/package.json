@@ -2,7 +2,7 @@
     "name": "flint-lang",
     "displayName": "Flint Language Support",
     "description": "Official syntax highlighting and snippets for the Flint programming language.",
-    "version": "1.7.5",
+    "version": "1.8.0",
     "repository": {
         "type": "git",
         "url": "https://codeberg.org/lucaas-d3v/flint.git"

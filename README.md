@@ -2,7 +2,7 @@
 <img src="assets/favicon_transparent_bg.svg" alt="Flint Logo" width="120">
 </div>
 
-# > flint
+# > Flint
 
 **A fast, pipeline-oriented language for building reliable CLI tools.**
 
@@ -24,6 +24,30 @@ When writing infrastructure scripts today, you usually choose between:
 Flint sits in the middle:
 
 > **Simple like a script. Fast like a binary. Safer than both.**
+
+---
+
+## Rust-level Developer Experience
+
+Writing C-transpiled languages usually means dealing with horrific C compiler errors. Flint completely shields you from this with a custom, strict **Type Checker** and a dense, context-aware **Diagnostic Engine**:
+
+```text
+[SEMANTIC ERROR][E0308]: Mismatched types in array
+
+~~> teste.fl:1
+   |
+ 1 | const mutante: arr = [1, "two", true];
+   |                       ^  ^~~~~
+   |                       |  |
+   |                       |  found `string`
+   |                       |
+   |                       type inferred as `int` here
+   |
+
+note: arrays in Flint must contain elements of the same type
+```
+
+Flint uses "Poison Types" for smart error recovery, meaning it will show you all independent errors in a single pass without cascading false positives.
 
 ---
 
@@ -87,8 +111,6 @@ os.exec("ps aux")
 
 Readable, linear data flow — no nested calls.
 
----
-
 ### Native performance, no runtime
 
 Flint compiles to C99 and produces small native binaries.
@@ -97,13 +119,9 @@ Flint compiles to C99 and produces small native binaries.
 * no virtual machine
 * no runtime dependencies
 
----
-
 ### Zero-copy I/O & Strings
 
 String operations work on slices (`ptr + len`), avoiding unnecessary allocations. File reads bypass the heap entirely using pure kernel-space `mmap`.
-
----
 
 ### Predictable memory model
 
@@ -118,7 +136,7 @@ Flint uses a 4GB virtual arena allocator:
 
 ## Performance (Summary)
 
-Flint is engineered for maximum throughput in DevOps workloads. In our v1.7.5 benchmarks:
+Flint is engineered for maximum throughput in DevOps workloads. In our v1.8.0 benchmarks:
 
 * **JSON Extraction:** ~29x faster than Node.js and ~22x faster than Python (parses 17MB in ~13ms using O(1) Lazy Scanning).
 * **Mass File Stat:** ~650x faster than Bash when inspecting 10,000 files.
@@ -152,64 +170,18 @@ flint run my_script.fl
 
 ---
 
-## Stability
+## Architecture & Stability
 
-Current version: **v1.7.5**
+Current version: **v1.8.0**
+
+Flint is a transpiler:
+`.fl → AST (Zig) → Type Checker → C99 → native binary`
 
 * Core syntax → stable
 * Memory model → stable
 * Standard library → stable (but expanding)
 
----
-
-## Architecture
-
-Flint is a transpiler:
-
-```
-.fl → AST (Zig) → C99 → native binary
-```
-
-Key components:
-
-* Lexer + Recursive Descent Parser (Zig)
-* C99 code generation (with Compile-Time Hashing)
-* Embedded runtime (`flint_rt.c`)
-* Virtual memory arena (mmap-based)
-
-More details in:
-
-* `docs/ARCHITECTURE.md`
-* `docs/LANGUAGE.md`
-* `docs/STDLIB.md`
-
----
-
-## Example: Replacing a Bash Pipeline
-
-```flint
-import os;
-import strings;
-import io;
-
-os.exec("ps aux")
-    ~> lines()
-    ~> grep("root")
-    ~> strings.join("\n")
-    ~> ensure(len(_) > 0, "No root processes found!")
-    ~> io.write_file(_, "root_processes.log")
-    ~> expect("failed to write file");
-```
-
----
-
-## Contributing
-
-See `docs/CONTRIBUTING.md` for:
-
-* build instructions
-* architecture overview
-* coding standards
+More details in `docs/ARCHITECTURE.md` and `docs/LANGUAGE.md`.
 
 ---
 

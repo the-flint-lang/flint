@@ -12,12 +12,14 @@ Architecture: amd64
 Depends: ${misc:Depends}, libc6, libcurl4 | libcurl3, clang | gcc
 Description: Pipeline-oriented systems programming language
  Flint is a statically-typed, pipeline-oriented language that transpiles
- to C99. Designed as a modern replacement for Bash and Python in DevOps
- and CLI automation contexts.
+ to C99. Designed as a modern, dependency-free replacement for Bash and
+ Python in DevOps and CLI automation contexts.
  .
- Features include: pipeline operator (~>), string interpolation, universal
- bracket indexing for Array/Dict/JSON, multiline template strings, explicit
- error handling, and a built-in standard library for I/O, HTTP, JSON, and
- OS operations.
+ Features include:
+  * Linear data flow via pipeline operator (~>)
+  * Strict Type Checker with Rust-style contextual diagnostics
+  * Zero-copy string manipulation and mmap-based I/O
+  * Universal bracket indexing for Arrays, Structs, and JSON
+  * Smart error recovery and explicit intercept blocks (catch)
  .
  Homepage: https://github.com/lucaas-d3v/flint
