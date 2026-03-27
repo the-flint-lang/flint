@@ -982,6 +982,31 @@ flint_str flint_to_str_func(FlintValue v)
     }
 }
 
+flint_str_array flint_chars(flint_str text)
+{
+    flint_str_array arr;
+    arr.items = NULL;
+    arr.count = 0;
+    arr.capacity = 0;
+
+    if (text.len == 0 || !text.ptr)
+    {
+        return arr;
+    }
+
+    arr.items = flint_alloc_zero(text.len * sizeof(flint_str));
+    arr.count = text.len;
+    arr.capacity = text.len;
+
+    for (size_t i = 0; i < text.len; i++)
+    {
+        arr.items[i].ptr = text.ptr + i;
+        arr.items[i].len = 1;
+    }
+
+    return arr;
+}
+
 /* =========================
    UTIL E HASHMAP
    ========================= */

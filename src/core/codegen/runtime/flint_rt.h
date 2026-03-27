@@ -283,6 +283,7 @@ flint_str flint_replace(flint_str text, flint_str target, flint_str repl);
 flint_str flint_to_str_func(FlintValue v);
 flint_str flint_int_to_str(long long num);
 flint_str flint_concat(flint_str a, flint_str b);
+flint_str_array flint_chars(flint_str text);
 
 flint_str flint_build_str_array(flint_str *parts, size_t count);
 

@@ -8,7 +8,7 @@ pub const CEmitter = struct {
     temp_counter: usize = 0,
     source_file: []const u8,
 
-    built_ins: [13][]const u8,
+    built_ins: [14][]const u8,
 
     current_placeholder_name: ?[]const u8 = null,
 
@@ -30,6 +30,7 @@ pub const CEmitter = struct {
                 "ensure",
                 "lines",
                 "grep",
+                "chars",
             },
             .current_placeholder_name = null,
         };

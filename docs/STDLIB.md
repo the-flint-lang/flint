@@ -56,6 +56,7 @@ These functions are natively injected by the Flint compiler. They are globally a
 
 ### 6.1. Text & Stream Processing
 * **`lines(text: string) arr`**: O(1) Shorthand for splitting text by `\n`.
+* **`chars(text: string) arr`**: Zero-copy iterator over a string. Returns an array of 1-byte string slices without allocating new memory.
 * **`grep(lines: arr, pattern: string) arr`**: Fast-filters an array of strings, returning only those containing the pattern.
 
 ### 6.2. Pipeline Safety (Railway-Oriented)
