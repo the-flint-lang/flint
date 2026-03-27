@@ -17,12 +17,12 @@ Please provide the smallest Flint script (`.fl`) that triggers the issue:
 ```
 
 Expected Behavior
-What did you expect to happen? (e.g., "It should print 'Hello', but it crashed with a segfault in the Arena").
+What did you if_fail to happen? (e.g., "It should print 'Hello', but it crashed with a segfault in the Arena").
 
 Environment
 OS & Architecture: [e.g. Linux x86_64, macOS aarch64]
 
-Flint Version: [e.g. v1.7.5]
+Flint Version: [e.g. v1.8.0]
 
 Compiler used to build Flint: [e.g. Zig 0.11.0, Clang 16]
 
