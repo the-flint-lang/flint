@@ -815,6 +815,8 @@ pub const TypeChecker = struct {
 
         if (obj_type == .t_error or obj_type == .t_unknown) return .t_error;
 
+        if (obj_type == .t_any) return .t_any;
+
         var err_line: u32 = 0;
         var err_col: u32 = 0;
         var err_len: u32 = 1;

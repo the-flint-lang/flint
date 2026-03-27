@@ -6,4 +6,4 @@ fn sum(a: int, b: int) int {
     return 0; 
 }
 
-print(strings.int_to_str(m._double(5)));
+print(to_str(m._double(5)));
