@@ -3,6 +3,7 @@ const std = @import("std");
 const Token = @import("./structs/token.zig").Token;
 const TokenType = @import("./enums/token_type.zig").TokenType;
 const IoHelpers = @import("../helpers/structs/structs.zig").IoHelpers;
+const DiagnosticBuilder = @import("../errors/diagnostics.zig").DiagnosticBuilder;
 
 const debugError = @import("../errors/diagnostics.zig").debugError;
 
@@ -14,11 +15,24 @@ pub const Lexer = struct {
     column: u32,
     line: u32,
 
+    had_error: bool = false,
+
     source: []const u8,
+    file_path: []const u8,
     tokens: std.ArrayList(Token),
 
     alloc: std.mem.Allocator,
     io: IoHelpers,
+
+    fn reportError(self: *Lexer, code: []const u8, message: []const u8, line: u32, col: u32, len: u32, label_text: []const u8) !void {
+        self.had_error = true;
+
+        var diag = DiagnosticBuilder.init(self.alloc, "LEXICAL ERROR", code, message, self.source, self.file_path);
+        defer diag.deinit();
+
+        try diag.addLabel(line, col + len, len, label_text, true);
+        try diag.emit(self.io);
+    }
 
     pub fn tokenize(self: *Lexer) ![]const Token {
         try self.tokens.ensureTotalCapacity(self.alloc, self.source.len / 5);
@@ -72,8 +86,7 @@ pub const Lexer = struct {
             }
 
             if (c == '\"') {
-                const string = self.readString();
-
+                const string = try self.readString();
                 try self.tokens.append(self.alloc, Token{
                     ._type = .string_literal_token,
                     .value = string,
@@ -241,7 +254,25 @@ pub const Lexer = struct {
                     }
                 },
 
-                else => _type = .error_token,
+                else => {
+                    const start_pos = self.position - 1;
+                    const start_col = self.column - 1;
+
+                    while (!self.isAtEnd() and self.source[self.position] >= 128) {
+                        self.advance();
+                    }
+
+                    const bad_slice = self.source[start_pos..self.position];
+
+                    const visual_len = self.column - start_col;
+
+                    const msg = try std.fmt.allocPrint(self.alloc, "invalid character: `{s}`", .{bad_slice});
+
+                    try self.reportError("E0001", "Invalid character", self.line, start_col, visual_len, msg);
+                    self.alloc.free(msg);
+
+                    continue;
+                },
             }
 
             try self.tokens.append(self.alloc, Token{
@@ -259,6 +290,7 @@ pub const Lexer = struct {
             .line = self.line,
         });
 
+        if (self.had_error) return error.LexicalError;
         return self.tokens.toOwnedSlice(self.alloc);
     }
 
@@ -279,27 +311,27 @@ pub const Lexer = struct {
         return self.source[init..self.position];
     }
 
-    fn readString(self: *Lexer) []const u8 {
+    fn readString(self: *Lexer) ![]const u8 {
+        const start_col = self.column - 1;
         const init = self.position;
 
         while (!self.isAtEnd()) {
             const char = self.source[self.position];
-
             if (char == '"') break;
 
             if (char == '\\' and self.position + 1 < self.source.len) {
-                self.position += 1;
-                self.column += 1;
+                self.advance();
             }
-            self.position += 1;
-            self.column += 1;
+            self.advance();
         }
 
-        if (!self.isAtEnd()) {
-            self.position += 1;
-            self.column += 1;
+        if (self.isAtEnd()) {
+            const visual_len = self.column - start_col;
+            try self.reportError("E0002", "Unterminated string literal", self.line, start_col, visual_len, "string starts here but is never closed");
+            return self.source[init..self.position];
         }
 
+        self.advance();
         return self.source[init .. self.position - 1];
     }
 
@@ -359,19 +391,37 @@ pub const Lexer = struct {
 
     fn readNumber(self: *Lexer) ![]const u8 {
         const init = self.position - 1;
+        const start_col = self.column - 1;
+        var dots: u8 = 0;
 
-        while (!self.isAtEnd() and std.ascii.isDigit(self.source[self.position])) {
-            self.advance();
-        }
+        while (!self.isAtEnd()) {
+            const char = self.source[self.position];
 
-        if (!self.isAtEnd() and self.source[self.position] == '.') {
-            self.position += 1;
-            self.column += 1;
-            while (!self.isAtEnd() and std.ascii.isDigit(self.source[self.position])) {
-                self.position += 1;
-                self.column += 1;
+            if (std.ascii.isDigit(char)) {
+                self.advance();
+            } else if (char == '.') {
+                dots += 1;
+                if (dots > 1) {
+                    self.advance();
+                    while (!self.isAtEnd() and std.ascii.isDigit(self.source[self.position])) {
+                        self.advance();
+                    }
+                    const visual_len = self.column - start_col;
+                    try self.reportError("E0003", "Invalid numeric literal", self.line, start_col, visual_len, "invalid number format (multiple decimals)");
+                    break;
+                }
+                self.advance();
+            } else if (std.ascii.isAlphabetic(char)) {
+                self.advance();
+                while (!self.isAtEnd() and std.ascii.isAlphanumeric(self.source[self.position])) {
+                    self.advance();
+                }
+                const visual_len = self.column - start_col;
+                try self.reportError("E0003", "Invalid numeric literal", self.line, start_col, visual_len, "invalid number format (letters are not allowed)");
+                break;
+            } else {
+                break;
             }
-            return self.source[init..self.position];
         }
 
         return self.source[init..self.position];
@@ -401,8 +451,12 @@ pub const Lexer = struct {
     }
 
     inline fn advance(self: *Lexer) void {
+        const c = self.source[self.position];
         self.position += 1;
-        self.column += 1;
+
+        if (c < 0x80 or c >= 0xC0) {
+            self.column += 1;
+        }
     }
 
     inline fn match(self: *Lexer, c: u8) bool {

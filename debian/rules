@@ -6,7 +6,7 @@ override_dh_auto_build:
 	# Pre-compiled binary — nothing to build.
 
 override_dh_auto_install:
-	install -D -m 0755 zemit/dist/flint-x86_64-linux-gnu \
+	install -D -m 0755 zig-out/bin/flint \
 		$(CURDIR)/debian/flint/usr/bin/flint
 	install -d $(CURDIR)/debian/flint/usr/share/flint/std
 	cp -r std/. $(CURDIR)/debian/flint/usr/share/flint/std/

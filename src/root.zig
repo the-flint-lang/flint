@@ -4,6 +4,7 @@ const checker = @import("./core/helpers/utils/checkers.zig");
 pub const IoHelper = @import("./core/helpers/structs/structs.zig").IoHelpers;
 const Lexer = @import("./core/lexer/lexer.zig").Lexer;
 const Parser = @import("./core/parser/parser.zig").Parser;
+const TypeChecker = @import("./core/analyzer/type_checker.zig").TypeChecker;
 const CEmitter = @import("./core/codegen/c_emitter.zig").CEmitter;
 const AstNode = @import("./core/parser/ast.zig").AstNode;
 const Token = @import("./core/lexer/structs/token.zig").Token;
@@ -31,6 +32,7 @@ fn runCompilerPipeline(
     var lex = Lexer{
         .alloc = alloc,
         .io = io,
+        .file_path = file_path,
         .position = 0,
         .column = 0,
         .line = 0,
@@ -44,6 +46,10 @@ fn runCompilerPipeline(
     const ast = parser.parse() catch {
         return error.ParseFailed;
     };
+
+    var t_checker = try TypeChecker.init(alloc, file_path, source, io);
+    try t_checker.check(ast);
+    if (t_checker.had_error) return error.SemanticCheckFailed;
 
     return PipelineResult{
         .source = source,
@@ -391,6 +397,7 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper) !void {
         var lexer = Lexer{
             .alloc = alloc,
             .io = io,
+            .file_path = file_path,
             .position = 0,
             .column = 0,
             .line = 0,
@@ -501,6 +508,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
 
     defer std.fs.cwd().deleteFile("flint_rt.h") catch {};
     defer std.fs.cwd().deleteFile("flint_rt.c") catch {};
+    defer std.fs.cwd().deleteFile(out_filename) catch {};
 
     const argv = &[_][]const u8{
         "clang",
@@ -525,7 +533,6 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
                 if (!is_run) {
                     try io.stdout.print("\x1b[1;32m[SUCCESS]\x1b[0m Executable '{s}' generated.\n", .{exe_name});
                 }
-                std.fs.cwd().deleteFile(out_filename) catch {};
             } else {
                 try io.stderr.print("Fatal error in Clang (code {d}).\n", .{code});
                 return;
@@ -540,6 +547,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
     if (is_run) {
         const exec_path = try std.fmt.allocPrint(alloc, "./{s}", .{exe_name});
         defer alloc.free(exec_path);
+        defer std.fs.cwd().deleteFile(exe_name) catch {};
 
         var run_args = std.ArrayList([]const u8).empty;
         defer run_args.deinit(alloc);
@@ -561,8 +569,6 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
             },
             else => try io.stderr.print("Unexpected execution error.\n", .{}),
         }
-
-        std.fs.cwd().deleteFile(exe_name) catch {};
     }
 }
 

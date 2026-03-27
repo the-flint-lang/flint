@@ -16,14 +16,14 @@ print("Contents of variable proc:");
 print(proc);
 
 print("Raw value of key 'exit_code':");
-print(get(proc, "exit_code"));
+print(proc["exit_code"]);
 
-if (strings.to_int(get(proc, "exit_code")) != 0) {
+if (to_int(proc["exit_code"]) != 0) {
     print("Success! The process failed natively.");
     print("Error Code:");
-    print(get(proc, "exit_code"));
+    print(proc["exit_code"]);
     print("STDERR output:");
-    print(get(proc, "stderr"));
+    print(proc["stderr"]);
 } else {
     print("Failed to else.");
 }
