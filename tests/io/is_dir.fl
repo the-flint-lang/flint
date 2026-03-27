@@ -1,6 +1,12 @@
 import io;
 import os;
 
+fn rm_() void {
+    _ = os.rm_dir("test") catch |err| {
+        print(err);
+    };
+}
+
 _ = os.mkdir("test") catch |err| {
     print(err);
     os.exit(1);
@@ -14,9 +20,3 @@ if os.is_dir("test") {
 
 print("Not is a dir");
 rm_();
-
-fn rm_() void {
-    _ = os.rm_dir("test") catch |err| {
-        print(err);
-    };
-}

@@ -15,6 +15,6 @@ os.exec("ps aux")
     ~> strings.grep(user)
     ~> strings.join("\n")
     ~> io.write_file("my_processes.log")
-    ~> expect("Fatal error: No permission to write to disk.");
+    ~> if_fail("Fatal error: No permission to write to disk.");
 
 print("Processes saved in 'my_processes.log' successfully!");

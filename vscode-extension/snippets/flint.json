@@ -14,7 +14,7 @@
             "const ${1:data} = http.fetch(\"${2:https://api.example.com}\")",
             "    ~> parse_json(_)",
             "    ~> ensure(_[\"status\"] == 200, \"API Error\")",
-            "    ~> expect(\"Network Failure\");$0"
+            "    ~> if_fail(\"Network Failure\");$0"
         ],
         "description": "Modern Fetch pipeline with JSON parsing and safety"
     },
@@ -39,7 +39,7 @@
     "Iterate Directory Modern": {
         "prefix": "ls",
         "body": [
-            "const ${1:files} = os.ls(\"${2:.}\") ~> expect(\"Failed to list directory.\");",
+            "const ${1:files} = os.ls(\"${2:.}\") ~> if_fail(\"Failed to list directory.\");",
             "",
             "for f in to_str(${1:files}) ~> lines() {",
             "    if (os.is_file(f)) {",
@@ -49,5 +49,15 @@
             "}"
         ],
         "description": "List directory using interpolation and modern indexing"
+    },
+    "Safe File Read (Catch)": {
+        "prefix": "read_catch",
+        "body": [
+            "const ${1:content} = io.read_file(\"${2:data.txt}\") catch |${3:err}| {",
+            "    print($\"Failed to read file: {${3:err}}\");",
+            "    os.exit(1);",
+            "};$0"
+        ],
+        "description": "Read a file safely and catch native errors"
     }
 }

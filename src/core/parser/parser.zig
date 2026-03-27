@@ -6,6 +6,7 @@ const AstNode = @import("./ast.zig").AstNode;
 const IoHelpers = @import("../helpers/structs/structs.zig").IoHelpers;
 const DictEntry = @import("./ast.zig").DictEntry;
 const StructField = @import("./ast.zig").StructField;
+const DiagnosticBuilder = @import("../errors/diagnostics.zig").DiagnosticBuilder;
 
 pub const Parser = struct {
     tokens: []const Token,
@@ -49,8 +50,6 @@ pub const Parser = struct {
             }
         }
 
-        // if we had ANY errors during the process, we cannot generate a valid AST.
-        // we return error here to prevent CEmitter from trying to generate broken code.
         if (self.had_error) return error.ParseError;
 
         const program_node = try self.allocator.create(AstNode);
@@ -100,7 +99,7 @@ pub const Parser = struct {
             }
         }
 
-        _ = try self.consume(.rbrace_token, "Expected '}' to close struct body.");
+        _ = try self.consumeDelimiter(.rbrace_token, "Expected '}' to close struct body.");
 
         node.* = .{ .struct_decl = .{
             .name = name_token.value,
@@ -142,14 +141,14 @@ pub const Parser = struct {
 
         _ = try self.consume(.lbrace_token, "'{' expected before if block");
         const body = try self.parseBody();
-        _ = try self.consume(.rbrace_token, "'}' expected to close if block");
+        _ = try self.consumeDelimiter(.rbrace_token, "'}' expected to close if block");
 
         var else_body: ?[]const *AstNode = null;
 
         if (self.match(&.{.else_token})) {
             _ = try self.consume(.lbrace_token, "'{' expected before else block");
             else_body = try self.parseBody();
-            _ = try self.consume(.rbrace_token, "'}' expected to close else block");
+            _ = try self.consumeDelimiter(.rbrace_token, "'}' expected to close else block");
         }
 
         node.* = .{
@@ -174,7 +173,7 @@ pub const Parser = struct {
 
         _ = try self.consume(.lparen_token, "'(' expected after function name");
         const args = try self.parseArgs();
-        _ = try self.consume(.rparen_token, "')' expected after function arguments");
+        _ = try self.consumeDelimiter(.rparen_token, "')' expected after function arguments");
 
         const return_type = self.advance();
 
@@ -185,7 +184,7 @@ pub const Parser = struct {
         } else {
             _ = try self.consume(.lbrace_token, "'{' expected before function body");
             body = try self.parseBody();
-            _ = try self.consume(.rbrace_token, "'}' expected to close function body");
+            _ = try self.consumeDelimiter(.rbrace_token, "'}' expected to close function body");
         }
 
         node.* = .{
@@ -273,9 +272,8 @@ pub const Parser = struct {
                     }
                 }
 
-                _ = try self.consume(.rparen_token, "Expected ')' after arguments.");
+                _ = try self.consumeDelimiter(.rparen_token, "Expected ')' after arguments.");
 
-                // Shielding the called function can be an identifier (print) or namespace property access (aws.apply)
                 if (expr.* != .identifier and expr.* != .property_access_expr) {
                     return self.reportError(self.previous(), "Invalid function call.");
                 }
@@ -291,7 +289,7 @@ pub const Parser = struct {
                 expr = node;
             } else if (self.match(&.{.lbracket_token})) {
                 const index_expr = try self.parseExpression();
-                _ = try self.consume(.rbracket_token, "Expected ']' after index.");
+                _ = try self.consumeDelimiter(.rbracket_token, "Expected ']' after index.");
 
                 const node = try self.allocator.create(AstNode);
                 node.* = .{ .index_expr = .{ .left = expr, .index = index_expr } };
@@ -337,23 +335,21 @@ pub const Parser = struct {
 
         if (self.match(&.{.lparen_token})) {
             const expr = try self.parseExpression();
-            _ = try self.consume(.rparen_token, "Expected ')' after expression.");
+            _ = try self.consumeDelimiter(.rparen_token, "Expected ')' after expression.");
             return expr;
         }
 
         if (self.match(&.{.lbracket_token})) {
             var elements = std.ArrayList(*AstNode).empty;
 
-            // if array not is empty
             if (!self.check(.rbracket_token)) {
                 while (true) {
                     try elements.append(self.allocator, try self.parseExpression());
-
                     if (!self.match(&.{.comma_token})) break;
                 }
             }
 
-            _ = try self.consume(.rbracket_token, "Expected ']' to close the array.");
+            _ = try self.consumeDelimiter(.rbracket_token, "Expected ']' to close the array.");
 
             const node = try self.allocator.create(AstNode);
             node.* = .{
@@ -382,7 +378,7 @@ pub const Parser = struct {
                 }
             }
 
-            _ = try self.consume(.rbrace_token, "Expected '}' to close the dictionary.");
+            _ = try self.consumeDelimiter(.rbrace_token, "Expected '}' to close the dictionary.");
 
             const node = try self.allocator.create(AstNode);
             node.* = .{
@@ -405,10 +401,10 @@ pub const Parser = struct {
 
     fn parseExpressionStatement(self: *Parser) anyerror!*AstNode {
         const expr = try self.parseExpression();
-        const last_token = self.previous(); // token right after the complete expression
+        const last_token = self.previous();
 
         if (!self.check(.semicolon_token)) {
-            return self.reportError(last_token, "Expected ';' after expression.");
+            return self.reportSyntaxError(last_token, "E1001", "Expected ';' after expression", "expected `;`", true);
         }
         _ = self.advance();
 
@@ -426,7 +422,7 @@ pub const Parser = struct {
 
         _ = try self.consume(.lbrace_token, "Expected '{' before for block.");
         const body = try self.parseBody();
-        _ = try self.consume(.rbrace_token, "Expected '}' to close for block.");
+        _ = try self.consumeDelimiter(.rbrace_token, "Expected '}' to close for block.");
 
         node.* = .{ .for_stmt = .{
             .iterator_name = iterator_token.value,
@@ -444,10 +440,13 @@ pub const Parser = struct {
 
         const name_token = try self.consume(.identifier_token, "Expected variable name.");
 
+        var type_token: ?Token = null;
+
         if (self.match(&.{.colon_token})) {
             if (!self.match(&.{ .integer_type_token, .string_type_token, .char_type_token, .boolean_type_token, .identifier_token, .value_type_token, .array_type_token })) {
                 return self.reportError(self.peek(), "Invalid or unknown type.");
             }
+            type_token = self.previous();
         }
 
         _ = try self.consume(.assign_token, "Expected '=' after variable name.");
@@ -459,7 +458,7 @@ pub const Parser = struct {
         node.* = .{
             .var_decl = .{
                 .line = name_token.line + 1,
-                ._type = null,
+                ._type = type_token,
                 .is_const = is_const,
                 .name = name_token.value,
                 .value = value_expr,
@@ -489,7 +488,7 @@ pub const Parser = struct {
                 try body.append(self.allocator, stmt);
             }
 
-            _ = try self.consume(.rbrace_token, "Expected '}' to close the catch block.");
+            _ = try self.consumeDelimiter(.rbrace_token, "Expected '}' to close the catch block.");
 
             const catch_node = try self.allocator.create(AstNode);
             catch_node.* = .{ .catch_expr = .{
@@ -511,7 +510,7 @@ pub const Parser = struct {
                 return node;
             }
 
-            return self.reportError(equals, "Invalid assignment target. You can only assign to variables, arrays or structs.");
+            return self.reportSyntaxError(expr.literal.token, "E1004", "Invalid assignment target", "invalid assignment target", false);
         }
 
         return expr;
@@ -532,7 +531,7 @@ pub const Parser = struct {
                 .left = expr,
                 .right_call = right,
             } };
-            expr = node; // Chain from left to right
+            expr = node;
         }
 
         return expr;
@@ -622,7 +621,6 @@ pub const Parser = struct {
                 return true;
             }
         }
-
         return false;
     }
 
@@ -631,77 +629,58 @@ pub const Parser = struct {
         return self.peek()._type == _type;
     }
 
-    fn consume(self: *Parser, _type: TokenType, message: []const u8) anyerror!Token {
-        if (self.check(_type)) return self.advance();
+    fn reportSyntaxError(self: *Parser, token: Token, code: []const u8, message: []const u8, label_text: []const u8, point_after: bool) anyerror!*AstNode {
+        self.had_error = true;
+        var diag = DiagnosticBuilder.init(self.allocator, "SYNTAX ERROR", code, message, self.source, self.file_path);
+        defer diag.deinit();
 
-        return self.reportErrorT(self.peek(), message);
+        var col = token.column;
+        var len: u32 = if (token.value.len > 0) @intCast(token.value.len) else 1;
+
+        if (point_after) {
+            col += len - 1;
+            len = 1;
+        }
+
+        try diag.addLabel(token.line, col + len, len, label_text, true);
+        try diag.emit(self.io);
+
+        return error.ParseError;
     }
 
-    fn printErrorContext(self: *Parser, token: Token, message: []const u8) anyerror!void {
-        self.had_error = true;
-
-        var lines = std.mem.splitScalar(u8, self.source, '\n');
-        var current_line: u32 = 0;
-        var target_line_text: []const u8 = "";
-
-        while (lines.next()) |line| : (current_line += 1) {
-            if (current_line == token.line) {
-                target_line_text = line;
-                break;
-            }
-        }
-
-        const raw_len: u32 = switch (token._type) {
-            .string_literal_token => @intCast(token.value.len + 2),
-            .char_literal_token => @intCast(token.value.len + 2),
-            .eof_token => 1,
-            else => @intCast(if (token.value.len > 0) token.value.len else 1),
-        };
-
-        const token_len = raw_len;
-        const start_col = if (token.column >= raw_len) token.column - raw_len else 0;
-
-        const red = "\x1b[1;31m";
-        const cyan = "\x1b[1;36m";
-        const bold = "\x1b[1m";
-        const reset = "\x1b[0m";
-
-        try self.io.stderr.print("[{s}ERROR{s}]: {s}{s}{s}\n", .{ red, reset, bold, message, reset });
-
-        try self.io.stderr.print("  {s}~~>{s} {s}:{d}:{d}\n", .{ cyan, reset, self.file_path, token.line + 1, start_col + 1 });
-
-        try self.io.stderr.print("   {s}|{s}\n", .{ cyan, reset });
-
-        try self.io.stderr.print("{d:2} {s}|{s} {s}\n", .{ token.line + 1, cyan, reset, target_line_text });
-
-        try self.io.stderr.print("   {s}|{s} ", .{ cyan, reset });
-        for (0..start_col) |_| try self.io.stderr.print(" ", .{});
-
-        try self.io.stderr.print("{s}^{s}", .{ red, reset });
-        if (token_len > 1) {
-            for (1..token_len) |_| try self.io.stderr.print("{s}~{s}", .{ red, reset });
-        }
-
-        try self.io.stderr.print("\n   {s}|{s}\n\n", .{ cyan, reset });
-
-        _ = try self.io.stderr.flush();
+    fn reportSyntaxErrorT(self: *Parser, token: Token, code: []const u8, message: []const u8, label_text: []const u8, point_after: bool) anyerror!Token {
+        _ = try self.reportSyntaxError(token, code, message, label_text, point_after);
+        return error.ParseError;
     }
 
     fn reportError(self: *Parser, token: Token, message: []const u8) anyerror!*AstNode {
-        try self.printErrorContext(token, message);
-        return error.ParseError;
+        return self.reportSyntaxError(token, "E1003", message, "unexpected token", false);
     }
 
     fn reportErrorT(self: *Parser, token: Token, message: []const u8) anyerror!Token {
-        try self.printErrorContext(token, message);
-        return error.ParseError;
+        return self.reportSyntaxErrorT(token, "E1003", message, "unexpected token", false);
+    }
+
+    fn consume(self: *Parser, _type: TokenType, message: []const u8) anyerror!Token {
+        if (self.check(_type)) return self.advance();
+
+        if (_type == .semicolon_token) {
+            return self.reportSyntaxErrorT(self.previous(), "E1001", message, "expected `;`", true);
+        }
+
+        return self.reportSyntaxErrorT(self.peek(), "E1003", message, "unexpected token", false);
+    }
+
+    fn consumeDelimiter(self: *Parser, _type: TokenType, message: []const u8) anyerror!Token {
+        if (self.check(_type)) return self.advance();
+
+        return self.reportSyntaxErrorT(self.peek(), "E1002", message, "unclosed delimiter", false);
     }
 
     fn synchronize(self: *Parser) void {
         _ = self.advance();
 
         while (!self.isAtEnd()) {
-            // if the previous token was a semicolon, the next line is probably safe
             if (self.previous()._type == .semicolon_token) return;
 
             switch (self.peek()._type) {
@@ -735,12 +714,19 @@ pub const Parser = struct {
 
         return call;
     }
-
     fn parseInterpolatedString(self: *Parser, token: Token) anyerror!*AstNode {
         var parts = std.ArrayList(*AstNode).empty;
         defer parts.deinit(self.allocator);
 
         const raw = token.value;
+
+        var content_visual_len: u32 = 0;
+        for (raw) |byte| {
+            if (byte < 0x80 or byte >= 0xC0) content_visual_len += 1;
+        }
+
+        const inner_start_col = token.column - 1 - content_visual_len;
+
         var i: usize = 0;
         var start: usize = 0;
         var brace_depth: usize = 0;
@@ -769,11 +755,17 @@ pub const Parser = struct {
                     if (brace_depth == 0) {
                         const expr_str = raw[start..i];
 
+                        var prefix_visual_len: u32 = 0;
+                        for (raw[0..start]) |byte| {
+                            if (byte < 0x80 or byte >= 0xC0) prefix_visual_len += 1;
+                        }
+
                         var sub_lexer = Lexer{
                             .alloc = self.allocator,
                             .io = self.io,
+                            .file_path = self.file_path,
                             .position = 0,
-                            .column = 0,
+                            .column = inner_start_col + prefix_visual_len,
                             .line = token.line,
                             .source = expr_str,
                             .tokens = std.ArrayList(Token).empty,

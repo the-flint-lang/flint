@@ -1,35 +1,6 @@
 {
     "$schema": "../schemas/tmlanguage.json",
     "name": "Flint",
-    "patterns": [
-        {
-            "include": "#comments"
-        },
-        {
-            "include": "#strings"
-        },
-        {
-            "include": "#keywords"
-        },
-        {
-            "include": "#types"
-        },
-        {
-            "include": "#builtins"
-        },
-        {
-            "include": "#function-calls"
-        },
-        {
-            "include": "#namespaces"
-        },
-        {
-            "include": "#operators"
-        },
-        {
-            "include": "#numbers"
-        }
-    ],
     "repository": {
         "comments": {
             "patterns": [
@@ -42,10 +13,10 @@
         "strings": {
             "patterns": [
                 {
-                    "name": "string.quoted.double.flint",
-                    "begin": "(\\$)?\"",
+                    "name": "string.quoted.double.interpolated.flint",
+                    "begin": "\\$\"",
                     "beginCaptures": {
-                        "1": {
+                        "0": {
                             "name": "keyword.control.interpolation.flint"
                         }
                     },
@@ -56,59 +27,90 @@
                             "match": "\\\\."
                         },
                         {
-                            "name": "meta.embedded.line.flint",
-                            "begin": "\\{",
-                            "beginCaptures": {
-                                "0": {
-                                    "name": "punctuation.section.embedded.begin.flint"
-                                }
-                            },
-                            "end": "\\}",
-                            "endCaptures": {
-                                "0": {
-                                    "name": "punctuation.section.embedded.end.flint"
-                                }
-                            },
-                            "patterns": [
-                                {
-                                    "include": "$self"
-                                }
-                            ]
+                            "include": "#interpolation"
                         }
                     ]
                 },
                 {
-                    "name": "string.quoted.other.multiline.flint",
-                    "begin": "(\\$)?`",
+                    "name": "string.quoted.double.flint",
+                    "begin": "\"",
+                    "end": "\"",
+                    "patterns": [
+                        {
+                            "name": "constant.character.escape.flint",
+                            "match": "\\\\."
+                        }
+                    ]
+                },
+                {
+                    "name": "string.quoted.other.multiline.interpolated.flint",
+                    "begin": "\\$`",
                     "beginCaptures": {
-                        "1": {
+                        "0": {
                             "name": "keyword.control.interpolation.flint"
                         }
                     },
                     "end": "`",
                     "patterns": [
                         {
-                            "include": "meta.embedded.line.flint"
+                            "name": "constant.character.escape.flint",
+                            "match": "\\\\."
                         },
                         {
-                            "name": "meta.embedded.block.flint",
-                            "begin": "\\{",
-                            "beginCaptures": {
-                                "0": {
-                                    "name": "punctuation.section.embedded.begin.flint"
-                                }
-                            },
-                            "end": "\\}",
-                            "endCaptures": {
-                                "0": {
-                                    "name": "punctuation.section.embedded.end.flint"
-                                }
-                            },
-                            "patterns": [
-                                {
-                                    "include": "$self"
-                                }
-                            ]
+                            "include": "#interpolation"
+                        }
+                    ]
+                },
+                {
+                    "name": "string.quoted.other.multiline.flint",
+                    "begin": "`",
+                    "end": "`",
+                    "patterns": [
+                        {
+                            "name": "constant.character.escape.flint",
+                            "match": "\\\\."
+                        }
+                    ]
+                }
+            ]
+        },
+        "interpolation": {
+            "patterns": [
+                {
+                    "name": "meta.embedded.line.flint",
+                    "begin": "\\{",
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.section.embedded.begin.flint"
+                        }
+                    },
+                    "end": "\\}",
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.section.embedded.end.flint"
+                        }
+                    },
+                    "patterns": [
+                        {
+                            "include": "#keywords"
+                        },
+                        {
+                            "include": "#types"
+                        },
+                        {
+                            "include": "#builtins"
+                        },
+                        {
+                            "include": "#numbers"
+                        },
+                        {
+                            "include": "#operators"
+                        },
+                        {
+                            "include": "#namespaces"
+                        },
+                        {
+                            "include": "#function-calls"
                         }
                     ]
                 }
@@ -142,7 +144,7 @@
             "patterns": [
                 {
                     "name": "support.function.builtin.flint",
-                    "match": "\\b(print|len|push|range|parse_json|parse_json_as|expect|fallback|ensure|to_str|to_int|lines|grep|concat)\\b"
+                    "match": "\\b(print|len|push|range|parse_json|parse_json_as|if_fail|fallback|ensure|to_str|to_int|lines|grep|concat)\\b"
                 },
                 {
                     "name": "variable.language.placeholder.flint",
@@ -188,7 +190,7 @@
                 },
                 {
                     "name": "keyword.operator.flint",
-                    "match": "(!=|==|<=|>=|~>|\\+|-|\\*|/|%|<|>|=|!|\\|)"
+                    "match": "(!=|==|<=|>=|\\+|-|\\*|/|%|<|>|=|!|\\|)"
                 }
             ]
         },
