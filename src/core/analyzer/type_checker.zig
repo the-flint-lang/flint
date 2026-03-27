@@ -41,6 +41,8 @@ pub const TypeChecker = struct {
         _ = global.define("lines", .t_arr, true, 0, 0, null, &[_]FlintType{.t_any});
         _ = global.define("grep", .t_arr, true, 0, 0, null, &[_]FlintType{ .t_any, .t_string });
         _ = global.define("build_str", .t_string, true, 0, 0, null, null); // Variádico (tamanho flexível)
+        _ = global.define("chars", .t_arr, true, 0, 0, null, &[_]FlintType{.t_string});
+        _ = global.define("strings_split", .t_arr, true, 0, 0, null, &[_]FlintType{ .t_string, .t_string });
 
         // os module
         _ = global.define("os_mkdir", .t_val, true, 0, 0, null, &[_]FlintType{.t_string});
