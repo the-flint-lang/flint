@@ -1,13 +1,18 @@
 .{
     .name = .flint,
 
-    .version = "1.8.0",
+    .version = "1.8.1",
 
     .fingerprint = 0x4ab03ee8763c8f8f,
 
     .minimum_zig_version = "0.15.2",
 
-    .dependencies = .{},
+    .dependencies = .{
+        .aro = .{
+            .url = "git+https://github.com/Vexu/arocc.git#a08e2ca4b0e83059c3892b8b3e026754467e0ed1",
+            .hash = "aro-0.0.0-JSD1QiDQNgA23aZYr2Htc_T8M7NwBIAX6ZrYN69VXuzA",
+        },
+    },
 
     .paths = .{
         "build.zig",

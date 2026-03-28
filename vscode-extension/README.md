@@ -1,6 +1,6 @@
 # Flint Language Support for VS Code
 
-Official syntax highlighting, snippets, and language support for the **Flint** programming language (v1.8.0). 
+Official syntax highlighting, snippets, and language support for the **Flint** programming language (v1.8.1). 
 
 Flint is a high-performance, AOT-compiled systems and infrastructure language with zero-copy memory architecture. This extension provides the essential Developer Experience (DX) required to write Flint code efficiently, tailored for its custom Structs, safe pipelines, and standard library.
 
@@ -9,7 +9,7 @@ Flint is a high-performance, AOT-compiled systems and infrastructure language wi
 This extension turns VS Code into a first-class IDE for Flint:
 
 * **Native Syntax Highlighting:** Perfect parsing for Flint's keywords (`fn`, `struct`, `import`, `catch`), data types, and control flow structures.
-* **Pipeline & Safety Support:** Deep integration for Flint's signature data-flow operator (`~>`) and the new v1.8.0 safety primitives (`if_fail`, `fallback`).
+* **Pipeline & Safety Support:** Deep integration for Flint's signature data-flow operator (`~>`) and the new v1.8.1 safety primitives (`if_fail`, `fallback`).
 * **AOT Structs & Typings:** Highlights custom strongly-typed data structures and type annotations (`string`, `int`, `bool`).
 * **Standard Library Recognition:** Autocompletion and highlighting for Flint's ultra-fast C99 runtime built-ins (e.g., `fetch`, `parse_json_as`, `exec`, `lines`, `grep`, `count_matches`).
 * **String Parsing:** Full support for standard strings (`" "`), char literals (`' '`), and raw multiline strings (`` ` ` ``).
@@ -34,10 +34,10 @@ As an independent, hardcore open-source project, Flint bypasses the corporate te
 You can install this extension locally in 10 seconds:
 
 **Option 1: Command Line (Recommended)**
-1. Download the latest `flint-lang-1.8.0.vsix` from the [Releases page](https://github.com/lucaas-d3v/flint/releases).
+1. Download the latest `flint-lang-1.8.1.vsix` from the [Releases page](https://github.com/lucaas-d3v/flint/releases).
 2. Open your terminal and run:
    ```bash
-   code --install-extension flint-lang-1.8.0.vsix
+   code --install-extension flint-lang-1.8.1.vsix
    ```
 
 **Option 2: GUI**
