@@ -1094,6 +1094,38 @@ flint_str_array flint_chars(flint_str text)
     return arr;
 }
 
+bool flint_starts_with(flint_str s, flint_str p)
+{
+    // all strings starts with a empty prefix :)
+    if (p.len == 0)
+    {
+        return true;
+    }
+
+    if (p.len > s.len)
+    {
+        return false;
+    }
+
+    return memcmp(s.ptr, p.ptr, p.len) == 0;
+}
+
+bool flint_ends_with(flint_str s, flint_str p)
+{
+    // all strings also ends with a empty prefix :)
+    if (p.len == 0)
+    {
+        return true;
+    }
+
+    if (p.len > s.len)
+    {
+        return false;
+    }
+
+    return memcmp(s.ptr + (s.len - p.len), p.ptr, p.len) == 0;
+}
+
 /* =========================
    UTIL E HASHMAP
    ========================= */

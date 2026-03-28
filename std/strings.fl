@@ -10,6 +10,8 @@ extern fn flint_int_to_str(num: int) string;
 extern fn flint_concat(a: string, b: string) string;
 extern fn flint_to_int(v: val) int;
 extern fn flint_str_eql(a: string, b: string) bool; 
+extern fn flint_starts_with(s: string, p: string) bool;
+extern fn flint_ends_with(s: string, p: string) bool;
 
 # public API 
 fn split(text: string, delim: string) arr {
@@ -42,4 +44,12 @@ fn int_to_str(num: int) string {
 
 fn to_int(v: val) int {
     return flint_to_int(v);
+}
+
+fn ends_with(s: string, p: string) bool {
+    return flint_ends_with(s, p);
+}
+
+fn starts_with(s: string, p: string) bool {
+    return flint_starts_with(s, p);
 }

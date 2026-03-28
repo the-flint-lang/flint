@@ -39,6 +39,8 @@ Text processing functions. They return fat pointers (slices) to the original Are
 * **`strings.join(parts: arr, sep: string) string`**: Allocates a new string combining all elements of an array.
 * **`strings.trim(text: string) string`**: Removes whitespace from both ends.
 * **`strings.count_matches(text: string, pattern: string) int`**: Returns the number of times a pattern appears.
+* **`strings.starts_with(s: string, p: string) bool`**: Returns if a string `s` starts with `p`.
+* **`strings.ends_with(s: string, p: string) bool`**: Returns if a string `s` ends with `p`.
 
 ---
 

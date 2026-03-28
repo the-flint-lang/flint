@@ -86,6 +86,8 @@ pub const TypeChecker = struct {
         _ = global.define("strings_str_eql", .t_bool, true, 0, 0, null, &[_]FlintType{ .t_string, .t_string });
         _ = global.define("strings_lines", .t_arr, true, 0, 0, null, &[_]FlintType{.t_any});
         _ = global.define("strings_grep", .t_arr, true, 0, 0, null, &[_]FlintType{ .t_any, .t_string });
+        _ = global.define("strings_starts_with", .t_bool, true, 0, 0, null, &[_]FlintType{ .t_string, .t_string });
+        _ = global.define("strings_ends_with", .t_bool, true, 0, 0, null, &[_]FlintType{ .t_string, .t_string });
 
         // json and utils module
         _ = global.define("json_parse", .t_val, true, 0, 0, null, &[_]FlintType{.t_string});

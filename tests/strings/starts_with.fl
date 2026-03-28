@@ -1,0 +1,13 @@
+import strings;
+import os;
+
+for file in os.ls(".") ~> lines() {
+    if (strings.starts_with(to_str(file), "start")){
+        print($"{file} is a flint starts_with test source code.");
+    }
+    
+    if (strings.starts_with(to_str(file), "end")){
+        print($"{file} is a flint ends_with source code.");
+    }
+
+}

@@ -200,6 +200,7 @@ static inline void flint_dict_set_from_val(FlintValue v, flint_str key, FlintVal
 #define FLINT_SET(obj, key, val) _Generic((obj), \
     FlintDict *: flint_dict_set,                 \
     FlintValue: flint_dict_set_from_val)(obj, key, FLINT_BOX(val))
+
 /* =========================
    PRINT
    ========================= */
@@ -322,6 +323,9 @@ static inline long long flint_to_int_func(FlintValue v)
 
 #define flint_to_int(X) flint_to_int_func(FLINT_BOX(X))
 #define flint_to_str(X) flint_to_str_func(FLINT_BOX(X))
+
+bool flint_starts_with(flint_str s, flint_str p);
+bool flint_ends_with(flint_str s, flint_str p);
 
 /* =========================
    UTIL
