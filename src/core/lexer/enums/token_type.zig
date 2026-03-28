@@ -21,6 +21,7 @@ pub const TokenType = enum {
 
     interpolated_string_token,
     not_token,
+    while_token,
     fn_token,
     var_token,
     const_token,

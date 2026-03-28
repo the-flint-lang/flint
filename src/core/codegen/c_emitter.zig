@@ -112,6 +112,20 @@ pub const CEmitter = struct {
         }
     }
 
+    fn visitWhileStmt(self: *CEmitter, node: *AstNode, writer: anytype) !void {
+        const stmt = node.while_stmt;
+        try writer.print("while (", .{});
+        try self.visitNode(stmt.condition, writer);
+        try writer.print(") {{\n", .{});
+
+        for (stmt.body) |b_stmt| {
+            try writer.print("        ", .{});
+            try self.visitNode(b_stmt, writer);
+            try writer.print(";\n", .{});
+        }
+        try writer.print("    }}", .{});
+    }
+
     fn visitFunctionDecl(self: *CEmitter, node: *AstNode, writer: anytype) !void {
         const func = node.function_decl;
 
@@ -174,6 +188,7 @@ pub const CEmitter = struct {
             .identifier => try self.visitIdentifier(node, writer),
             .if_stmt => try self.visitIfStmt(node, writer),
             .for_stmt => try self.visitForStmt(node, writer),
+            .while_stmt => try self.visitWhileStmt(node, writer),
             .index_expr => try self.visitIndexExpr(node, writer),
             .array_expr => try self.visitArrayExpr(node, writer),
             .dict_expr => try self.visitDictExpr(node, writer),

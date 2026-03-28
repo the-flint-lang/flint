@@ -119,6 +119,7 @@ pub const TypeChecker = struct {
             .unary_expr => try self.checkUnaryExpr(node),
             .if_stmt => try self.checkIfStmt(node),
             .for_stmt => try self.checkForStmt(node),
+            .while_stmt => try self.checkWhileStmt(node),
             .call_expr => try self.checkCallExpr(node),
             .pipeline_expr => try self.checkPipelineExpr(node),
             .function_decl => try self.checkFunctionDecl(node),
@@ -132,6 +133,18 @@ pub const TypeChecker = struct {
             .struct_decl => try self.checkStructDecl(node),
             else => .t_unknown,
         };
+    }
+
+    fn checkWhileStmt(self: *TypeChecker, node: *AstNode) !FlintType {
+        const stmt = node.while_stmt;
+        const cond_type = try self.checkNode(stmt.condition);
+
+        if (cond_type != .t_bool and cond_type != .t_any) {
+            // Emita o erro que a condição deve ser bool
+        }
+
+        try self.checkBlock(stmt.body);
+        return .t_void;
     }
 
     fn checkStructDecl(self: *TypeChecker, node: *AstNode) !FlintType {

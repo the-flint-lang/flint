@@ -23,6 +23,7 @@ pub const NodeType = enum {
 
     pipeline_expr,
     for_stmt,
+    while_stmt,
     catch_expr,
 
     identifier,
@@ -114,6 +115,11 @@ pub const AstNode = union(NodeType) {
     for_stmt: struct {
         iterator_name: []const u8,
         iterable: *AstNode,
+        body: []const *AstNode,
+    },
+
+    while_stmt: struct {
+        condition: *AstNode,
         body: []const *AstNode,
     },
 

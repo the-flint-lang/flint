@@ -26,4 +26,5 @@ pub const tokenMap = std.StaticStringMap(TokenType).initComptime(.{
     .{ "extern", TokenType.extern_token },
     .{ "val", TokenType.value_type_token },
     .{ "arr", TokenType.array_type_token },
+    .{ "while", TokenType.while_token },
 });

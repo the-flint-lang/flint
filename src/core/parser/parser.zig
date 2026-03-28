@@ -246,6 +246,17 @@ pub const Parser = struct {
         return try statements.toOwnedSlice(self.allocator);
     }
 
+    fn parseWhileStmt(self: *Parser) !*AstNode {
+        _ = self.consume(.while_token, "Expected 'while'") catch return error.ParseError;
+
+        const condition = try self.parseExpression();
+        const body = try self.parseBody();
+
+        const node = try self.allocator.create(AstNode);
+        node.* = .{ .while_stmt = .{ .condition = condition, .body = body } };
+        return node;
+    }
+
     fn parseUnary(self: *Parser) anyerror!*AstNode {
         if (self.match(&.{ .not_token, .minus_token })) {
             const operator = self.previous();
@@ -394,6 +405,7 @@ pub const Parser = struct {
     fn parseStatement(self: *Parser) anyerror!*AstNode {
         if (self.match(&.{.if_token})) return self.parseIfStatement();
         if (self.match(&.{.for_token})) return self.parseForStatement();
+        if (self.match(&.{.while_token})) return self.parseWhileStmt();
         if (self.match(&.{.return_token})) return self.parseReturnStatement();
 
         return self.parseExpressionStatement();
@@ -714,6 +726,7 @@ pub const Parser = struct {
 
         return call;
     }
+
     fn parseInterpolatedString(self: *Parser, token: Token) anyerror!*AstNode {
         var parts = std.ArrayList(*AstNode).empty;
         defer parts.deinit(self.allocator);
