@@ -27,6 +27,7 @@ pub const TypeChecker = struct {
 
         // global functions
         _ = global.define("print", .t_void, true, 0, 0, null, &[_]FlintType{.t_any});
+        _ = global.define("printerr", .t_void, true, 0, 0, null, &[_]FlintType{.t_any});
         _ = global.define("len", .t_int, true, 0, 0, null, &[_]FlintType{.t_any});
         _ = global.define("push", .t_void, true, 0, 0, null, &[_]FlintType{ .t_arr, .t_any });
         _ = global.define("range", .t_arr, true, 0, 0, null, &[_]FlintType{ .t_int, .t_int });
@@ -62,8 +63,10 @@ pub const TypeChecker = struct {
         _ = global.define("os_args", .t_arr, true, 0, 0, null, &[_]FlintType{});
         _ = global.define("os_assert", .t_val, true, 0, 0, null, &[_]FlintType{ .t_val, .t_string });
         _ = global.define("os_if_fail", .t_any, true, 0, 0, null, &[_]FlintType{ .t_val, .t_string });
+        _ = global.define("os_is_tty", .t_any, true, 0, 0, null, &[_]FlintType{});
 
         // io module
+        _ = global.define("io_read_line", .t_any, true, 0, 0, null, &[_]FlintType{});
         _ = global.define("io_read_file", .t_val, true, 0, 0, null, &[_]FlintType{.t_string});
         _ = global.define("io_write_file", .t_val, true, 0, 0, null, &[_]FlintType{ .t_string, .t_string });
 

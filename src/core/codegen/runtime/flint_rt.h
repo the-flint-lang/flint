@@ -219,6 +219,21 @@ void flint_print_dict(FlintDict *dict);
     FlintDict *: flint_print_dict,   \
     default: flint_print_str)(X)
 
+void flint_printerr_str(flint_str text);
+void flint_printerr_int(long long num);
+void flint_printerr_val(FlintValue val);
+void flint_printerr_bool(bool b);
+void flint_printerr_dict(FlintDict *dict);
+
+#define flint_printerr(X) _Generic((X), \
+    int: flint_printerr_int,            \
+    long: flint_printerr_int,           \
+    long long: flint_printerr_int,      \
+    bool: flint_printerr_bool,          \
+    FlintValue: flint_printerr_val,     \
+    FlintDict *: flint_printerr_dict,   \
+    default: flint_printerr_str)(X)
+
 /* =========================
    FILESYSTEM
    ========================= */
@@ -236,6 +251,7 @@ FlintValue flint_ls(flint_str path);
 
 bool flint_is_dir(flint_str path);
 bool flint_is_file(flint_str path);
+bool flint_is_tty();
 
 FlintValue flint_file_size(flint_str path);
 FlintValue flint_mv(flint_str old_path, flint_str new_path);
@@ -254,6 +270,12 @@ FlintValue flint_spawn(flint_str cmd);
 
 flint_str flint_env(flint_str name);
 flint_str_array flint_args();
+
+/* =========================
+   INPUT
+   ========================= */
+
+flint_str flint_read_line();
 
 /* =========================
    STREAMS

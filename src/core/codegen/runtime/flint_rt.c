@@ -22,6 +22,7 @@
 #include <errno.h>
 #include <sys/sendfile.h>
 #include <sys/wait.h>
+#include <unistd.h>
 #include <poll.h>
 
 #include <spawn.h>
@@ -179,6 +180,87 @@ void flint_print_val(FlintValue v)
 void flint_print_bool(bool b)
 {
     printf("%s\n", b ? "true" : "false");
+}
+
+// stderr
+void flint_printerr_str(flint_str text)
+{
+    fprintf(stderr, "%.*s\n", (int)text.len, text.ptr);
+    fflush(stdout);
+}
+void flint_printerr_int(long long v) { fprintf(stderr, "%lld\n", v); }
+void flint_printerr_dict(FlintDict *d) { fprintf(stderr, "[Flint Dictionary: %zu keys]\n", d ? d->count : 0); }
+
+void flint_printerr_val(FlintValue v)
+{
+    switch (v.type)
+    {
+    case FLINT_VAL_NULL:
+        fprintf(stderr, "null\n");
+        break;
+    case FLINT_VAL_INT:
+        fprintf(stderr, "%lld\n", v.as.i);
+        break;
+    case FLINT_VAL_BOOL:
+        fprintf(stderr, "%s\n", v.as.b ? "true" : "false");
+        break;
+    case FLINT_VAL_STR:
+        fprintf(stderr, "%.*s\n", (int)v.as.s.len, v.as.s.ptr);
+        break;
+    case FLINT_VAL_DICT:
+        fprintf(stderr, "[Dict]\n");
+        break;
+    case FLINT_VAL_STREAM:
+        fprintf(stderr, "[Stream]\n");
+        break;
+    case FLINT_VAL_ARRAY:
+        fprintf(stderr, "[Array]\n");
+        break;
+    case FLINT_VAL_JSON_LAZY:
+        fprintf(stderr, "[Lazy JSON Document]\n");
+        break;
+    case FLINT_VAL_ERROR:
+        fprintf(stderr, "\033[1;31mERROR\033[0m: %.*s\n", (int)v.as.s.len, v.as.s.ptr);
+        break;
+    }
+}
+
+void flint_printerr_bool(bool b)
+{
+    fprintf(stderr, "%s\n", b ? "true" : "false");
+}
+
+/* =========================
+   INPUT
+   ========================= */
+
+flint_str flint_read_line()
+{
+    char buffer[1024];
+
+    // read to a temp buffer
+    if (fgets(buffer, sizeof(buffer), stdin) != NULL)
+    {
+        size_t len = strlen(buffer);
+
+        if (len > 0 && buffer[len - 1] == '\n')
+        {
+            len--;
+            if (len > 0 && buffer[len - 1] == '\r')
+            {
+                len--;
+            }
+        }
+
+        char *arena_buf = flint_alloc_raw(len + 1);
+        memcpy(arena_buf, buffer, len);
+        arena_buf[len] = '\0';
+
+        // return the flint str slice
+        return FLINT_SLICE(arena_buf, len);
+    }
+
+    return FLINT_STR("");
 }
 
 /* =========================
@@ -549,6 +631,11 @@ FlintValue flint_spawn(flint_str cmd)
     flint_dict_set(dict, FLINT_STR("stderr"), flint_make_str(FLINT_SLICE(final_err, err_len)));
 
     return (FlintValue){FLINT_VAL_DICT, .as.d = dict};
+}
+
+bool flint_is_tty()
+{
+    return isatty(STDOUT_FILENO);
 }
 
 bool flint_is_dir(flint_str path)

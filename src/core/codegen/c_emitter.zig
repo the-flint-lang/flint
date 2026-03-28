@@ -8,7 +8,7 @@ pub const CEmitter = struct {
     temp_counter: usize = 0,
     source_file: []const u8,
 
-    built_ins: [14][]const u8,
+    built_ins: [15][]const u8,
 
     current_placeholder_name: ?[]const u8 = null,
 
@@ -18,6 +18,7 @@ pub const CEmitter = struct {
             .source_file = source_file,
             .built_ins = [_][]const u8{
                 "print",
+                "printerr",
                 "len",
                 "push",
                 "range",

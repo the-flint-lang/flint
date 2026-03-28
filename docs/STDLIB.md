@@ -15,6 +15,7 @@ Functions for process orchestration, environment variables, and filesystem metad
 * **`os.spawn(cmd: string) val`**: Safely spawns a subprocess. Returns a dict containing `exit_code`, `stdout`, and `stderr`.
 * **`os.assert(proc: val, msg: string) val`**: Validates a dictionary returned by `os.spawn`. If `exit_code` != 0, halts pipeline and prints `stderr`.
 * **`os.ls(path: string) val`**: Returns a string containing all files in a directory.
+* **`os.is_tty() bool`**: Return true if is a tty.
 * **`os.is_dir(path: string) bool`** / **`os.is_file(path: string) bool`**: Validates file system types.
 * **`os.file_size(path: string) val`**: Returns the size of a file in bytes.
 * **`os.mkdir(path: string) val`** / **`os.rm(path: string) val`**: Directory and file removal/creation.
@@ -25,6 +26,7 @@ Functions for process orchestration, environment variables, and filesystem metad
 ## 2. `io` (Input / Output)
 Functions for raw disk reading and writing.
 
+* **`io.read_line() string`**: Read a input with absolute zero-copy.
 * **`io.read_file(path: string) val`**: Uses pure `mmap` to read a file with absolute zero-copy.
 * **`io.write_file(text: string, path: string) val`**: Writes a string to disk.
 
@@ -68,7 +70,8 @@ These functions are natively injected by the Flint compiler. They are globally a
 * **`parse_json(payload: string) val`**: Parses a raw JSON string using O(1) Lazy Scanning without allocating dictionaries in RAM.
 
 ### 6.4. Core & Types
-* **`print(val: any)`**: Prints any native type or boxed `val`.
+* **`print(val: any)`**: Prints any native type or boxed `val` to stdout.
+* **`printerr(val: any)`**: Prints any native type or boxed `val` to stderr.
 * **`len(obj: any) int`**: Returns the size of an array, string, or dictionary.
 * **`to_str(val: any) string`**: Safely extracts or converts a boxed value into a native string slice (replaces `int_to_str` through bare-metal fast-itoa).
 * **`to_int(val: any) int`**: Safely extracts or converts a boxed value into a native integer.

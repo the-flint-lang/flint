@@ -18,6 +18,7 @@ extern fn flint_spawn(cmd: string) val;
 extern fn flint_env(name: string) string;
 extern fn flint_exit(code: int) void;
 extern fn flint_args() arr;
+extern fn flint_is_tty() bool;
 
 # public API
 fn file_exists(path: string) bool {
@@ -100,4 +101,8 @@ fn assert(proc: val, error_msg: string) val {
     }
     
     return proc;
+}
+
+fn is_tty() bool {
+    return flint_is_tty();
 }
