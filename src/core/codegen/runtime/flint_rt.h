@@ -125,7 +125,15 @@ DECLARE_FLINT_ARRAY(flint_str, flint_str_array)
         (arr).items[(arr).count++] = (val);                                         \
     } while (0)
 
-#define flint_len(arr) ((long long)((arr).count))
+static inline long long _flint_get_str_len(flint_str s) { return (long long)s.len; }
+static inline long long _flint_get_stra_len(flint_str_array a) { return (long long)a.count; }
+static inline long long _flint_get_inta_len(flint_int_array a) { return (long long)a.count; }
+
+#define flint_len(X) _Generic((X),        \
+    flint_str: _flint_get_str_len,        \
+    flint_str_array: _flint_get_stra_len, \
+    flint_int_array: _flint_get_inta_len, \
+    default: _flint_get_str_len)(X)
 
 /* =========================
    DICTIONARY

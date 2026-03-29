@@ -259,7 +259,6 @@ pub const CEmitter = struct {
 
     fn visitPropertyAccessExpr(self: *CEmitter, node: *AstNode, writer: anytype) !void {
         const prop_access = node.property_access_expr;
-        try writer.print("\n        #line {d} \"{s}\"\n    ", .{ prop_access.line, self.source_file });
 
         try writer.print("(", .{});
 
@@ -272,8 +271,6 @@ pub const CEmitter = struct {
 
     fn visitVarDecl(self: *CEmitter, node: *AstNode, writer: anytype) !void {
         const decl = node.var_decl;
-
-        try writer.print("\n    #line {d} \"{s}\"\n    ", .{ decl.line, self.source_file });
 
         if (std.mem.eql(u8, decl.name, "_")) {
             try writer.print("(void)(", .{});
@@ -294,8 +291,6 @@ pub const CEmitter = struct {
 
     fn visitCallExpr(self: *CEmitter, node: *AstNode, writer: anytype) !void {
         const call = node.call_expr;
-
-        try writer.print("\n    #line {d} \"{s}\"\n    ", .{ call.line, self.source_file });
 
         if (call.callee.* == .identifier and std.mem.eql(u8, call.callee.identifier.name, "to_str")) {
             try writer.print("flint_to_str(FLINT_BOX(", .{});

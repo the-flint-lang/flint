@@ -18,7 +18,7 @@ pub fn main() !void {
         .stderr = &stderr_writer.interface,
     };
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}).init;
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer {
         const status = gpa.deinit();
         if (status == .leak) {
@@ -29,7 +29,5 @@ pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(gpa.allocator());
     defer arena.deinit();
 
-    const alloc = arena.allocator();
-
-    try flint.runCli(alloc, io);
+    try flint.runCli(arena.allocator(), io);
 }

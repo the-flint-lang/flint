@@ -26,10 +26,16 @@ os.spawn($"sudo mkdir -p {LIB_DEST_DIR}")
     ~> os.assert("Failed to create lib directory.");
 
 print($"\n3. Compiling runtime to {LIB_DEST_DIR}...");
-const cmd_compile_rt = $"sudo clang -O3 -march=native -c {SCRIPT_DIR}/src/core/codegen/runtime/flint_rt.c -o {LIB_DEST_DIR}/flint_rt.o";
+const cmd_compile_rt = $"sudo cp {SCRIPT_DIR}/src/core/codegen/runtime/flint_rt.c {LIB_DEST_DIR}/flint_rt.c && sudo clang -O3 -march=native -c {SCRIPT_DIR}/src/core/codegen/runtime/flint_rt.c -o {LIB_DEST_DIR}/flint_rt.o && sudo cp {SCRIPT_DIR}/src/core/codegen/runtime/flint_rt.h {LIB_DEST_DIR}/flint_rt.h";
 
 os.spawn(cmd_compile_rt) 
     ~> os.assert("Failed to compile flint_rt.c. Do you have Clang installed?");
+
+print($"\n3.5 Precompiling Header (PCH) for maximum speed...");
+const cmd_pch = $"sudo clang -x c-header {SCRIPT_DIR}/src/core/codegen/runtime/flint_rt.h -o {LIB_DEST_DIR}/flint_rt.h.pch";
+
+os.spawn(cmd_pch) 
+    ~> os.assert("Failed to precompile flint_rt.h.pch");
 
 print("\n4. Installing Standard Library to /usr/share/flint...");
 if (os.is_dir(STD_SRC_DIR)) {
