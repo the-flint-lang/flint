@@ -25,7 +25,11 @@ pub fn main() !void {
             io.stderr.print("\n\x1b[1;31m[CRITICAL ALERT]\x1b[0m Memory Leak Detected in the Compiler!\n", .{}) catch {};
         }
     }
-    const alloc = gpa.allocator();
+
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer arena.deinit();
+
+    const alloc = arena.allocator();
 
     try flint.runCli(alloc, io);
 }

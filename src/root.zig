@@ -14,6 +14,8 @@ const version = @import("./core/helpers/functions/version.zig").version;
 const flint_rt_c_content = @embedFile("core/codegen/runtime/flint_rt.c");
 const flint_rt_h_content = @embedFile("core/codegen/runtime/flint_rt.h");
 
+var cached_compiler: ?Compiler = null;
+
 const PipelineResult = struct {
     source: []const u8,
     tokens: []const Token,
@@ -502,29 +504,38 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
     try h_file.writeAll(flint_rt_h_content);
     h_file.close();
 
-    var c_file = try std.fs.cwd().createFile("flint_rt.c", .{});
-    try c_file.writeAll(flint_rt_c_content);
-    c_file.close();
+    var rt_path: []const u8 = "flint_rt.c";
+    var using_precompiled = false;
 
-    defer std.fs.cwd().deleteFile("flint_rt.h") catch {};
-    defer std.fs.cwd().deleteFile("flint_rt.c") catch {};
+    const system_rt_o = "/usr/share/flint/flint_rt.o";
+    if (std.fs.cwd().access(system_rt_o, .{})) |_| {
+        rt_path = system_rt_o;
+        using_precompiled = true;
+    } else |_| {
+        var c_file = try std.fs.cwd().createFile("flint_rt.c", .{});
+        try c_file.writeAll(flint_rt_c_content);
+        c_file.close();
+    }
+
     defer std.fs.cwd().deleteFile(out_filename) catch {};
+    defer std.fs.cwd().deleteFile("flint_rt.h") catch {};
 
-    const argv = &[_][]const u8{
-        "clang",
-        out_filename,
-        "flint_rt.c",
-        "-I.",
-        "-lcurl",
-        "-s",
-        "-o",
-        exe_name,
-        "-O3",
-        "-march=native",
-        "-Wno-unused-value",
+    if (!using_precompiled) {
+        defer std.fs.cwd().deleteFile("flint_rt.c") catch {};
+    }
+
+    const compiler = getBestCCompiler(alloc);
+    const c_args = switch (compiler) {
+        .clang => |c| try c.getArgs(alloc, out_filename, exe_name, rt_path),
+        .gcc => |g| try g.getArgs(alloc, out_filename, exe_name, rt_path),
     };
+    defer alloc.free(c_args);
 
-    var child = std.process.Child.init(argv, alloc);
+    var child = std.process.Child.init(c_args, alloc);
+
+    child.stdout_behavior = .Ignore;
+    child.stderr_behavior = .Inherit;
+
     const term = try child.spawnAndWait();
 
     switch (term) {
@@ -534,7 +545,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
                     try io.stdout.print("\x1b[1;32m[SUCCESS]\x1b[0m Executable '{s}' generated.\n", .{exe_name});
                 }
             } else {
-                try io.stderr.print("Fatal error in Clang (code {d}).\n", .{code});
+                try io.stderr.print("Fatal error in Native C Compiler (code {d}).\n", .{code});
                 return;
             }
         },
@@ -588,6 +599,10 @@ fn runTests(alloc: std.mem.Allocator, io: IoHelper) !void {
     try io.stdout.print("\x1b[36m=== STARTING FLINT TEST BATTERY ===\x1b[0m\n\n", .{});
     _ = try io.stdout.flush();
 
+    var h_file = try std.fs.cwd().createFile("flint_rt.h", .{});
+    try h_file.writeAll(flint_rt_h_content);
+    h_file.close();
+
     while (try walker.next()) |entry| {
         if (entry.kind == .file and std.mem.endsWith(u8, entry.basename, ".fl")) {
             const file_path = try std.fmt.allocPrint(alloc, "tests/{s}", .{entry.path});
@@ -606,6 +621,7 @@ fn runTests(alloc: std.mem.Allocator, io: IoHelper) !void {
         }
     }
 
+    std.fs.cwd().deleteFile("flint_rt.h") catch {};
     try io.stdout.print("\n---------------------------------------\n", .{});
     try io.stdout.print("Total: {d} | \x1b[32mPassed: {d}\x1b[0m | \x1b[31mFailed: {d}\x1b[0m\n\n", .{ pass_count + fail_count, pass_count, fail_count });
 }
@@ -637,35 +653,40 @@ fn testSingleFile(alloc: std.mem.Allocator, file_path: []const u8, io: IoHelper)
     _ = out_writer.interface.flush() catch {};
     out_file.close();
 
+    // var h_file = try std.fs.cwd().createFile("flint_rt.h", .{});
+    // try h_file.writeAll(flint_rt_h_content);
+    // h_file.close();
+    // defer std.fs.cwd().deleteFile("flint_rt.h") catch {};
+
+    var rt_path: []const u8 = "flint_rt.c";
+    var using_precompiled = false;
+
+    const system_rt_o = "/usr/share/flint/flint_rt.o";
+    if (std.fs.cwd().access(system_rt_o, .{})) |_| {
+        rt_path = system_rt_o;
+        using_precompiled = true;
+    } else |_| {
+        var c_file = try std.fs.cwd().createFile("flint_rt.c", .{});
+        try c_file.writeAll(flint_rt_c_content);
+        c_file.close();
+    }
+
     defer std.fs.cwd().deleteFile(out_filename) catch {};
-    defer std.fs.cwd().deleteFile(exe_name) catch {};
+    // defer std.fs.cwd().deleteFile("flint_rt.h") catch {};
 
-    var h_file = try std.fs.cwd().createFile("flint_rt.h", .{});
-    try h_file.writeAll(flint_rt_h_content);
-    h_file.close();
+    if (!using_precompiled) {
+        defer std.fs.cwd().deleteFile("flint_rt.c") catch {};
+    }
 
-    var c_file = try std.fs.cwd().createFile("flint_rt.c", .{});
-    try c_file.writeAll(flint_rt_c_content);
-    c_file.close();
+    const compiler = getBestCCompiler(alloc);
 
-    defer std.fs.cwd().deleteFile("flint_rt.h") catch {};
-    defer std.fs.cwd().deleteFile("flint_rt.c") catch {};
-
-    const clang_argv = &[_][]const u8{
-        "clang",
-        out_filename,
-        "flint_rt.c",
-        "-I.",
-        "-lcurl",
-        "-s",
-        "-o",
-        exe_name,
-        "-O3",
-        "-march=native",
-        "-Wno-unused-value",
+    const args = switch (compiler) {
+        .clang => |c| try c.getArgs(alloc, out_filename, exe_name, rt_path),
+        .gcc => |g| try g.getArgs(alloc, out_filename, exe_name, rt_path),
     };
+    defer alloc.free(args);
 
-    var child_clang = std.process.Child.init(clang_argv, alloc);
+    var child_clang = std.process.Child.init(args, alloc);
     child_clang.stdout_behavior = .Ignore;
     child_clang.stderr_behavior = .Ignore;
 
@@ -681,5 +702,84 @@ fn testSingleFile(alloc: std.mem.Allocator, file_path: []const u8, io: IoHelper)
     child_run.stderr_behavior = .Ignore;
 
     const run_term = try child_run.spawnAndWait();
+
+    std.fs.cwd().deleteFile(exe_name) catch {};
     return run_term == .Exited and run_term.Exited == 0;
+}
+
+const ClangCompiler = struct {
+    pub fn getArgs(self: ClangCompiler, alloc: std.mem.Allocator, out_filename: []const u8, exe_name: []const u8, rt_path: []const u8) ![]const []const u8 {
+        _ = self;
+        const args = try alloc.alloc([]const u8, 10);
+        args[0] = "clang";
+        args[1] = out_filename;
+        args[2] = rt_path;
+        args[3] = "-I.";
+        args[4] = "-lcurl";
+        args[5] = "-s";
+        args[6] = "-o";
+        args[7] = exe_name;
+        args[8] = "-O3";
+        args[9] = "-march=native";
+        return args;
+    }
+};
+
+const GccCompiler = struct {
+    pub fn getArgs(self: GccCompiler, alloc: std.mem.Allocator, out_filename: []const u8, exe_name: []const u8, rt_path: []const u8) ![]const []const u8 {
+        _ = self;
+        const args = try alloc.alloc([]const u8, 10);
+        args[0] = "gcc";
+        args[1] = out_filename;
+        args[2] = rt_path;
+        args[3] = "-I.";
+        args[4] = "-lcurl";
+        args[5] = "-s";
+        args[6] = "-o";
+        args[7] = exe_name;
+        args[8] = "-O3";
+        args[9] = "-march=native";
+        return args;
+    }
+};
+
+pub const Compiler = union(enum) {
+    clang: ClangCompiler,
+    gcc: GccCompiler,
+
+    pub fn getName(self: Compiler) []const u8 {
+        return switch (self) {
+            .clang => "clang",
+            .gcc => "gcc",
+        };
+    }
+};
+
+fn getBestCCompiler(alloc: std.mem.Allocator) Compiler {
+    if (cached_compiler) |c| return c;
+
+    const result: Compiler = blk: {
+        if (isCompilerPresent(alloc, "clang")) break :blk .{ .clang = ClangCompiler{} };
+        if (isCompilerPresent(alloc, "gcc")) break :blk .{ .gcc = GccCompiler{} };
+        break :blk .{ .clang = ClangCompiler{} }; // fallback
+    };
+
+    cached_compiler = result;
+    return result;
+}
+
+fn isCompilerPresent(alloc: std.mem.Allocator, cmd: []const u8) bool {
+    const path_env = std.process.getEnvVarOwned(alloc, "PATH") catch return false;
+    defer alloc.free(path_env);
+
+    var it = std.mem.splitScalar(u8, path_env, ':');
+    while (it.next()) |dir| {
+        const full = std.fs.path.join(alloc, &.{ dir, cmd }) catch continue;
+        defer alloc.free(full);
+
+        std.posix.access(full, std.posix.X_OK) catch continue;
+        return true;
+    }
+
+    return false;
 }

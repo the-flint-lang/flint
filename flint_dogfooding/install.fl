@@ -16,26 +16,34 @@ os.spawn("zig version")
     ~> os.assert("Zig is not installed or could not be found. Zig 0.15.2 is recommended.");
 
 print("\n1. Installing binary to /usr/local/bin...");
-const cmd_install = $"sudo install -m 0755 {BIN_SRC} {DEST_BIN}";
+const cmd_install_bin = $"sudo install -m 0755 {BIN_SRC} {DEST_BIN}";
 
-os.spawn(cmd_install) 
+os.spawn(cmd_install_bin) 
     ~> os.assert("No permission to install the binary. Did you cancel sudo?");
 
-print("\n2. Installing Standard Library to /usr/share/flint...");
-os.spawn("sudo mkdir -p /usr/share/flint") ~> os.assert("Failed to create lib directory.");
+print("\n2. Creating library directory...");
+os.spawn($"sudo mkdir -p {LIB_DEST_DIR}") 
+    ~> os.assert("Failed to create lib directory.");
 
+print($"\n3. Compiling runtime to {LIB_DEST_DIR}...");
+const cmd_compile_rt = $"sudo clang -O3 -march=native -c {SCRIPT_DIR}/src/core/codegen/runtime/flint_rt.c -o {LIB_DEST_DIR}/flint_rt.o";
+
+os.spawn(cmd_compile_rt) 
+    ~> os.assert("Failed to compile flint_rt.c. Do you have Clang installed?");
+
+print("\n4. Installing Standard Library to /usr/share/flint...");
 if (os.is_dir(STD_SRC_DIR)) {
-    const cmd_cp = $"sudo cp -r {STD_SRC_DIR} /usr/share/flint/";
+    const cmd_cp = $"sudo cp -r {STD_SRC_DIR} {LIB_DEST_DIR}/";
 
     os.spawn(cmd_cp) ~> os.assert("Failed to copy the STD.");
-    os.spawn("sudo chown -R root:root /usr/share/flint") ~> os.assert("Chown failed.");
-    os.spawn("sudo chmod -R 755 /usr/share/flint") ~> os.assert("Chmod failed.");
+    os.spawn($"sudo chown -R root:root {LIB_DEST_DIR}") ~> os.assert("Chown failed.");
+    os.spawn($"sudo chmod -R 755 {LIB_DEST_DIR}") ~> os.assert("Chmod failed.");
 } else {
     print("WARNING: STD folder not found. Flint was installed without the standard library.");
 }
 
-# 6. Final Validation
-print("\n3. Running final validation...");
+# Final Validation
+print("\n5. Running final validation...");
 os.spawn("/usr/local/bin/flint --version") 
     ~> os.assert("FATAL: Flint compiled but failed to run. Incorrect architecture?");
 

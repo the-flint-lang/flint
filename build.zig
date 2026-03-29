@@ -29,7 +29,7 @@ pub fn build(b: *std.Build) void {
 
     exe.root_module.strip = true;
     exe.link_gc_sections = true;
-    exe.want_lto = true;
+    // exe.want_lto = true;
 
     b.installArtifact(exe);
 
