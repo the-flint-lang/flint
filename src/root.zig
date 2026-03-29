@@ -367,8 +367,13 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
     var buffer: [4096]u8 = undefined;
     var out_writer = out_file.writer(&buffer);
     try emitter.generate(&out_writer.interface, &merged_ast);
-    _ = out_writer.interface.flush() catch {}; // O FLUSH DE VOLTA!
+    _ = out_writer.interface.flush() catch {};
     out_file.close();
+
+    if (!is_run) {
+        try io.stdout.print("\x1b[38;5;208m[FLINT]\x1b[0m Transpiling and compiling native binary...\n", .{});
+        _ = try io.stdout.flush();
+    }
 
     const exe_name = std.fs.path.stem(file_path);
     const system_rt_o = "/usr/share/flint/flint_rt.o";
@@ -408,7 +413,8 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
         break :blk true;
     };
 
-    const compiler = getBestCCompiler(alloc);
+    const compiler = getBestCCompiler(alloc, is_run);
+
     const c_args = try compiler.getArgsExtended(alloc, out_c, exe_name, rt_path, precompiled, is_run, has_pch);
     defer alloc.free(c_args);
 
@@ -429,6 +435,9 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
         while (args.next()) |a| try run_args.append(alloc, a);
         var child_run = std.process.Child.init(run_args.items, alloc);
         _ = try child_run.spawnAndWait();
+    } else {
+        try io.stdout.print("\x1b[1;32m[SUCCESS]\x1b[0m Executable '{s}' generated.\n", .{exe_name});
+        _ = io.stdout.flush() catch {};
     }
 }
 
@@ -522,45 +531,60 @@ const ClangCompiler = struct {
         try args.append(alloc, rt);
         try args.append(alloc, "-I.");
         try args.append(alloc, if (pre) "-I/usr/share/flint" else "-I.");
-        try args.append(alloc, "-lcurl");
-        try args.append(alloc, "-s");
+
         try args.append(alloc, "-o");
         try args.append(alloc, out_exe);
 
-        try args.append(alloc, if (is_run) "-O0" else "-O3");
-        if (!is_run) try args.append(alloc, "-march=native");
+        if (is_run) {
+            try args.append(alloc, "-O0");
+        } else {
+            try args.append(alloc, "-O3");
+            try args.append(alloc, "-march=native");
+        }
 
         try args.append(alloc, "-Wno-unused-value");
 
-        if (has_pch) {
+        if (has_pch and is_run) {
             try args.append(alloc, "-include-pch");
             try args.append(alloc, if (pre) "/usr/share/flint/flint_rt.h.pch" else "flint_rt.h.pch");
         }
 
-        return args.toOwnedSlice(alloc);
+        try args.append(alloc, "-lcurl");
+
+        return args.toOwnedSlice(
+            alloc,
+        );
     }
 };
 
 const GccCompiler = struct {
-    pub fn getArgsExtended(self: GccCompiler, alloc: std.mem.Allocator, out_c: []const u8, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool) ![]const []const u8 {
+    pub fn getArgsExtended(self: GccCompiler, alloc: std.mem.Allocator, out_c: []const u8, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool) ![]const []const u8 {
         _ = self;
+        _ = has_pch;
         var args = std.ArrayList([]const u8).empty;
+
         try args.append(alloc, "gcc");
         try args.append(alloc, out_c);
         try args.append(alloc, rt);
         try args.append(alloc, "-I.");
         try args.append(alloc, if (pre) "-I/usr/share/flint" else "-I.");
-        try args.append(alloc, "-lcurl");
-        try args.append(alloc, "-s");
+
         try args.append(alloc, "-o");
         try args.append(alloc, out_exe);
 
-        try args.append(alloc, if (is_run) "-O0" else "-O3");
-        if (!is_run) try args.append(alloc, "-march=native");
+        if (is_run) {
+            try args.append(alloc, "-O0");
+        } else {
+            try args.append(alloc, "-O3");
+            try args.append(alloc, "-march=native");
+        }
 
         try args.append(alloc, "-Wno-unused-value");
+        try args.append(alloc, "-lcurl");
 
-        return args.toOwnedSlice(alloc);
+        return args.toOwnedSlice(
+            alloc,
+        );
     }
 };
 
@@ -599,18 +623,29 @@ pub const Compiler = union(enum) {
         return switch (self) {
             .tcc => |t| t.getArgsExtended(alloc, out_c, out_exe, pre),
             .clang => |c| c.getArgsExtended(alloc, out_c, out_exe, rt, pre, is_run, has_pch),
-            .gcc => |g| g.getArgsExtended(alloc, out_c, out_exe, rt, pre, is_run),
+            .gcc => |g| g.getArgsExtended(alloc, out_c, out_exe, rt, pre, is_run, has_pch),
         };
     }
 };
 
-fn getBestCCompiler(alloc: std.mem.Allocator) Compiler {
+fn getBestCCompiler(alloc: std.mem.Allocator, is_run: bool) Compiler {
     if (cached_compiler) |c| return c;
 
+    if (is_run) {
+        if (isCompilerPresent(alloc, "tcc")) {
+            const r = Compiler{
+                .tcc = TccCompiler{},
+            };
+
+            cached_compiler = r;
+            return r;
+        }
+    }
+
     const result: Compiler = blk: {
-        if (isCompilerPresent(alloc, "tcc")) break :blk .{ .tcc = TccCompiler{} };
         if (isCompilerPresent(alloc, "clang")) break :blk .{ .clang = ClangCompiler{} };
         if (isCompilerPresent(alloc, "gcc")) break :blk .{ .gcc = GccCompiler{} };
+        if (isCompilerPresent(alloc, "tcc")) break :blk .{ .tcc = TccCompiler{} };
         break :blk .{ .clang = ClangCompiler{} };
     };
     cached_compiler = result;

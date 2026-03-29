@@ -283,7 +283,9 @@ pub const CEmitter = struct {
             try writer.print("const ", .{});
         }
 
-        try writer.print("__auto_type ", .{});
+        try writer.print("typeof(", .{});
+        try self.visitNode(decl.value, writer);
+        try writer.print(") ", .{});
         try emitSafeName(writer, decl.name);
         try writer.print(" = ", .{});
         try self.visitNode(decl.value, writer);
@@ -333,7 +335,11 @@ pub const CEmitter = struct {
             defer self.allocator.free(temp_name);
 
             try writer.print("({{\n", .{});
-            try writer.print("        __auto_type {s} = ", .{temp_name});
+
+            // Substitui __auto_type por typeof(expressão)
+            try writer.print("        typeof(", .{});
+            try self.visitNode(pipe.left, writer);
+            try writer.print(") {s} = ", .{temp_name});
             try self.visitNode(pipe.left, writer);
             try writer.print(";\n", .{});
 
@@ -398,7 +404,9 @@ pub const CEmitter = struct {
         self.temp_counter += 1;
         const iter_name = self.temp_counter;
 
-        try writer.print("{{\n        __auto_type _iter_{d} = ", .{iter_name});
+        try writer.print("{{\n        typeof(", .{});
+        try self.visitNode(for_node.iterable, writer);
+        try writer.print(") _iter_{d} = ", .{iter_name});
         try self.visitNode(for_node.iterable, writer);
         try writer.print(";\n", .{});
 
@@ -407,7 +415,7 @@ pub const CEmitter = struct {
         try writer.print("            flint_int_array: ({{ \\\n", .{});
         try writer.print("                flint_int_array* _arr_{d} = (flint_int_array*)(void*)&_iter_{d}; \\\n", .{ iter_name, iter_name });
         try writer.print("                for (size_t _i_{d} = 0, _mark_{d} = flint_arena_mark(); _i_{d} < _arr_{d}->count; flint_arena_release(_mark_{d}), _mark_{d} = flint_arena_mark(), _i_{d}++) {{ \\\n", .{ iter_name, iter_name, iter_name, iter_name, iter_name, iter_name, iter_name });
-        try writer.print("                    __auto_type {s} = _arr_{d}->items[_i_{d}]; \\\n", .{ for_node.iterator_name, iter_name, iter_name });
+        try writer.print("                    typeof(_arr_{d}->items[_i_{d}]) {s} = _arr_{d}->items[_i_{d}]; \\\n", .{ iter_name, iter_name, for_node.iterator_name, iter_name, iter_name });
         for (for_node.body) |stmt| {
             try writer.print("                    ", .{});
             try self.visitNode(stmt, writer);
@@ -419,7 +427,7 @@ pub const CEmitter = struct {
         try writer.print("            flint_str_array: ({{ \\\n", .{});
         try writer.print("                flint_str_array* _arr_{d} = (flint_str_array*)(void*)&_iter_{d}; \\\n", .{ iter_name, iter_name });
         try writer.print("                for (size_t _i_{d} = 0, _mark_{d} = flint_arena_mark(); _i_{d} < _arr_{d}->count; flint_arena_release(_mark_{d}), _mark_{d} = flint_arena_mark(), _i_{d}++) {{ \\\n", .{ iter_name, iter_name, iter_name, iter_name, iter_name, iter_name, iter_name });
-        try writer.print("                    __auto_type {s} = _arr_{d}->items[_i_{d}]; \\\n", .{ for_node.iterator_name, iter_name, iter_name });
+        try writer.print("                    typeof(_arr_{d}->items[_i_{d}]) {s} = _arr_{d}->items[_i_{d}]; \\\n", .{ iter_name, iter_name, for_node.iterator_name, iter_name, iter_name });
         for (for_node.body) |stmt| {
             try writer.print("                    ", .{});
             try self.visitNode(stmt, writer);
@@ -434,7 +442,7 @@ pub const CEmitter = struct {
         try writer.print("                    flint_stream* _stream_{d} = &_val_{d}->as.stream; \\\n", .{ iter_name, iter_name });
 
         try writer.print("                    for (size_t _mark_{d} = flint_arena_mark(); _stream_{d}->has_next; flint_arena_release(_mark_{d}), _mark_{d} = flint_arena_mark()) {{ \\\n", .{ iter_name, iter_name, iter_name, iter_name });
-        try writer.print("                        __auto_type {s} = flint_stream_next(_stream_{d}); \\\n", .{ for_node.iterator_name, iter_name });
+        try writer.print("                        typeof(flint_stream_next(_stream_{d})) {s} = flint_stream_next(_stream_{d}); \\\n", .{ iter_name, for_node.iterator_name, iter_name });
         for (for_node.body) |stmt| {
             try writer.print("                        ", .{});
             try self.visitNode(stmt, writer);
@@ -462,9 +470,9 @@ pub const CEmitter = struct {
                 try writer.print("FLINT_SET_INDEX(", .{});
                 try self.visitNode(bin.left.index_expr.left, writer); // array/dict
                 try writer.print(", ", .{});
-                try self.visitNode(bin.left.index_expr.index, writer); // índice
+                try self.visitNode(bin.left.index_expr.index, writer);
                 try writer.print(", ", .{});
-                try self.visitNode(bin.right, writer); // valor
+                try self.visitNode(bin.right, writer);
                 try writer.print(")", .{});
                 return;
             }
