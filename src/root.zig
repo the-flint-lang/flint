@@ -26,6 +26,11 @@ const PipelineResult = struct {
 };
 
 fn runCompilerPipeline(alloc: std.mem.Allocator, tree: *AstTree, file_path: []const u8, io: IoHelper) !PipelineResult {
+    if (!std.mem.endsWith(u8, file_path, ".fl")) {
+        try io.stderr.print("Error: The file '{s}' is not a valid Flint source file (.fl).\n", .{file_path});
+        return error.InvalidFileType;
+    }
+
     const source = try std.fs.cwd().readFileAlloc(alloc, file_path, 1024 * 1024);
     errdefer alloc.free(source);
 
@@ -48,6 +53,7 @@ fn runCompilerPipeline(alloc: std.mem.Allocator, tree: *AstTree, file_path: []co
     try t_checker.check(root_idx);
 
     if (t_checker.had_error) {
+        parser.deinit();
         return error.SemanticCheckFailed;
     }
 
@@ -61,7 +67,7 @@ fn runCompilerPipeline(alloc: std.mem.Allocator, tree: *AstTree, file_path: []co
 
 const Linker = struct {
     allocator: std.mem.Allocator,
-    tree: *AstTree, // O Linker opera na árvore global
+    tree: *AstTree,
     visited: std.StringHashMap(void),
     statements: std.ArrayList(NodeIndex),
     results: std.ArrayList(*PipelineResult),
@@ -86,6 +92,7 @@ const Linker = struct {
         for (self.results.items) |res_ptr| {
             self.allocator.free(res_ptr.source);
             self.allocator.free(res_ptr.tokens);
+            res_ptr.parser.deinit();
             self.allocator.destroy(res_ptr);
         }
         self.results.deinit(self.allocator);
@@ -160,23 +167,22 @@ const Linker = struct {
             }
         }
 
-        for (local_stmts.items) |stmt_idx| try self.resolveAliases(stmt_idx, &local_aliases);
-        if (current_alias) |alias| try self.applyNamespaces(local_stmts.items, alias);
+        for (local_stmts.items) |stmt_idx| try self.resolveAliases(&result_ptr.parser, stmt_idx, &local_aliases);
+        if (current_alias) |alias| try self.applyNamespaces(&result_ptr.parser, local_stmts.items, alias);
 
         for (local_stmts.items) |stmt_idx| try self.statements.append(self.allocator, stmt_idx);
     }
 
-    fn applyNamespaces(self: *Linker, statements: []const NodeIndex, alias: []const u8) !void {
+    fn applyNamespaces(self: *Linker, parser: *Parser, statements: []const NodeIndex, alias: []const u8) !void {
         var local_symbols = std.StringHashMap(void).init(self.allocator);
         defer local_symbols.deinit();
         for (statements) |stmt_idx| {
-            const stmt = self.tree.getNode(stmt_idx);
+            const stmt = parser.tree.getNode(stmt_idx);
             if (stmt == .function_decl and !stmt.function_decl.is_extern) try local_symbols.put(stmt.function_decl.name, {}) else if (stmt == .struct_decl) try local_symbols.put(stmt.struct_decl.name, {}) else if (stmt == .var_decl) try local_symbols.put(stmt.var_decl.name, {});
         }
         for (statements) |stmt_idx| {
-            try self.walkAndPrefix(stmt_idx, &local_symbols, alias);
-
-            var node_ptr = &self.tree.nodes.items[stmt_idx];
+            try self.walkAndPrefix(parser, stmt_idx, &local_symbols, alias);
+            var node_ptr = &parser.tree.nodes.items[stmt_idx];
             if (node_ptr.* == .function_decl and !node_ptr.function_decl.is_extern) {
                 node_ptr.function_decl.name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ alias, node_ptr.function_decl.name });
             } else if (node_ptr.* == .struct_decl) {
@@ -187,54 +193,54 @@ const Linker = struct {
         }
     }
 
-    fn resolveAliases(self: *Linker, idx: NodeIndex, aliases: *std.StringHashMap([]const u8)) anyerror!void {
-        const node = self.tree.getNode(idx);
+    fn resolveAliases(self: *Linker, parser: *Parser, idx: NodeIndex, aliases: *std.StringHashMap([]const u8)) anyerror!void {
+        const node = parser.tree.getNode(idx);
         switch (node) {
-            .function_decl => |f| for (f.body) |s| try self.resolveAliases(s, aliases),
+            .function_decl => |f| for (f.body) |s| try self.resolveAliases(parser, s, aliases),
             .if_stmt => |i| {
-                try self.resolveAliases(i.condition, aliases);
-                for (i.then_branch) |s| try self.resolveAliases(s, aliases);
-                if (i.else_branch) |eb| for (eb) |s| try self.resolveAliases(s, aliases);
+                try self.resolveAliases(parser, i.condition, aliases);
+                for (i.then_branch) |s| try self.resolveAliases(parser, s, aliases);
+                if (i.else_branch) |eb| for (eb) |s| try self.resolveAliases(parser, s, aliases);
             },
             .for_stmt => |f| {
-                try self.resolveAliases(f.iterable, aliases);
-                for (f.body) |s| try self.resolveAliases(s, aliases);
+                try self.resolveAliases(parser, f.iterable, aliases);
+                for (f.body) |s| try self.resolveAliases(parser, s, aliases);
             },
-            .var_decl => |v| try self.resolveAliases(v.value, aliases),
+            .var_decl => |v| try self.resolveAliases(parser, v.value, aliases),
             .binary_expr => |b| {
-                try self.resolveAliases(b.left, aliases);
-                try self.resolveAliases(b.right, aliases);
+                try self.resolveAliases(parser, b.left, aliases);
+                try self.resolveAliases(parser, b.right, aliases);
             },
-            .unary_expr => |u| try self.resolveAliases(u.right, aliases),
+            .unary_expr => |u| try self.resolveAliases(parser, u.right, aliases),
             .pipeline_expr => |p| {
-                try self.resolveAliases(p.left, aliases);
-                try self.resolveAliases(p.right_call, aliases);
+                try self.resolveAliases(parser, p.left, aliases);
+                try self.resolveAliases(parser, p.right_call, aliases);
             },
             .call_expr => |c| {
-                try self.resolveAliases(c.callee, aliases);
-                for (c.arguments) |a| try self.resolveAliases(a, aliases);
+                try self.resolveAliases(parser, c.callee, aliases);
+                for (c.arguments) |a| try self.resolveAliases(parser, a, aliases);
             },
             .catch_expr => |c| {
-                try self.resolveAliases(c.expression, aliases);
-                for (c.body) |s| try self.resolveAliases(s, aliases);
+                try self.resolveAliases(parser, c.expression, aliases);
+                for (c.body) |s| try self.resolveAliases(parser, s, aliases);
             },
-            .array_expr => |a| for (a.elements) |e| try self.resolveAliases(e, aliases),
+            .array_expr => |a| for (a.elements) |e| try self.resolveAliases(parser, e, aliases),
             .dict_expr => |d| for (d.entries) |e| {
-                try self.resolveAliases(e.key, aliases);
-                try self.resolveAliases(e.value, aliases);
+                try self.resolveAliases(parser, e.key, aliases);
+                try self.resolveAliases(parser, e.value, aliases);
             },
             .index_expr => |i| {
-                try self.resolveAliases(i.left, aliases);
-                try self.resolveAliases(i.index, aliases);
+                try self.resolveAliases(parser, i.left, aliases);
+                try self.resolveAliases(parser, i.index, aliases);
             },
-            .return_stmt => |r| if (r.value) |v| try self.resolveAliases(v, aliases),
+            .return_stmt => |r| if (r.value) |v| try self.resolveAliases(parser, v, aliases),
             .property_access_expr => |p| {
-                try self.resolveAliases(p.object, aliases);
-                const obj_node = self.tree.getNode(p.object);
+                try self.resolveAliases(parser, p.object, aliases);
+                const obj_node = parser.tree.getNode(p.object);
                 if (obj_node == .identifier) {
                     if (aliases.get(obj_node.identifier.name)) |canon| {
                         const new_name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ canon, p.property_name });
-                        const node_ptr = &self.tree.nodes.items[idx];
+                        const node_ptr = &parser.tree.nodes.items[idx];
                         node_ptr.* = .{ .identifier = .{ ._type = .{ ._type = .identifier_token, .value = new_name, .line = 0, .column = 0 }, .name = new_name } };
                     }
                 }
@@ -243,55 +249,55 @@ const Linker = struct {
         }
     }
 
-    fn walkAndPrefix(self: *Linker, idx: NodeIndex, locals: *std.StringHashMap(void), alias: []const u8) anyerror!void {
-        const node = self.tree.getNode(idx);
+    fn walkAndPrefix(self: *Linker, parser: *Parser, idx: NodeIndex, locals: *std.StringHashMap(void), alias: []const u8) anyerror!void {
+        const node = parser.tree.getNode(idx);
         switch (node) {
-            .function_decl => |f| for (f.body) |s| try self.walkAndPrefix(s, locals, alias),
+            .function_decl => |f| for (f.body) |s| try self.walkAndPrefix(parser, s, locals, alias),
             .if_stmt => |i| {
-                try self.walkAndPrefix(i.condition, locals, alias);
-                for (i.then_branch) |s| try self.walkAndPrefix(s, locals, alias);
-                if (i.else_branch) |eb| for (eb) |s| try self.walkAndPrefix(s, locals, alias);
+                try self.walkAndPrefix(parser, i.condition, locals, alias);
+                for (i.then_branch) |s| try self.walkAndPrefix(parser, s, locals, alias);
+                if (i.else_branch) |eb| for (eb) |s| try self.walkAndPrefix(parser, s, locals, alias);
             },
             .for_stmt => |f| {
-                try self.walkAndPrefix(f.iterable, locals, alias);
-                for (f.body) |s| try self.walkAndPrefix(s, locals, alias);
+                try self.walkAndPrefix(parser, f.iterable, locals, alias);
+                for (f.body) |s| try self.walkAndPrefix(parser, s, locals, alias);
             },
-            .var_decl => |v| try self.walkAndPrefix(v.value, locals, alias),
+            .var_decl => |v| try self.walkAndPrefix(parser, v.value, locals, alias),
             .binary_expr => |b| {
-                try self.walkAndPrefix(b.left, locals, alias);
-                try self.walkAndPrefix(b.right, locals, alias);
+                try self.walkAndPrefix(parser, b.left, locals, alias);
+                try self.walkAndPrefix(parser, b.right, locals, alias);
             },
-            .unary_expr => |u| try self.walkAndPrefix(u.right, locals, alias),
+            .unary_expr => |u| try self.walkAndPrefix(parser, u.right, locals, alias),
             .pipeline_expr => |p| {
-                try self.walkAndPrefix(p.left, locals, alias);
-                try self.walkAndPrefix(p.right_call, locals, alias);
+                try self.walkAndPrefix(parser, p.left, locals, alias);
+                try self.walkAndPrefix(parser, p.right_call, locals, alias);
             },
             .call_expr => |c| {
-                const callee_node = self.tree.getNode(c.callee);
+                const callee_node = parser.tree.getNode(c.callee);
                 if (callee_node == .identifier) {
                     const name = callee_node.identifier.name;
                     if (locals.contains(name)) {
-                        var node_ptr = &self.tree.nodes.items[c.callee];
+                        var node_ptr = &parser.tree.nodes.items[c.callee];
                         node_ptr.identifier.name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ alias, name });
                     }
-                } else try self.walkAndPrefix(c.callee, locals, alias);
-                for (c.arguments) |arg| try self.walkAndPrefix(arg, locals, alias);
+                } else try self.walkAndPrefix(parser, c.callee, locals, alias);
+                for (c.arguments) |arg| try self.walkAndPrefix(parser, arg, locals, alias);
             },
             .catch_expr => |c| {
-                try self.walkAndPrefix(c.expression, locals, alias);
-                for (c.body) |s| try self.walkAndPrefix(s, locals, alias);
+                try self.walkAndPrefix(parser, c.expression, locals, alias);
+                for (c.body) |s| try self.walkAndPrefix(parser, s, locals, alias);
             },
-            .array_expr => |a| for (a.elements) |e| try self.walkAndPrefix(e, locals, alias),
+            .array_expr => |a| for (a.elements) |e| try self.walkAndPrefix(parser, e, locals, alias),
             .dict_expr => |d| for (d.entries) |e| {
-                try self.walkAndPrefix(e.key, locals, alias);
-                try self.walkAndPrefix(e.value, locals, alias);
+                try self.walkAndPrefix(parser, e.key, locals, alias);
+                try self.walkAndPrefix(parser, e.value, locals, alias);
             },
             .index_expr => |i| {
-                try self.walkAndPrefix(i.left, locals, alias);
-                try self.walkAndPrefix(i.index, locals, alias);
+                try self.walkAndPrefix(parser, i.left, locals, alias);
+                try self.walkAndPrefix(parser, i.index, locals, alias);
             },
-            .return_stmt => |r| if (r.value) |v| try self.walkAndPrefix(v, locals, alias),
-            .property_access_expr => |p| try self.walkAndPrefix(p.object, locals, alias),
+            .return_stmt => |r| if (r.value) |v| try self.walkAndPrefix(parser, v, locals, alias),
+            .property_access_expr => |p| try self.walkAndPrefix(parser, p.object, locals, alias),
             else => {},
         }
     }
@@ -361,8 +367,9 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper) !void {
         var global_tree = AstTree.init();
         defer global_tree.deinit(alloc);
 
-        const result = runCompilerPipeline(alloc, &global_tree, file_path, io) catch return;
+        var result = runCompilerPipeline(alloc, &global_tree, file_path, io) catch return;
         defer alloc.free(result.source);
+        defer result.parser.deinit();
         defer alloc.free(result.tokens);
         try io.stdout.print("Parser finished. AST generated successfully.\n", .{});
         return;
@@ -401,17 +408,6 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
 
     const merged_root_idx = try global_tree.addNode(alloc, .{ .program = .{ .statements = linker.statements.items } });
 
-    var emitter = CEmitter.init(alloc, &global_tree, file_path);
-    const out_c = try std.fmt.allocPrint(alloc, ".flint_temp_{x}.c", .{std.hash.Wyhash.hash(0, file_path)});
-    defer alloc.free(out_c);
-
-    var out_file = try std.fs.cwd().createFile(out_c, .{});
-    var buffer: [4096]u8 = undefined;
-    var out_writer = out_file.writer(&buffer);
-    try emitter.generate(&out_writer.interface, merged_root_idx);
-    _ = out_writer.interface.flush() catch {};
-    out_file.close();
-
     if (!is_run) {
         try io.stdout.print("\x1b[38;5;208m[FLINT]\x1b[0m Transpiling and compiling native binary...\n", .{});
         _ = try io.stdout.flush();
@@ -438,7 +434,6 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
     }
 
     defer {
-        std.fs.cwd().deleteFile(out_c) catch {};
         if (!precompiled) {
             std.fs.cwd().deleteFile("flint_rt.h") catch {};
             std.fs.cwd().deleteFile("flint_rt.c") catch {};
@@ -446,22 +441,36 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
     }
 
     const system_rt_pch = "/usr/share/flint/flint_rt.h.pch";
-
     const has_pch = blk: {
-        std.fs.cwd().access(system_rt_pch, .{}) catch |err| switch (err) {
-            error.FileNotFound => break :blk false,
-            else => return err,
-        };
+        std.fs.cwd().access(system_rt_pch, .{}) catch break :blk false;
         break :blk true;
     };
 
     const compiler = getBestCCompiler(alloc, is_run);
 
-    const c_args = try compiler.getArgsExtended(alloc, out_c, exe_name, rt_path, precompiled, is_run, has_pch);
+    const c_args = try compiler.getArgsExtended(alloc, exe_name, rt_path, precompiled, is_run, has_pch);
     defer alloc.free(c_args);
 
     var child = std.process.Child.init(c_args, alloc);
-    const term = try child.spawnAndWait();
+    child.stdin_behavior = .Pipe;
+
+    try child.spawn();
+    {
+        var buf: [4096]u8 = undefined;
+
+        var writer = child.stdin.?.writer(&buf);
+
+        var emitter = CEmitter.init(alloc, &global_tree, file_path);
+
+        try emitter.generate(&writer.interface, merged_root_idx);
+
+        try writer.interface.flush();
+    }
+
+    child.stdin.?.close();
+    child.stdin = null;
+
+    const term = try child.wait();
     if (term != .Exited or term.Exited != 0) return;
 
     if (is_run) {
@@ -564,13 +573,18 @@ pub fn runTests(alloc: std.mem.Allocator, io: IoHelper) !void {
 }
 
 const ClangCompiler = struct {
-    pub fn getArgsExtended(self: ClangCompiler, alloc: std.mem.Allocator, out_c: []const u8, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool) ![]const []const u8 {
+    pub fn getArgsExtended(self: ClangCompiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool) ![]const []const u8 {
         _ = self;
         var args = std.ArrayList([]const u8).empty;
 
         try args.append(alloc, "clang");
-        try args.append(alloc, out_c);
+
         try args.append(alloc, rt);
+
+        try args.append(alloc, "-x");
+        try args.append(alloc, "c");
+        try args.append(alloc, "-");
+
         try args.append(alloc, "-I.");
         try args.append(alloc, if (pre) "-I/usr/share/flint" else "-I.");
 
@@ -598,14 +612,19 @@ const ClangCompiler = struct {
 };
 
 const GccCompiler = struct {
-    pub fn getArgsExtended(self: GccCompiler, alloc: std.mem.Allocator, out_c: []const u8, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool) ![]const []const u8 {
+    pub fn getArgsExtended(self: GccCompiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool) ![]const []const u8 {
         _ = self;
         _ = has_pch;
         var args = std.ArrayList([]const u8).empty;
 
         try args.append(alloc, "gcc");
-        try args.append(alloc, out_c);
+
         try args.append(alloc, rt);
+
+        try args.append(alloc, "-x");
+        try args.append(alloc, "c");
+        try args.append(alloc, "-");
+
         try args.append(alloc, "-I.");
         try args.append(alloc, if (pre) "-I/usr/share/flint" else "-I.");
 
@@ -627,22 +646,24 @@ const GccCompiler = struct {
 };
 
 const TccCompiler = struct {
-    pub fn getArgsExtended(self: TccCompiler, alloc: std.mem.Allocator, out_c: []const u8, out_exe: []const u8, pre: bool) ![]const []const u8 {
+    pub fn getArgsExtended(self: TccCompiler, alloc: std.mem.Allocator, out_exe: []const u8, pre: bool) ![]const []const u8 {
         _ = self;
 
         var args = std.ArrayList([]const u8).empty;
 
         try args.append(alloc, "tcc");
 
+        try args.append(alloc, if (pre) "/usr/share/flint/flint_rt.c" else "flint_rt.c");
+
+        try args.append(alloc, "-x");
+        try args.append(alloc, "c");
+        try args.append(alloc, "-");
+
         try args.append(alloc, "-I.");
         try args.append(alloc, if (pre) "-I/usr/share/flint" else "-I.");
 
         try args.append(alloc, "-o");
         try args.append(alloc, out_exe);
-
-        try args.append(alloc, out_c);
-
-        try args.append(alloc, if (pre) "/usr/share/flint/flint_rt.c" else "flint_rt.c");
 
         try args.append(alloc, "-lcurl");
 
@@ -655,11 +676,11 @@ pub const Compiler = union(enum) {
     gcc: GccCompiler,
     tcc: TccCompiler,
 
-    pub fn getArgsExtended(self: Compiler, alloc: std.mem.Allocator, out_c: []const u8, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool) ![]const []const u8 {
+    pub fn getArgsExtended(self: Compiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool) ![]const []const u8 {
         return switch (self) {
-            .tcc => |t| t.getArgsExtended(alloc, out_c, out_exe, pre),
-            .clang => |c| c.getArgsExtended(alloc, out_c, out_exe, rt, pre, is_run, has_pch),
-            .gcc => |g| g.getArgsExtended(alloc, out_c, out_exe, rt, pre, is_run, has_pch),
+            .tcc => |t| t.getArgsExtended(alloc, out_exe, pre),
+            .clang => |c| c.getArgsExtended(alloc, out_exe, rt, pre, is_run, has_pch),
+            .gcc => |g| g.getArgsExtended(alloc, out_exe, rt, pre, is_run, has_pch),
         };
     }
 };

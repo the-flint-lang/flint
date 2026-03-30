@@ -36,6 +36,10 @@ pub const Parser = struct {
         };
     }
 
+    pub fn deinit(self: Parser) void {
+        _ = self;
+    }
+
     pub fn parse(self: *Parser) anyerror!NodeIndex {
         var statements = std.ArrayList(NodeIndex).empty;
         defer statements.deinit(self.allocator);
@@ -720,14 +724,13 @@ pub const Parser = struct {
                         };
                         const sub_tokens = try sub_lexer.tokenize();
 
-                        // COMPARTILHAMENTO DE AST: O sub-parser injeta na mesma árvore do parser principal
                         var sub_parser_shared = Parser{
                             .allocator = self.allocator,
                             .tokens = sub_tokens,
                             .source = expr_str,
                             .file_path = self.file_path,
                             .current = 0,
-                            .tree = self.tree, // Herda a árvore principal
+                            .tree = self.tree,
                             .io = self.io,
                             .had_error = false,
                         };
