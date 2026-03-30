@@ -3,6 +3,40 @@ const Token = @import("../lexer/structs/token.zig").Token;
 
 pub const NodeIndex = u32;
 
+pub const StringId = u32;
+
+pub const StringPool = struct {
+    map: std.StringHashMap(StringId),
+    list: std.ArrayList([]const u8),
+
+    pub fn init(allocator: std.mem.Allocator) StringPool {
+        return .{
+            .map = std.StringHashMap(StringId).init(allocator),
+            .list = std.ArrayList([]const u8).empty,
+        };
+    }
+
+    pub fn deinit(self: *StringPool, alloc: std.mem.Allocator) void {
+        self.map.deinit();
+        self.list.deinit(alloc);
+    }
+
+    pub fn intern(self: *StringPool, alloc: std.mem.Allocator, str: []const u8) !StringId {
+        if (self.map.get(str)) |id| {
+            return id;
+        }
+
+        const id = @as(StringId, @intCast(self.list.items.len));
+        try self.list.append(alloc, str);
+        try self.map.put(str, id);
+        return id;
+    }
+
+    pub fn get(self: *const StringPool, id: StringId) []const u8 {
+        return self.list.items[id];
+    }
+};
+
 pub const AstNode = union(enum) {
     program: struct {
         statements: []const NodeIndex,
@@ -10,7 +44,7 @@ pub const AstNode = union(enum) {
 
     function_decl: struct {
         is_extern: bool,
-        name: []const u8,
+        name_id: StringId,
         return_type: Token,
         arguments: []const NodeIndex,
         body: []const NodeIndex,
@@ -20,18 +54,18 @@ pub const AstNode = union(enum) {
         line: u32,
         _type: ?Token,
         is_const: bool,
-        name: []const u8,
+        name_id: StringId,
         value: NodeIndex,
     },
 
     struct_decl: struct {
-        name: []const u8,
+        name_id: StringId,
         fields: []const StructField,
     },
 
     import_stmt: struct {
         path: []const u8,
-        alias: ?[]const u8,
+        alias_id: ?StringId,
     },
 
     return_stmt: struct {
@@ -69,7 +103,7 @@ pub const AstNode = union(enum) {
     property_access_expr: struct {
         line: u32,
         object: NodeIndex,
-        property_name: []const u8,
+        property_name_id: StringId,
     },
 
     array_expr: struct {
@@ -86,7 +120,7 @@ pub const AstNode = union(enum) {
     },
 
     for_stmt: struct {
-        iterator_name: []const u8,
+        iterator_name_id: StringId,
         iterable: NodeIndex,
         body: []const NodeIndex,
     },
@@ -95,7 +129,7 @@ pub const AstNode = union(enum) {
 
     identifier: struct {
         _type: Token,
-        name: []const u8,
+        name_id: StringId,
     },
 
     literal: struct {
@@ -110,12 +144,12 @@ pub const DictEntry = struct {
 
 pub const CatchExpr = struct {
     expression: NodeIndex,
-    error_identifier: []const u8,
+    error_identifier_id: StringId,
     body: []const NodeIndex,
 };
 
 pub const StructField = struct {
-    name: []const u8,
+    name_id: StringId,
     _type: Token,
 };
 

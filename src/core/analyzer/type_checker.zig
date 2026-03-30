@@ -3,6 +3,8 @@ const ast = @import("../parser/ast.zig");
 const AstNode = ast.AstNode;
 const AstTree = ast.AstTree;
 const NodeIndex = ast.NodeIndex;
+const StringPool = ast.StringPool;
+const StringId = ast.StringId;
 const Token = @import("../lexer/structs/token.zig").Token;
 const sym = @import("./symbol_table.zig");
 const SymbolTable = sym.SymbolTable;
@@ -14,6 +16,7 @@ const DiagnosticLabel = @import("../errors/diagnostics.zig").DiagnosticLabel;
 pub const TypeChecker = struct {
     allocator: std.mem.Allocator,
     tree: *const AstTree,
+    pool: *StringPool,
     global_scope: *SymbolTable,
     current_scope: *SymbolTable,
 
@@ -25,82 +28,87 @@ pub const TypeChecker = struct {
     source: []const u8,
     had_error: bool = false,
 
-    pub fn init(allocator: std.mem.Allocator, tree: *const AstTree, file_path: []const u8, source: []const u8, io: IoHelpers) !TypeChecker {
+    fn defineBuiltin(global: *SymbolTable, alloc: std.mem.Allocator, pool: *StringPool, name: []const u8, ret: FlintType, sig: ?[]const FlintType) !void {
+        const id = try pool.intern(alloc, name);
+        _ = global.define(id, ret, true, 0, 0, null, sig);
+    }
+
+    pub fn init(allocator: std.mem.Allocator, tree: *const AstTree, pool: *StringPool, file_path: []const u8, source: []const u8, io: IoHelpers) !TypeChecker {
         const global = try allocator.create(SymbolTable);
         global.* = SymbolTable.init(allocator, null);
 
         // global functions
-        _ = global.define("print", .t_void, true, 0, 0, null, &[_]FlintType{.t_any});
-        _ = global.define("printerr", .t_void, true, 0, 0, null, &[_]FlintType{.t_any});
-        _ = global.define("len", .t_int, true, 0, 0, null, &[_]FlintType{.t_any});
-        _ = global.define("push", .t_void, true, 0, 0, null, &[_]FlintType{ .t_arr, .t_any });
-        _ = global.define("range", .t_arr, true, 0, 0, null, &[_]FlintType{ .t_int, .t_int });
-        _ = global.define("if_fail", .t_any, true, 0, 0, null, &[_]FlintType{ .t_val, .t_string });
-        _ = global.define("fallback", .t_any, true, 0, 0, null, &[_]FlintType{ .t_val, .t_any });
-        _ = global.define("concat", .t_string, true, 0, 0, null, &[_]FlintType{ .t_string, .t_string });
-        _ = global.define("to_str", .t_string, true, 0, 0, null, &[_]FlintType{.t_any});
-        _ = global.define("to_int", .t_int, true, 0, 0, null, &[_]FlintType{.t_any});
-        _ = global.define("parse_json_as", .t_val, true, 0, 0, null, &[_]FlintType{ .t_any, .t_string });
-        _ = global.define("parse_json", .t_val, true, 0, 0, null, &[_]FlintType{.t_string});
-        _ = global.define("ensure", .t_val, true, 0, 0, null, &[_]FlintType{ .t_val, .t_bool, .t_string });
-        _ = global.define("lines", .t_arr, true, 0, 0, null, &[_]FlintType{.t_any});
-        _ = global.define("grep", .t_arr, true, 0, 0, null, &[_]FlintType{ .t_any, .t_string });
-        _ = global.define("build_str", .t_string, true, 0, 0, null, null); // Variádico
-        _ = global.define("chars", .t_arr, true, 0, 0, null, &[_]FlintType{.t_string});
-        _ = global.define("strings_split", .t_arr, true, 0, 0, null, &[_]FlintType{ .t_string, .t_string });
+        try defineBuiltin(global, allocator, pool, "print", .t_void, &[_]FlintType{.t_any});
+        try defineBuiltin(global, allocator, pool, "printerr", .t_void, &[_]FlintType{.t_any});
+        try defineBuiltin(global, allocator, pool, "len", .t_int, &[_]FlintType{.t_any});
+        try defineBuiltin(global, allocator, pool, "push", .t_void, &[_]FlintType{ .t_arr, .t_any });
+        try defineBuiltin(global, allocator, pool, "range", .t_arr, &[_]FlintType{ .t_int, .t_int });
+        try defineBuiltin(global, allocator, pool, "if_fail", .t_any, &[_]FlintType{ .t_val, .t_string });
+        try defineBuiltin(global, allocator, pool, "fallback", .t_any, &[_]FlintType{ .t_val, .t_any });
+        try defineBuiltin(global, allocator, pool, "concat", .t_string, &[_]FlintType{ .t_string, .t_string });
+        try defineBuiltin(global, allocator, pool, "to_str", .t_string, &[_]FlintType{.t_any});
+        try defineBuiltin(global, allocator, pool, "to_int", .t_int, &[_]FlintType{.t_any});
+        try defineBuiltin(global, allocator, pool, "parse_json_as", .t_val, &[_]FlintType{ .t_any, .t_string });
+        try defineBuiltin(global, allocator, pool, "parse_json", .t_val, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "ensure", .t_val, &[_]FlintType{ .t_val, .t_bool, .t_string });
+        try defineBuiltin(global, allocator, pool, "lines", .t_arr, &[_]FlintType{.t_any});
+        try defineBuiltin(global, allocator, pool, "grep", .t_arr, &[_]FlintType{ .t_any, .t_string });
+        try defineBuiltin(global, allocator, pool, "build_str", .t_string, null);
+        try defineBuiltin(global, allocator, pool, "chars", .t_arr, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "strings_split", .t_arr, &[_]FlintType{ .t_string, .t_string });
 
         // os module
-        _ = global.define("os_mkdir", .t_val, true, 0, 0, null, &[_]FlintType{.t_string});
-        _ = global.define("os_rm", .t_val, true, 0, 0, null, &[_]FlintType{.t_string});
-        _ = global.define("os_rm_dir", .t_val, true, 0, 0, null, &[_]FlintType{.t_string});
-        _ = global.define("os_touch", .t_val, true, 0, 0, null, &[_]FlintType{.t_string});
-        _ = global.define("os_ls", .t_val, true, 0, 0, null, &[_]FlintType{.t_string});
-        _ = global.define("os_is_dir", .t_bool, true, 0, 0, null, &[_]FlintType{.t_string});
-        _ = global.define("os_is_file", .t_bool, true, 0, 0, null, &[_]FlintType{.t_string});
-        _ = global.define("os_file_size", .t_val, true, 0, 0, null, &[_]FlintType{.t_string});
-        _ = global.define("os_mv", .t_val, true, 0, 0, null, &[_]FlintType{ .t_string, .t_string });
-        _ = global.define("os_copy", .t_val, true, 0, 0, null, &[_]FlintType{ .t_string, .t_string });
-        _ = global.define("os_exec", .t_string, true, 0, 0, null, &[_]FlintType{.t_string});
-        _ = global.define("os_spawn", .t_val, true, 0, 0, null, &[_]FlintType{.t_string});
-        _ = global.define("os_env", .t_string, true, 0, 0, null, &[_]FlintType{.t_string});
-        _ = global.define("os_exit", .t_void, true, 0, 0, null, &[_]FlintType{.t_int});
-        _ = global.define("os_args", .t_arr, true, 0, 0, null, &[_]FlintType{});
-        _ = global.define("os_assert", .t_val, true, 0, 0, null, &[_]FlintType{ .t_val, .t_string });
-        _ = global.define("os_if_fail", .t_any, true, 0, 0, null, &[_]FlintType{ .t_val, .t_string });
-        _ = global.define("os_is_tty", .t_any, true, 0, 0, null, &[_]FlintType{});
+        try defineBuiltin(global, allocator, pool, "os_mkdir", .t_val, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "os_rm", .t_val, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "os_rm_dir", .t_val, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "os_touch", .t_val, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "os_ls", .t_val, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "os_is_dir", .t_bool, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "os_is_file", .t_bool, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "os_file_size", .t_val, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "os_mv", .t_val, &[_]FlintType{ .t_string, .t_string });
+        try defineBuiltin(global, allocator, pool, "os_copy", .t_val, &[_]FlintType{ .t_string, .t_string });
+        try defineBuiltin(global, allocator, pool, "os_exec", .t_string, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "os_spawn", .t_val, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "os_env", .t_string, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "os_exit", .t_void, &[_]FlintType{.t_int});
+        try defineBuiltin(global, allocator, pool, "os_args", .t_arr, &[_]FlintType{});
+        try defineBuiltin(global, allocator, pool, "os_assert", .t_val, &[_]FlintType{ .t_val, .t_string });
+        try defineBuiltin(global, allocator, pool, "os_if_fail", .t_any, &[_]FlintType{ .t_val, .t_string });
+        try defineBuiltin(global, allocator, pool, "os_is_tty", .t_any, &[_]FlintType{});
 
         // io module
-        _ = global.define("io_read_line", .t_any, true, 0, 0, null, &[_]FlintType{});
-        _ = global.define("io_read_file", .t_val, true, 0, 0, null, &[_]FlintType{.t_string});
-        _ = global.define("io_write_file", .t_val, true, 0, 0, null, &[_]FlintType{ .t_string, .t_string });
+        try defineBuiltin(global, allocator, pool, "io_read_line", .t_any, &[_]FlintType{});
+        try defineBuiltin(global, allocator, pool, "io_read_file", .t_val, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "io_write_file", .t_val, &[_]FlintType{ .t_string, .t_string });
 
         // http module
-        _ = global.define("http_fetch", .t_val, true, 0, 0, null, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "http_fetch", .t_val, &[_]FlintType{.t_string});
 
         // strings module
-        _ = global.define("strings_split", .t_arr, true, 0, 0, null, &[_]FlintType{ .t_string, .t_string });
-        _ = global.define("strings_join", .t_string, true, 0, 0, null, &[_]FlintType{ .t_arr, .t_string });
-        _ = global.define("strings_trim", .t_string, true, 0, 0, null, &[_]FlintType{.t_string});
-        _ = global.define("strings_count_matches", .t_int, true, 0, 0, null, &[_]FlintType{ .t_string, .t_string });
-        _ = global.define("strings_replace", .t_string, true, 0, 0, null, &[_]FlintType{ .t_string, .t_string, .t_string });
-        _ = global.define("strings_to_str", .t_string, true, 0, 0, null, &[_]FlintType{.t_any});
-        _ = global.define("strings_int_to_str", .t_string, true, 0, 0, null, &[_]FlintType{.t_int});
-        _ = global.define("strings_concat", .t_string, true, 0, 0, null, &[_]FlintType{ .t_string, .t_string });
-        _ = global.define("strings_to_int", .t_int, true, 0, 0, null, &[_]FlintType{.t_any});
-        _ = global.define("strings_str_eql", .t_bool, true, 0, 0, null, &[_]FlintType{ .t_string, .t_string });
-        _ = global.define("strings_lines", .t_arr, true, 0, 0, null, &[_]FlintType{.t_any});
-        _ = global.define("strings_grep", .t_arr, true, 0, 0, null, &[_]FlintType{ .t_any, .t_string });
-        _ = global.define("strings_starts_with", .t_bool, true, 0, 0, null, &[_]FlintType{ .t_string, .t_string });
-        _ = global.define("strings_ends_with", .t_bool, true, 0, 0, null, &[_]FlintType{ .t_string, .t_string });
+        try defineBuiltin(global, allocator, pool, "strings_join", .t_string, &[_]FlintType{ .t_arr, .t_string });
+        try defineBuiltin(global, allocator, pool, "strings_trim", .t_string, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "strings_count_matches", .t_int, &[_]FlintType{ .t_string, .t_string });
+        try defineBuiltin(global, allocator, pool, "strings_replace", .t_string, &[_]FlintType{ .t_string, .t_string, .t_string });
+        try defineBuiltin(global, allocator, pool, "strings_to_str", .t_string, &[_]FlintType{.t_any});
+        try defineBuiltin(global, allocator, pool, "strings_int_to_str", .t_string, &[_]FlintType{.t_int});
+        try defineBuiltin(global, allocator, pool, "strings_concat", .t_string, &[_]FlintType{ .t_string, .t_string });
+        try defineBuiltin(global, allocator, pool, "strings_to_int", .t_int, &[_]FlintType{.t_any});
+        try defineBuiltin(global, allocator, pool, "strings_str_eql", .t_bool, &[_]FlintType{ .t_string, .t_string });
+        try defineBuiltin(global, allocator, pool, "strings_lines", .t_arr, &[_]FlintType{.t_any});
+        try defineBuiltin(global, allocator, pool, "strings_grep", .t_arr, &[_]FlintType{ .t_any, .t_string });
+        try defineBuiltin(global, allocator, pool, "strings_starts_with", .t_bool, &[_]FlintType{ .t_string, .t_string });
+        try defineBuiltin(global, allocator, pool, "strings_ends_with", .t_bool, &[_]FlintType{ .t_string, .t_string });
 
         // json and utils module
-        _ = global.define("json_parse", .t_val, true, 0, 0, null, &[_]FlintType{.t_string});
-        _ = global.define("utils_is_err", .t_bool, true, 0, 0, null, &[_]FlintType{.t_val});
-        _ = global.define("utils_get_err", .t_string, true, 0, 0, null, &[_]FlintType{.t_val});
+        try defineBuiltin(global, allocator, pool, "json_parse", .t_val, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "utils_is_err", .t_bool, &[_]FlintType{.t_val});
+        try defineBuiltin(global, allocator, pool, "utils_get_err", .t_string, &[_]FlintType{.t_val});
 
         return .{
             .allocator = allocator,
             .tree = tree,
+            .pool = pool,
             .global_scope = global,
             .current_scope = global,
             .current_function_return_type = null,
@@ -149,22 +157,23 @@ pub const TypeChecker = struct {
     fn checkStructDecl(self: *TypeChecker, index: NodeIndex, node: AstNode) !FlintType {
         const decl = node.struct_decl;
 
-        // O SymbolTable agora armazena o índice do nó (NodeIndex) no lugar de *AstNode
-        const success = self.global_scope.define(decl.name, .t_any, true, 0, 0, index, null);
+        const success = self.global_scope.define(decl.name_id, .t_any, true, 0, 0, index, null);
 
         if (!success) {
-            try self.reportErrorContext(0, 0, @intCast(decl.name.len), "A struct or function with this name already exists.");
+            const name_str = self.pool.get(decl.name_id);
+            try self.reportErrorContext(0, 0, @intCast(name_str.len), "A struct or function with this name already exists.");
             return .t_error;
         }
 
-        var field_names = std.StringHashMap(void).init(self.allocator);
+        var field_names = std.AutoHashMap(StringId, void).init(self.allocator);
         defer field_names.deinit();
 
         for (decl.fields) |field| {
-            if (field_names.contains(field.name)) {
-                try self.reportErrorContext(field._type.line, field._type.column, @intCast(field.name.len), "Duplicate field name in struct declaration.");
+            if (field_names.contains(field.name_id)) {
+                const f_str = self.pool.get(field.name_id);
+                try self.reportErrorContext(field._type.line, field._type.column, @intCast(f_str.len), "Duplicate field name in struct declaration.");
             } else {
-                field_names.put(field.name, {}) catch unreachable;
+                field_names.put(field.name_id, {}) catch unreachable;
             }
 
             const field_type = self.tokenToFlintType(field._type);
@@ -219,15 +228,15 @@ pub const TypeChecker = struct {
             return .t_error;
         }
 
-        var custom_struct_name: ?[]const u8 = null;
+        var custom_struct_id: ?StringId = null;
 
         if (decl._type) |type_token| {
             const declared_type = self.tokenToFlintType(type_token);
 
             if (declared_type == .t_unknown) {
-                custom_struct_name = type_token.value;
+                custom_struct_id = try self.pool.intern(self.allocator, type_token.value);
 
-                if (self.global_scope.lookup(custom_struct_name.?) == null) {
+                if (self.global_scope.lookup(custom_struct_id.?) == null) {
                     try self.reportErrorContext(type_token.line, type_token.column, @intCast(type_token.value.len), "Unknown type. This struct has not been declared.");
                     return .t_error;
                 }
@@ -247,7 +256,7 @@ pub const TypeChecker = struct {
                 self.extractCoords(decl.value, &v_line, &v_col, &v_len);
                 try diag.addLabel(v_line, v_col, v_len, found_lbl, true);
 
-                const note_str = try std.fmt.allocPrint(self.allocator, "`{s}` is declared as type `{s}`", .{ decl.name, type_token.value });
+                const note_str = try std.fmt.allocPrint(self.allocator, "`{s}` is declared as type `{s}`", .{ self.pool.get(decl.name_id), type_token.value });
                 diag.note(note_str);
 
                 const help_str = try std.fmt.allocPrint(self.allocator, "convert the value or change the variable type to match the assignment", .{});
@@ -264,10 +273,10 @@ pub const TypeChecker = struct {
             }
         }
 
-        const success = self.current_scope.define(decl.name, expr_type, decl.is_const, decl.line, 0, null, null);
+        const success = self.current_scope.define(decl.name_id, expr_type, decl.is_const, decl.line, 0, null, null);
 
         if (!success) {
-            const original_sym = self.current_scope.lookup(decl.name).?;
+            const original_sym = self.current_scope.lookup(decl.name_id).?;
 
             var diag = DiagnosticBuilder.init(self.allocator, "SEMANTIC ERROR", "E0428", "Variable already declared", self.source, self.file_path);
             defer diag.deinit();
@@ -276,20 +285,21 @@ pub const TypeChecker = struct {
             var curr: u32 = 0;
             var name_col: u32 = 0;
             const target_line_0_indexed = decl.line - 1;
+            const var_name = self.pool.get(decl.name_id);
 
             while (lines_iter.next()) |l| : (curr += 1) {
                 if (curr == target_line_0_indexed) {
-                    if (std.mem.indexOf(u8, l, decl.name)) |idx| {
+                    if (std.mem.indexOf(u8, l, var_name)) |idx| {
                         name_col = @intCast(idx);
                     }
                     break;
                 }
             }
 
-            const name_len: u32 = @intCast(decl.name.len);
+            const name_len: u32 = @intCast(var_name.len);
             try diag.addLabel(target_line_0_indexed, name_col + name_len, name_len, "redefined here", true);
 
-            const note_str = try std.fmt.allocPrint(self.allocator, "previous definition of `{s}` was at line {d}", .{ decl.name, original_sym.line });
+            const note_str = try std.fmt.allocPrint(self.allocator, "previous definition of `{s}` was at line {d}", .{ var_name, original_sym.line });
             diag.note(note_str);
 
             diag.help("rename this variable or remove the duplicate declaration");
@@ -300,9 +310,9 @@ pub const TypeChecker = struct {
             return .t_error;
         }
 
-        if (custom_struct_name) |s_name| {
-            if (self.current_scope.symbols.getPtr(decl.name)) |sym_ptr| {
-                sym_ptr.struct_name = s_name;
+        if (custom_struct_id) |s_id| {
+            if (self.current_scope.symbols.getPtr(decl.name_id)) |sym_ptr| {
+                sym_ptr.struct_name_id = s_id;
             }
         } else {
             const val_node = self.tree.getNode(decl.value);
@@ -310,15 +320,15 @@ pub const TypeChecker = struct {
                 const call = val_node.call_expr;
                 const callee_node = self.tree.getNode(call.callee);
 
-                if (callee_node == .identifier and std.mem.eql(u8, callee_node.identifier.name, "parse_json_as")) {
+                if (callee_node == .identifier and std.mem.eql(u8, self.pool.get(callee_node.identifier.name_id), "parse_json_as")) {
                     if (call.arguments.len > 0) {
                         const arg_node = self.tree.getNode(call.arguments[0]);
                         if (arg_node == .identifier) {
-                            const inferred_struct = arg_node.identifier.name;
+                            const inferred_struct_id = arg_node.identifier.name_id;
 
-                            if (self.global_scope.lookup(inferred_struct) != null) {
-                                if (self.current_scope.symbols.getPtr(decl.name)) |sym_ptr| {
-                                    sym_ptr.struct_name = inferred_struct;
+                            if (self.global_scope.lookup(inferred_struct_id) != null) {
+                                if (self.current_scope.symbols.getPtr(decl.name_id)) |sym_ptr| {
+                                    sym_ptr.struct_name_id = inferred_struct_id;
                                 }
                             }
                         }
@@ -331,10 +341,10 @@ pub const TypeChecker = struct {
     }
 
     fn checkIdentifier(self: *TypeChecker, _: NodeIndex, node: AstNode) !FlintType {
-        const name = node.identifier.name;
+        const name_id = node.identifier.name_id;
         const token = node.identifier._type;
 
-        if (self.current_scope.lookup(name)) |symbol| {
+        if (self.current_scope.lookup(name_id)) |symbol| {
             return symbol.type;
         }
 
@@ -342,8 +352,9 @@ pub const TypeChecker = struct {
         var diag = DiagnosticBuilder.init(self.allocator, "SEMANTIC ERROR", "E0425", "Undefined variable", self.source, self.file_path);
         defer diag.deinit();
 
-        const msg = try std.fmt.allocPrint(self.allocator, "cannot find value `{s}` in this scope", .{name});
-        try diag.addLabel(token.line, token.column, @intCast(name.len), "not found in this scope", true);
+        const name_str = self.pool.get(name_id);
+        const msg = try std.fmt.allocPrint(self.allocator, "cannot find value `{s}` in this scope", .{name_str});
+        try diag.addLabel(token.line, token.column, @intCast(name_str.len), "not found in this scope", true);
         diag.help("did you spell it correctly or forget to declare it?");
 
         try diag.emit(self.io);
@@ -370,25 +381,26 @@ pub const TypeChecker = struct {
             const left_node = self.tree.getNode(node.binary_expr.left);
 
             if (left_node == .identifier) {
-                const name = left_node.identifier.name;
+                const name_id = left_node.identifier.name_id;
+                const name_str = self.pool.get(name_id);
 
-                if (std.mem.eql(u8, name, "_")) {
+                if (std.mem.eql(u8, name_str, "_")) {
                     return try self.checkNodeIndex(node.binary_expr.right);
                 }
 
                 const right_type = try self.checkNodeIndex(node.binary_expr.right);
 
-                if (self.current_scope.lookup(name)) |symbol| {
+                if (self.current_scope.lookup(name_id)) |symbol| {
                     if (symbol.is_const) {
                         var diag = DiagnosticBuilder.init(self.allocator, "SEMANTIC ERROR", "E0384", "Cannot reassign to a 'const' variable", self.source, self.file_path);
                         defer diag.deinit();
 
                         try diag.addLabel(op.line, op.column, 1, "cannot assign twice to immutable variable", true);
 
-                        const note_str = try std.fmt.allocPrint(self.allocator, "`{s}` was defined as `const` at line {d}", .{ name, symbol.line });
+                        const note_str = try std.fmt.allocPrint(self.allocator, "`{s}` was defined as `const` at line {d}", .{ name_str, symbol.line });
                         diag.note(note_str);
 
-                        const help_str = try std.fmt.allocPrint(self.allocator, "to allow mutation, change the declaration of `{s}` to use `var` instead of `const`", .{name});
+                        const help_str = try std.fmt.allocPrint(self.allocator, "to allow mutation, change the declaration of `{s}` to use `var` instead of `const`", .{name_str});
                         diag.help(help_str);
 
                         try diag.emit(self.io);
@@ -407,7 +419,7 @@ pub const TypeChecker = struct {
                     return symbol.type;
                 } else {
                     const id_node = left_node.identifier._type;
-                    try self.reportErrorContext(id_node.line, id_node.column, @intCast(name.len), "Assignment to undefined variable.");
+                    try self.reportErrorContext(id_node.line, id_node.column, @intCast(name_str.len), "Assignment to undefined variable.");
                     return .t_error;
                 }
             } else if (left_node == .index_expr or left_node == .property_access_expr) {
@@ -497,7 +509,7 @@ pub const TypeChecker = struct {
         try self.beginScope();
         defer self.endScope();
 
-        _ = self.current_scope.define(stmt.iterator_name, .t_any, true, 0, 0, null, null);
+        _ = self.current_scope.define(stmt.iterator_name_id, .t_any, true, 0, 0, null, null);
 
         for (stmt.body) |body_stmt_idx| {
             _ = try self.checkNodeIndex(body_stmt_idx);
@@ -516,9 +528,10 @@ pub const TypeChecker = struct {
         const callee_node = self.tree.getNode(call.callee);
 
         if (callee_node == .identifier) {
-            const func_name = callee_node.identifier.name;
+            const func_name_id = callee_node.identifier.name_id;
+            const func_name_str = self.pool.get(func_name_id);
 
-            if (self.current_scope.lookup(func_name)) |symbol| {
+            if (self.current_scope.lookup(func_name_id)) |symbol| {
                 var is_user_func = false;
                 var func_decl: AstNode = undefined;
 
@@ -551,7 +564,7 @@ pub const TypeChecker = struct {
                         self.had_error = true;
                         var err_line: u32 = call.line;
                         var err_col: u32 = 0;
-                        var err_len: u32 = @intCast(func_name.len);
+                        var err_len: u32 = @intCast(func_name_str.len);
                         self.extractCoords(call.callee, &err_line, &err_col, &err_len);
 
                         var diag = DiagnosticBuilder.init(self.allocator, "SEMANTIC ERROR", "E0040", "Arity mismatch", self.source, self.file_path);
@@ -585,7 +598,7 @@ pub const TypeChecker = struct {
                                 self.had_error = true;
                                 var err_line: u32 = call.line;
                                 var err_col: u32 = 0;
-                                var err_len: u32 = @intCast(func_name.len);
+                                var err_len: u32 = @intCast(func_name_str.len);
                                 self.extractCoords(call.callee, &err_line, &err_col, &err_len);
 
                                 var diag = DiagnosticBuilder.init(self.allocator, "SEMANTIC ERROR", "E0308", "Mismatched pipeline argument type", self.source, self.file_path);
@@ -645,7 +658,7 @@ pub const TypeChecker = struct {
                 self.had_error = true;
                 var err_line: u32 = call.line;
                 var err_col: u32 = 0;
-                var err_len: u32 = @intCast(func_name.len);
+                var err_len: u32 = @intCast(func_name_str.len);
                 self.extractCoords(call.callee, &err_line, &err_col, &err_len);
 
                 var diag = DiagnosticBuilder.init(self.allocator, "SEMANTIC ERROR", "E0618", "Not a function", self.source, self.file_path);
@@ -702,7 +715,7 @@ pub const TypeChecker = struct {
         const decl = node.function_decl;
         const return_type = self.tokenToFlintType(decl.return_type);
 
-        _ = self.current_scope.define(decl.name, return_type, true, decl.return_type.line, 0, index, null);
+        _ = self.current_scope.define(decl.name_id, return_type, true, decl.return_type.line, 0, index, null);
 
         if (decl.is_extern) return .t_void;
 
@@ -715,9 +728,9 @@ pub const TypeChecker = struct {
 
         for (decl.arguments) |arg_idx| {
             const arg_node = self.tree.getNode(arg_idx);
-            const arg_name = arg_node.identifier.name;
+            const arg_name_id = arg_node.identifier.name_id;
             const arg_type = self.tokenToFlintType(arg_node.identifier._type);
-            _ = self.current_scope.define(arg_name, arg_type, true, arg_node.identifier._type.line, 0, null, null);
+            _ = self.current_scope.define(arg_name_id, arg_type, true, arg_node.identifier._type.line, 0, null, null);
         }
 
         for (decl.body) |stmt_idx| {
@@ -782,16 +795,18 @@ pub const TypeChecker = struct {
         const obj_node = self.tree.getNode(prop_access.object);
 
         if (obj_node == .identifier) {
-            const obj_name = obj_node.identifier.name;
+            const obj_name_id = obj_node.identifier.name_id;
+            const obj_name_str = self.pool.get(obj_name_id);
+            const prop_name_str = self.pool.get(prop_access.property_name_id);
 
-            if (self.current_scope.lookup(obj_name)) |symbol| {
-                if (symbol.struct_name) |s_name| {
-                    if (self.global_scope.lookup(s_name)) |struct_sym| {
+            if (self.current_scope.lookup(obj_name_id)) |symbol| {
+                if (symbol.struct_name_id) |s_id| {
+                    if (self.global_scope.lookup(s_id)) |struct_sym| {
                         if (struct_sym.node) |s_node_idx| {
                             const s_node = self.tree.getNode(s_node_idx);
                             if (s_node == .struct_decl) {
                                 for (s_node.struct_decl.fields) |field| {
-                                    if (std.mem.eql(u8, field.name, prop_access.property_name)) {
+                                    if (field.name_id == prop_access.property_name_id) {
                                         return self.tokenToFlintType(field._type);
                                     }
                                 }
@@ -801,7 +816,7 @@ pub const TypeChecker = struct {
                                 var err_len: u32 = 1;
                                 self.extractCoords(prop_access.object, &err_line, &err_col, &err_len);
 
-                                const prop_len: u32 = @intCast(prop_access.property_name.len);
+                                const prop_len: u32 = @intCast(prop_name_str.len);
                                 const final_col = err_col + 1 + prop_len;
 
                                 var diag = DiagnosticBuilder.init(self.allocator, "SEMANTIC ERROR", "E0609", "Property does not exist", self.source, self.file_path);
@@ -819,21 +834,23 @@ pub const TypeChecker = struct {
                 }
             }
 
-            const namespaced_func_name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ obj_name, prop_access.property_name });
+            const namespaced_func_name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ obj_name_str, prop_name_str });
             defer self.allocator.free(namespaced_func_name);
 
-            if (self.global_scope.lookup(namespaced_func_name)) |mod_func_sym| {
+            const ns_id = try self.pool.intern(self.allocator, namespaced_func_name);
+
+            if (self.global_scope.lookup(ns_id)) |mod_func_sym| {
                 self.had_error = prev_had_error;
                 return mod_func_sym.type;
             } else {
-                if (std.mem.eql(u8, obj_name, "os") or std.mem.eql(u8, obj_name, "io") or std.mem.eql(u8, obj_name, "http") or std.mem.eql(u8, obj_name, "strings") or std.mem.eql(u8, obj_name, "json") or std.mem.eql(u8, obj_name, "utils")) {
+                if (std.mem.eql(u8, obj_name_str, "os") or std.mem.eql(u8, obj_name_str, "io") or std.mem.eql(u8, obj_name_str, "http") or std.mem.eql(u8, obj_name_str, "strings") or std.mem.eql(u8, obj_name_str, "json") or std.mem.eql(u8, obj_name_str, "utils")) {
                     self.had_error = true;
                     var err_line: u32 = 0;
                     var err_col: u32 = 0;
                     var err_len: u32 = 1;
                     self.extractCoords(prop_access.object, &err_line, &err_col, &err_len);
 
-                    const prop_len: u32 = @intCast(prop_access.property_name.len);
+                    const prop_len: u32 = @intCast(prop_name_str.len);
                     const final_col = err_col + 1 + prop_len;
 
                     var diag = DiagnosticBuilder.init(self.allocator, "SEMANTIC ERROR", "E0609", "Function does not exist in module", self.source, self.file_path);
@@ -841,7 +858,7 @@ pub const TypeChecker = struct {
 
                     try diag.addLabel(err_line, final_col, prop_len, "module does not export this function", true);
 
-                    const note_str = try std.fmt.allocPrint(self.allocator, "the module `{s}` has no function called `{s}`", .{ obj_name, prop_access.property_name });
+                    const note_str = try std.fmt.allocPrint(self.allocator, "the module `{s}` has no function called `{s}`", .{ obj_name_str, prop_name_str });
                     diag.note(note_str);
 
                     try diag.emit(self.io);
@@ -859,7 +876,8 @@ pub const TypeChecker = struct {
         var err_len: u32 = 1;
         self.extractCoords(prop_access.object, &err_line, &err_col, &err_len);
 
-        const prop_len: u32 = @intCast(prop_access.property_name.len);
+        const prop_name_str = self.pool.get(prop_access.property_name_id);
+        const prop_len: u32 = @intCast(prop_name_str.len);
         const final_col = err_col + 1 + prop_len;
 
         var diag = DiagnosticBuilder.init(self.allocator, "SEMANTIC ERROR", "E0609", "Invalid property access", self.source, self.file_path);
@@ -879,8 +897,8 @@ pub const TypeChecker = struct {
     // imports and data structures
     fn checkImportStmt(self: *TypeChecker, node: AstNode) !FlintType {
         const stmt = node.import_stmt;
-        const module_name = stmt.alias orelse stmt.path;
-        _ = self.current_scope.define(module_name, .t_any, true, 0, 0, null, null);
+        const module_id = stmt.alias_id orelse try self.pool.intern(self.allocator, stmt.path);
+        _ = self.current_scope.define(module_id, .t_any, true, 0, 0, null, null);
         return .t_void;
     }
 
@@ -1006,7 +1024,7 @@ pub const TypeChecker = struct {
         try self.beginScope();
         defer self.endScope();
 
-        _ = self.current_scope.define(catch_stmt.error_identifier, .t_string, true, 0, 0, null, null);
+        _ = self.current_scope.define(catch_stmt.error_identifier_id, .t_string, true, 0, 0, null, null);
 
         for (catch_stmt.body) |stmt_idx| {
             _ = try self.checkNodeIndex(stmt_idx);
@@ -1052,7 +1070,7 @@ pub const TypeChecker = struct {
             .identifier => {
                 line.* = node.identifier._type.line;
                 col.* = node.identifier._type.column;
-                len.* = @intCast(node.identifier.name.len);
+                len.* = @intCast(self.pool.get(node.identifier.name_id).len);
             },
             .binary_expr => {
                 line.* = node.binary_expr.operator.line;
@@ -1067,7 +1085,7 @@ pub const TypeChecker = struct {
             .property_access_expr => {
                 line.* = node.property_access_expr.line;
                 col.* = 0;
-                len.* = @intCast(node.property_access_expr.property_name.len);
+                len.* = @intCast(self.pool.get(node.property_access_expr.property_name_id).len);
             },
             .call_expr => {
                 self.extractCoords(node.call_expr.callee, line, col, len);
@@ -1105,7 +1123,6 @@ pub const TypeChecker = struct {
         };
     }
 
-    // A função de diagnóstico legada (ainda usada por outros erros)
     fn reportErrorContext(self: *TypeChecker, line: u32, end_column: u32, len: u32, message: []const u8) !void {
         self.had_error = true;
 

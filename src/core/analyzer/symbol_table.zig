@@ -1,6 +1,7 @@
 const std = @import("std");
 const Token = @import("../lexer/structs/token.zig").Token;
-const AstNode = @import("../parser/ast.zig").AstNode;
+const ast = @import("../parser/ast.zig");
+const StringId = ast.StringId;
 
 pub const FlintType = enum {
     t_int,
@@ -15,25 +16,25 @@ pub const FlintType = enum {
 };
 
 pub const Symbol = struct {
-    name: []const u8,
+    name_id: StringId,
     type: FlintType,
     is_const: bool,
     line: u32,
     column: u32,
     node: ?u32,
-    struct_name: ?[]const u8 = null,
+    struct_name_id: ?StringId = null,
     builtin_signature: ?[]const FlintType = null,
 };
 
 pub const SymbolTable = struct {
     allocator: std.mem.Allocator,
-    symbols: std.StringHashMap(Symbol),
+    symbols: std.AutoHashMap(StringId, Symbol),
     enclosing: ?*SymbolTable,
 
     pub fn init(allocator: std.mem.Allocator, enclosing: ?*SymbolTable) SymbolTable {
         return .{
             .allocator = allocator,
-            .symbols = std.StringHashMap(Symbol).init(allocator),
+            .symbols = std.AutoHashMap(StringId, Symbol).init(allocator),
             .enclosing = enclosing,
         };
     }
@@ -42,32 +43,32 @@ pub const SymbolTable = struct {
         self.symbols.deinit();
     }
 
-    pub fn define(self: *SymbolTable, name: []const u8, sym_type: FlintType, is_const: bool, line: u32, col: u32, decl_node: ?u32, builtin_signature: ?[]const FlintType) bool {
-        if (self.symbols.contains(name)) {
+    pub fn define(self: *SymbolTable, name_id: StringId, sym_type: FlintType, is_const: bool, line: u32, col: u32, decl_node: ?u32, builtin_signature: ?[]const FlintType) bool {
+        if (self.symbols.contains(name_id)) {
             return false;
         }
 
-        self.symbols.put(name, Symbol{
-            .name = name,
+        self.symbols.put(name_id, Symbol{
+            .name_id = name_id,
             .type = sym_type,
             .is_const = is_const,
             .line = line,
             .column = col,
             .node = decl_node,
-            .struct_name = null,
+            .struct_name_id = null,
             .builtin_signature = builtin_signature,
         }) catch unreachable;
 
         return true;
     }
 
-    pub fn lookup(self: *SymbolTable, name: []const u8) ?Symbol {
-        if (self.symbols.get(name)) |symbol| {
+    pub fn lookup(self: *SymbolTable, name_id: StringId) ?Symbol {
+        if (self.symbols.get(name_id)) |symbol| {
             return symbol;
         }
 
         if (self.enclosing) |parent| {
-            return parent.lookup(name);
+            return parent.lookup(name_id);
         }
 
         return null;

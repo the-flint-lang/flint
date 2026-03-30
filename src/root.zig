@@ -9,10 +9,12 @@ pub const IoHelper = @import("./core/helpers/structs/structs.zig").IoHelpers;
 const Lexer = @import("./core/lexer/lexer.zig").Lexer;
 const Parser = @import("./core/parser/parser.zig").Parser;
 const TypeChecker = @import("./core/analyzer/type_checker.zig").TypeChecker;
-const NodeIndex = @import("./core/parser/ast.zig").NodeIndex;
-const AstTree = @import("./core/parser/ast.zig").AstTree;
+const ast = @import("./core/parser/ast.zig");
+const NodeIndex = ast.NodeIndex;
+const AstTree = ast.AstTree;
+const StringPool = ast.StringPool;
 const CEmitter = @import("./core/codegen/c_emitter.zig").CEmitter;
-const AstNode = @import("./core/parser/ast.zig").AstNode;
+const AstNode = ast.AstNode;
 const Token = @import("./core/lexer/structs/token.zig").Token;
 const help = @import("./core/helpers/functions/help.zig").help;
 const version = @import("./core/helpers/functions/version.zig").version;
@@ -29,7 +31,7 @@ const PipelineResult = struct {
     root_idx: NodeIndex,
 };
 
-fn runCompilerPipeline(alloc: std.mem.Allocator, tree: *AstTree, file_path: []const u8, io: IoHelper) !PipelineResult {
+fn runCompilerPipeline(alloc: std.mem.Allocator, tree: *AstTree, pool: *StringPool, file_path: []const u8, io: IoHelper) !PipelineResult {
     if (!std.mem.endsWith(u8, file_path, ".fl")) {
         return error.InvalidFileType;
     }
@@ -49,10 +51,10 @@ fn runCompilerPipeline(alloc: std.mem.Allocator, tree: *AstTree, file_path: []co
     };
     const tokens = try lex.tokenize();
 
-    var parser = Parser.init(alloc, tree, tokens, source, file_path, io);
+    var parser = Parser.init(alloc, tree, pool, tokens, source, file_path, io);
     const root_idx = try parser.parse();
 
-    var t_checker = try TypeChecker.init(alloc, tree, file_path, source, io);
+    var t_checker = try TypeChecker.init(alloc, tree, pool, file_path, source, io);
     try t_checker.check(root_idx);
 
     if (t_checker.had_error) {
@@ -71,16 +73,18 @@ fn runCompilerPipeline(alloc: std.mem.Allocator, tree: *AstTree, file_path: []co
 const Linker = struct {
     allocator: std.mem.Allocator,
     tree: *AstTree,
+    pool: *StringPool,
     visited: std.StringHashMap(void),
     statements: std.ArrayList(NodeIndex),
     results: std.ArrayList(*PipelineResult),
     io: IoHelper,
     has_error: bool = false,
 
-    pub fn init(alloc: std.mem.Allocator, tree: *AstTree, io: IoHelper) Linker {
+    pub fn init(alloc: std.mem.Allocator, tree: *AstTree, pool: *StringPool, io: IoHelper) Linker {
         return .{
             .allocator = alloc,
             .tree = tree,
+            .pool = pool,
             .visited = std.StringHashMap(void).init(alloc),
             .statements = std.ArrayList(NodeIndex).empty,
             .results = std.ArrayList(*PipelineResult).empty,
@@ -114,7 +118,7 @@ const Linker = struct {
         try self.visited.put(try self.allocator.dupe(u8, abs_path), {});
 
         const result_ptr = try self.allocator.create(PipelineResult);
-        result_ptr.* = runCompilerPipeline(self.allocator, self.tree, file_path, self.io) catch {
+        result_ptr.* = runCompilerPipeline(self.allocator, self.tree, self.pool, file_path, self.io) catch {
             self.has_error = true;
             return;
         };
@@ -138,7 +142,10 @@ const Linker = struct {
 
             if (stmt == .import_stmt) {
                 const import_raw = stmt.import_stmt.path;
-                const next_alias = stmt.import_stmt.alias;
+                const next_alias_id = stmt.import_stmt.alias_id;
+
+                const next_alias_str = if (next_alias_id) |id| self.pool.get(id) else null;
+
                 const basename = std.fs.path.basename(import_raw);
                 const canon_name = basename[0 .. std.mem.indexOf(u8, basename, ".") orelse basename.len];
 
@@ -164,7 +171,7 @@ const Linker = struct {
                 defer self.allocator.free(next_file);
 
                 try self.linkFile(next_file, canon_name);
-                if (next_alias) |a| try local_aliases.put(a, canon_name);
+                if (next_alias_str) |a| try local_aliases.put(a, canon_name);
             } else {
                 try local_stmts.append(self.allocator, stmt_idx);
             }
@@ -179,19 +186,33 @@ const Linker = struct {
     fn applyNamespaces(self: *Linker, parser: *Parser, statements: []const NodeIndex, alias: []const u8) !void {
         var local_symbols = std.StringHashMap(void).init(self.allocator);
         defer local_symbols.deinit();
+
         for (statements) |stmt_idx| {
             const stmt = parser.tree.getNode(stmt_idx);
-            if (stmt == .function_decl and !stmt.function_decl.is_extern) try local_symbols.put(stmt.function_decl.name, {}) else if (stmt == .struct_decl) try local_symbols.put(stmt.struct_decl.name, {}) else if (stmt == .var_decl) try local_symbols.put(stmt.var_decl.name, {});
+            if (stmt == .function_decl and !stmt.function_decl.is_extern) {
+                try local_symbols.put(self.pool.get(stmt.function_decl.name_id), {});
+            } else if (stmt == .struct_decl) {
+                try local_symbols.put(self.pool.get(stmt.struct_decl.name_id), {});
+            } else if (stmt == .var_decl) {
+                try local_symbols.put(self.pool.get(stmt.var_decl.name_id), {});
+            }
         }
         for (statements) |stmt_idx| {
             try self.walkAndPrefix(parser, stmt_idx, &local_symbols, alias);
             var node_ptr = &parser.tree.nodes.items[stmt_idx];
+
             if (node_ptr.* == .function_decl and !node_ptr.function_decl.is_extern) {
-                node_ptr.function_decl.name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ alias, node_ptr.function_decl.name });
+                const old_name = self.pool.get(node_ptr.function_decl.name_id);
+                const new_name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ alias, old_name });
+                node_ptr.function_decl.name_id = try self.pool.intern(self.allocator, new_name);
             } else if (node_ptr.* == .struct_decl) {
-                node_ptr.struct_decl.name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ alias, node_ptr.struct_decl.name });
+                const old_name = self.pool.get(node_ptr.struct_decl.name_id);
+                const new_name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ alias, old_name });
+                node_ptr.struct_decl.name_id = try self.pool.intern(self.allocator, new_name);
             } else if (node_ptr.* == .var_decl) {
-                node_ptr.var_decl.name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ alias, node_ptr.var_decl.name });
+                const old_name = self.pool.get(node_ptr.var_decl.name_id);
+                const new_name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ alias, old_name });
+                node_ptr.var_decl.name_id = try self.pool.intern(self.allocator, new_name);
             }
         }
     }
@@ -241,10 +262,14 @@ const Linker = struct {
                 try self.resolveAliases(parser, p.object, aliases);
                 const obj_node = parser.tree.getNode(p.object);
                 if (obj_node == .identifier) {
-                    if (aliases.get(obj_node.identifier.name)) |canon| {
-                        const new_name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ canon, p.property_name });
+                    const obj_name_str = self.pool.get(obj_node.identifier.name_id);
+                    if (aliases.get(obj_name_str)) |canon| {
+                        const prop_name_str = self.pool.get(p.property_name_id);
+                        const new_name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ canon, prop_name_str });
+
+                        const new_id = try self.pool.intern(self.allocator, new_name);
                         const node_ptr = &parser.tree.nodes.items[idx];
-                        node_ptr.* = .{ .identifier = .{ ._type = .{ ._type = .identifier_token, .value = new_name, .line = 0, .column = 0 }, .name = new_name } };
+                        node_ptr.* = .{ .identifier = .{ ._type = .{ ._type = .identifier_token, .value = new_name, .line = 0, .column = 0 }, .name_id = new_id } };
                     }
                 }
             },
@@ -278,10 +303,11 @@ const Linker = struct {
             .call_expr => |c| {
                 const callee_node = parser.tree.getNode(c.callee);
                 if (callee_node == .identifier) {
-                    const name = callee_node.identifier.name;
-                    if (locals.contains(name)) {
+                    const name_str = self.pool.get(callee_node.identifier.name_id);
+                    if (locals.contains(name_str)) {
                         var node_ptr = &parser.tree.nodes.items[c.callee];
-                        node_ptr.identifier.name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ alias, name });
+                        const new_name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ alias, name_str });
+                        node_ptr.identifier.name_id = try self.pool.intern(self.allocator, new_name);
                     }
                 } else try self.walkAndPrefix(parser, c.callee, locals, alias);
                 for (c.arguments) |arg| try self.walkAndPrefix(parser, arg, locals, alias);
@@ -370,7 +396,10 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper) !void {
         var global_tree = AstTree.init();
         defer global_tree.deinit(alloc);
 
-        var result = runCompilerPipeline(alloc, &global_tree, file_path, io) catch return;
+        var pool = StringPool.init(alloc);
+        defer pool.deinit(alloc);
+
+        var result = runCompilerPipeline(alloc, &global_tree, &pool, file_path, io) catch return;
         defer alloc.free(result.source);
         defer result.parser.deinit();
         defer alloc.free(result.tokens);
@@ -403,7 +432,10 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
     var global_tree = AstTree.init();
     defer global_tree.deinit(alloc);
 
-    var linker = Linker.init(alloc, &global_tree, io);
+    var pool = StringPool.init(alloc);
+    defer pool.deinit(alloc);
+
+    var linker = Linker.init(alloc, &global_tree, &pool, io);
     defer linker.deinit();
 
     linker.linkFile(file_path, null) catch {};
@@ -442,7 +474,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
         var c_code_buffer = std.ArrayList(u8).empty;
         defer c_code_buffer.deinit(alloc);
 
-        var emitter = CEmitter.init(alloc, &global_tree, file_path);
+        var emitter = CEmitter.init(alloc, &global_tree, &pool, file_path);
         try emitter.generate(c_code_buffer.writer(alloc), merged_root_idx);
         try c_code_buffer.append(alloc, 0);
 
@@ -535,7 +567,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
     {
         var buf: [4096]u8 = undefined;
         var writer = child.stdin.?.writer(&buf);
-        var emitter = CEmitter.init(alloc, &global_tree, file_path);
+        var emitter = CEmitter.init(alloc, &global_tree, &pool, file_path);
         try emitter.generate(&writer.interface, merged_root_idx);
         try writer.interface.flush();
     }
