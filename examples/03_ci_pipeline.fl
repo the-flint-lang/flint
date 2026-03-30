@@ -15,4 +15,4 @@ const payload = http.fetch("https://api.github.com/repos/lucaas-d3v/flint/releas
 # 2. AOT deserialization (O(1) memory mapping, without reflection)
 const release = parse_json_as(ReleaseData, strings.to_str(payload));
 
-print("Deploying version: " ~> strings.concat(release.tag_name));
+print("Deploying version: {release.tag_name}");

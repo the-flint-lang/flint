@@ -474,7 +474,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
         var c_code_buffer = std.ArrayList(u8).empty;
         defer c_code_buffer.deinit(alloc);
 
-        var emitter = CEmitter.init(alloc, &global_tree, &pool, file_path);
+        var emitter = CEmitter.init(alloc, &global_tree, &pool, file_path, true);
         try emitter.generate(c_code_buffer.writer(alloc), merged_root_idx);
         try c_code_buffer.append(alloc, 0);
 
@@ -508,7 +508,10 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
         }
 
         if (tcc.tcc_compile_string(tcc_state, c_code_buffer.items.ptr) == -1) {
-            try io.stderr.print("JIT Compilation Failed.\n", .{});
+            try io.stderr.print("AOT (with tcc) Compilation Failed.\n", .{});
+
+            std.debug.print("\n--- C CODE DUMP ---\n{s}\n", .{c_code_buffer.items});
+
             return;
         }
 
@@ -567,7 +570,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
     {
         var buf: [4096]u8 = undefined;
         var writer = child.stdin.?.writer(&buf);
-        var emitter = CEmitter.init(alloc, &global_tree, &pool, file_path);
+        var emitter = CEmitter.init(alloc, &global_tree, &pool, file_path, false);
         try emitter.generate(&writer.interface, merged_root_idx);
         try writer.interface.flush();
     }

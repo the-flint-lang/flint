@@ -13,17 +13,19 @@ pub const CEmitter = struct {
     pool: *StringPool,
     temp_counter: usize = 0,
     source_file: []const u8,
+    is_run: bool,
 
     built_ins: [15][]const u8,
 
     current_placeholder_name: ?[]const u8 = null,
 
-    pub fn init(allocator: std.mem.Allocator, tree: *const AstTree, pool: *StringPool, source_file: []const u8) CEmitter {
+    pub fn init(allocator: std.mem.Allocator, tree: *const AstTree, pool: *StringPool, source_file: []const u8, is_run: bool) CEmitter {
         return .{
             .allocator = allocator,
             .tree = tree,
             .pool = pool,
             .source_file = source_file,
+            .is_run = is_run,
             .built_ins = [_][]const u8{
                 "print",  "printerr", "len",    "push",       "range",  "if_fail", "fallback",
                 "concat", "to_str",   "to_int", "parse_json", "ensure", "lines",   "grep",
@@ -276,56 +278,22 @@ pub const CEmitter = struct {
             return;
         }
 
-        if (decl.is_const) {
+        if (!self.is_run and decl.is_const) {
             try writer.writeAll("const ");
         }
 
-        try writer.writeAll("typeof(");
-        try self.visitNodeIndex(decl.value, writer);
-        try writer.writeAll(") ");
+        if (self.inferCType(decl.value)) |explicit_type| {
+            try writer.writeAll(explicit_type);
+            try writer.writeAll(" ");
+        } else {
+            try writer.writeAll("typeof(");
+            try self.visitNodeIndex(decl.value, writer);
+            try writer.writeAll(") ");
+        }
+
         try emitSafeName(writer, var_name);
         try writer.writeAll(" = ");
         try self.visitNodeIndex(decl.value, writer);
-    }
-
-    fn visitCallExpr(self: *CEmitter, node: AstNode, writer: anytype) !void {
-        const call = node.call_expr;
-        const callee_node = self.tree.getNode(call.callee);
-
-        if (callee_node == .identifier) {
-            const func_name = self.pool.get(callee_node.identifier.name_id);
-
-            if (std.mem.eql(u8, func_name, "to_str")) {
-                try writer.writeAll("flint_to_str(FLINT_BOX(");
-                try self.visitNodeIndex(call.arguments[0], writer);
-                try writer.writeAll("))");
-                return;
-            }
-
-            if (std.mem.eql(u8, func_name, "parse_json_as")) {
-                if (call.arguments.len != 2) return error.InvalidArgumentCount;
-                const struct_arg_node = self.tree.getNode(call.arguments[0]);
-                const struct_name = self.pool.get(struct_arg_node.identifier.name_id);
-
-                try writer.writeAll("__parse_");
-                try writer.writeAll(struct_name);
-                try writer.writeAll("_from_val(flint_parse_json(");
-                try self.visitNodeIndex(call.arguments[1], writer);
-                try writer.writeAll("))");
-                return;
-            }
-        }
-
-        try self.visitNodeIndex(call.callee, writer);
-        try writer.writeAll("(");
-
-        for (call.arguments, 0..) |arg_idx, i| {
-            try self.visitNodeIndex(arg_idx, writer);
-            if (i < call.arguments.len - 1) {
-                try writer.writeAll(", ");
-            }
-        }
-        try writer.writeAll(")");
     }
 
     fn visitPipelineExpr(self: *CEmitter, node: AstNode, writer: anytype) !void {
@@ -553,6 +521,82 @@ pub const CEmitter = struct {
         }
     }
 
+    fn visitCallExpr(self: *CEmitter, node: AstNode, writer: anytype) !void {
+        const call = node.call_expr;
+        const callee_node = self.tree.getNode(call.callee);
+
+        if (callee_node == .identifier) {
+            const func_name = self.pool.get(callee_node.identifier.name_id);
+
+            if (std.mem.eql(u8, func_name, "to_str")) {
+                try writer.writeAll("flint_to_str(FLINT_BOX(");
+                try self.visitNodeIndex(call.arguments[0], writer);
+                try writer.writeAll("))");
+                return;
+            }
+
+            if (std.mem.eql(u8, func_name, "parse_json_as")) {
+                if (call.arguments.len != 2) return error.InvalidArgumentCount;
+                const struct_arg_node = self.tree.getNode(call.arguments[0]);
+                const struct_name = self.pool.get(struct_arg_node.identifier.name_id);
+
+                try writer.writeAll("__parse_");
+                try writer.writeAll(struct_name);
+                try writer.writeAll("_from_val(flint_parse_json(");
+                try self.visitNodeIndex(call.arguments[1], writer);
+                try writer.writeAll("))");
+                return;
+            }
+
+            if (std.mem.eql(u8, func_name, "build_str")) {
+                if (call.arguments.len == 0) {
+                    try writer.writeAll("FLINT_STR(\"\")");
+                    return;
+                }
+                if (call.arguments.len == 1) {
+                    try self.visitNodeIndex(call.arguments[0], writer);
+                    return;
+                }
+
+                if (self.is_run) {
+                    const num_concats = call.arguments.len - 1;
+                    for (0..num_concats) |_| {
+                        try writer.writeAll("flint_concat(");
+                    }
+
+                    try self.visitNodeIndex(call.arguments[0], writer);
+
+                    for (call.arguments[1..]) |arg| {
+                        try writer.writeAll(", ");
+                        try self.visitNodeIndex(arg, writer);
+                        try writer.writeAll(")");
+                    }
+                } else {
+                    try writer.writeAll("build_str(");
+                    for (call.arguments, 0..) |arg, i| {
+                        try self.visitNodeIndex(arg, writer);
+                        if (i < call.arguments.len - 1) {
+                            try writer.writeAll(", ");
+                        }
+                    }
+                    try writer.writeAll(")");
+                }
+                return;
+            }
+        }
+
+        try self.visitNodeIndex(call.callee, writer);
+        try writer.writeAll("(");
+
+        for (call.arguments, 0..) |arg_idx, i| {
+            try self.visitNodeIndex(arg_idx, writer);
+            if (i < call.arguments.len - 1) {
+                try writer.writeAll(", ");
+            }
+        }
+        try writer.writeAll(")");
+    }
+
     fn visitArrayExpr(self: *CEmitter, node: AstNode, writer: anytype) !void {
         const arr = node.array_expr;
 
@@ -562,8 +606,8 @@ pub const CEmitter = struct {
         }
 
         const first_node = self.tree.getNode(arr.elements[0]);
-        var c_type: []const u8 = undefined;
-        var struct_name: []const u8 = undefined;
+        var c_type: []const u8 = "long long";
+        var struct_name: []const u8 = "flint_int_array";
 
         if (first_node == .literal) {
             const tok = first_node.literal.token;
@@ -573,21 +617,29 @@ pub const CEmitter = struct {
             } else if (tok._type == .true_literal_token or tok._type == .false_literal_token) {
                 c_type = "bool";
                 struct_name = "flint_bool_array";
-            } else {
-                c_type = "long long";
-                struct_name = "flint_int_array";
             }
         }
 
-        try writer.print("FLINT_MAKE_ARRAY({s}, {s}, ", .{ c_type, struct_name });
+        self.temp_counter += 1;
+        const t_id = self.temp_counter;
 
+        try writer.writeAll("({\n");
         for (arr.elements, 0..) |el_idx, i| {
+            try writer.print("        {s} _arr_el_{d}_{d} = ", .{ c_type, t_id, i });
             try self.visitNodeIndex(el_idx, writer);
+            try writer.writeAll(";\n");
+        }
+
+        try writer.print("        FLINT_MAKE_ARRAY({s}, {s}, ", .{ c_type, struct_name });
+
+        for (arr.elements, 0..) |_, i| {
+            try writer.print("_arr_el_{d}_{d}", .{ t_id, i });
             if (i < arr.elements.len - 1) {
                 try writer.writeAll(", ");
             }
         }
-        try writer.writeAll(")");
+
+        try writer.writeAll(");\n    })");
     }
 
     fn visitIndexExpr(self: *CEmitter, node: AstNode, writer: anytype) !void {
@@ -681,8 +733,8 @@ pub const CEmitter = struct {
     fn visitIdentifier(self: *CEmitter, node: AstNode, writer: anytype) !void {
         const name_str = self.pool.get(node.identifier.name_id);
         if (std.mem.eql(u8, name_str, "_")) {
-            if (self.current_placeholder_name) |p_name| {
-                try writer.writeAll(p_name);
+            if (self.current_placeholder_name) |p| {
+                try writer.writeAll(p);
                 return;
             }
         }
@@ -729,7 +781,6 @@ pub const CEmitter = struct {
                 return;
             }
         }
-
         try writer.writeAll(name);
     }
 
@@ -739,5 +790,62 @@ pub const CEmitter = struct {
             h = (h ^ @as(u64, c)) *% 1099511628211;
         }
         return if (h == 0) 1 else h;
+    }
+
+    // ==============================================================
+    // NOVA FUNÇÃO: Infere o tipo em C para evitar o typeof() em macros
+    // ==============================================================
+    fn inferCType(self: *CEmitter, index: NodeIndex) ?[]const u8 {
+        const node = self.tree.getNode(index);
+        switch (node) {
+            .literal => |l| {
+                const t = l.token._type;
+                if (t == .string_literal_token or t == .multile_string_literal_token) return "flint_str";
+                if (t == .integer_literal_token) return "long long";
+                if (t == .true_literal_token or t == .false_literal_token) return "bool";
+            },
+            .call_expr => |c| {
+                const callee = self.tree.getNode(c.callee);
+                if (callee == .identifier) {
+                    const func_name = self.pool.get(callee.identifier.name_id);
+                    if (std.mem.eql(u8, func_name, "build_str") or
+                        std.mem.eql(u8, func_name, "to_str") or
+                        std.mem.eql(u8, func_name, "concat") or
+                        std.mem.eql(u8, func_name, "os_env") or
+                        std.mem.eql(u8, func_name, "strings_join") or
+                        std.mem.eql(u8, func_name, "strings_trim") or
+                        std.mem.eql(u8, func_name, "strings_replace")) return "flint_str";
+
+                    if (std.mem.eql(u8, func_name, "to_int") or
+                        std.mem.eql(u8, func_name, "len")) return "long long";
+
+                    if (std.mem.eql(u8, func_name, "parse_json") or
+                        std.mem.eql(u8, func_name, "ensure") or
+                        std.mem.eql(u8, func_name, "fallback") or
+                        std.mem.eql(u8, func_name, "os_spawn") or
+                        std.mem.eql(u8, func_name, "io_read_file") or
+                        std.mem.eql(u8, func_name, "http_fetch")) return "FlintValue";
+
+                    if (std.mem.eql(u8, func_name, "lines") or
+                        std.mem.eql(u8, func_name, "grep") or
+                        std.mem.eql(u8, func_name, "chars") or
+                        std.mem.eql(u8, func_name, "strings_split")) return "flint_str_array";
+                }
+            },
+            .array_expr => |a| {
+                if (a.elements.len > 0) {
+                    const first = self.tree.getNode(a.elements[0]);
+                    if (first == .literal) {
+                        const t = first.literal.token._type;
+                        if (t == .string_literal_token or t == .multile_string_literal_token) return "flint_str_array";
+                        if (t == .integer_literal_token) return "flint_int_array";
+                        if (t == .true_literal_token or t == .false_literal_token) return "flint_bool_array";
+                    }
+                }
+            },
+            .dict_expr => return "FlintDict*",
+            else => return null,
+        }
+        return null;
     }
 };

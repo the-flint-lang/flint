@@ -671,8 +671,8 @@ pub const Parser = struct {
     }
 
     fn wrapInToStr(self: *Parser, expr_idx: NodeIndex) !NodeIndex {
-        const id = try self.pool.intern(self.allocator, "to_str");
-        const func_id_idx = try self.tree.addNode(self.allocator, .{ .identifier = .{ ._type = Token{ ._type = .identifier_token, .value = "to_str", .line = 0, .column = 0 }, .name_id = id } });
+        const to_str_id = try self.pool.intern(self.allocator, "to_str");
+        const func_id_idx = try self.tree.addNode(self.allocator, .{ .identifier = .{ ._type = Token{ ._type = .identifier_token, .value = "to_str", .line = 0, .column = 0 }, .name_id = to_str_id } });
 
         var args = try self.allocator.alloc(NodeIndex, 1);
         args[0] = expr_idx;
@@ -767,8 +767,13 @@ pub const Parser = struct {
 
         if (parts.items.len == 0) return self.createStringLiteralNode("");
 
-        const id = try self.pool.intern(self.allocator, "build_str");
-        const func_id_idx = try self.tree.addNode(self.allocator, .{ .identifier = .{ ._type = Token{ ._type = .identifier_token, .value = "build_str", .line = 0, .column = 0 }, .name_id = id } });
+        const build_str_id = try self.pool.intern(self.allocator, "build_str");
+        const func_id_idx = try self.tree.addNode(self.allocator, .{
+            .identifier = .{
+                ._type = Token{ ._type = .identifier_token, .value = "build_str", .line = token.line, .column = token.column },
+                .name_id = build_str_id,
+            },
+        });
 
         return try self.tree.addNode(self.allocator, .{ .call_expr = .{
             .line = token.line,

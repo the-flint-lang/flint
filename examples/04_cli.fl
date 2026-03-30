@@ -7,7 +7,7 @@ print("--- Argument Injection Test (v1.7) ---");
 const arguments = os.args();
 
 const qty = len(arguments);
-print("Total arguments received: " ~> strings.concat(strings.int_to_str(qty)));
+print($"Total arguments received: {to_str(qty)}");
 
 print("\nDumping arguments:");
 

@@ -9,7 +9,7 @@
 Stop fighting Bash edge cases.  
 Stop paying startup cost for simple scripts.
 
-Flint is a statically-typed, ahead-of-time compiled language designed for system scripting, automation, and data pipelines. It compiles to dependency-free native binaries with near-instant startup time.
+Flint is a statically-typed, ahead-of-time compiled language designed for system scripting, automation, and data pipelines. It compiles to dependency-free native binaries with near-instant startup time and features a **High-Performance JIT Engine** for instant execution.
 
 ---
 
@@ -51,6 +51,16 @@ Flint uses "Poison Types" for smart error recovery, meaning it will show you all
 
 ---
 
+## Industrial-Grade Performance (v1.8.1)
+
+Flint v1.8.1 is engineered using **Data-Oriented Design (DoD)**. By using contiguous memory arrays and a centralized String Pool, the compiler frontend operates at the theoretical limits of modern CPU caches.
+
+- **Near-Zero Startup:** `flint run` executes scripts in **~13ms**, outperforming both Python and Node.js.
+- **Native JIT:** Powered by an embedded `libtcc`, Flint compiles code directly in RAM and jumps to machine instructions without the overhead of external processes.
+- **Memory Safety:** A custom strict Type Checker shields you from C-level complexity while maintaining zero runtime overhead.
+
+---
+
 ## 30-Second Example
 
 ```flint
@@ -60,7 +70,7 @@ const user = os.env("USER") ~> fallback("Stranger");
 print($"Hello, {user}!");
 ```
 
-Run instantly:
+Run instantly with JIT:
 
 ```bash
 flint run hello.fl
@@ -119,6 +129,9 @@ Flint compiles to C99 and produces small native binaries.
 * no virtual machine
 * no runtime dependencies
 
+### Data-Oriented Architecture (New)
+The compiler uses a pointer-free **AstTree** and **String Interning**, making it significantly faster and more memory-efficient than traditional AST implementations.
+
 ### Zero-copy I/O & Strings
 
 String operations work on slices (`ptr + len`), avoiding unnecessary allocations. File reads bypass the heap entirely using pure kernel-space `mmap`.
@@ -142,7 +155,7 @@ Flint is engineered for maximum throughput in DevOps workloads. In our v1.8.1 be
 * **Mass File Stat:** ~650x faster than Bash when inspecting 10,000 files.
 * **File Cloning:** Outperforms GNU `cp` on cold-cache huge files using Kernel-Space `sendfile`.
 
-See `./benchmarks/` for full details and reproducible tests.
+See  [`./benchmarks/`](benchmarks/) for full details and reproducible tests.
 
 ---
 
@@ -151,8 +164,8 @@ See `./benchmarks/` for full details and reproducible tests.
 ### Requirements
 
 * Zig (0.15.2)
-* Clang or GCC
-* libcurl (for HTTP support)
+* Clang, GCC or TCC
+* libcurl & libtcc (development headers)
 
 ### Build from source
 
@@ -181,7 +194,7 @@ Flint is a transpiler:
 * Memory model → stable
 * Standard library → stable (but expanding)
 
-More details in `docs/ARCHITECTURE.md` and `docs/LANGUAGE.md`.
+More details in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`docs/LANGUAGE.md`](docs/LANGUAGE.md).
 
 ---
 
