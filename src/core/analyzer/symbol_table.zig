@@ -20,7 +20,7 @@ pub const Symbol = struct {
     is_const: bool,
     line: u32,
     column: u32,
-    node: ?*AstNode = null,
+    node: ?u32,
     struct_name: ?[]const u8 = null,
     builtin_signature: ?[]const FlintType = null,
 };
@@ -42,7 +42,7 @@ pub const SymbolTable = struct {
         self.symbols.deinit();
     }
 
-    pub fn define(self: *SymbolTable, name: []const u8, sym_type: FlintType, is_const: bool, line: u32, col: u32, decl_node: ?*AstNode, builtin_signature: ?[]const FlintType) bool {
+    pub fn define(self: *SymbolTable, name: []const u8, sym_type: FlintType, is_const: bool, line: u32, col: u32, decl_node: ?u32, builtin_signature: ?[]const FlintType) bool {
         if (self.symbols.contains(name)) {
             return false;
         }

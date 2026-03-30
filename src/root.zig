@@ -5,6 +5,8 @@ pub const IoHelper = @import("./core/helpers/structs/structs.zig").IoHelpers;
 const Lexer = @import("./core/lexer/lexer.zig").Lexer;
 const Parser = @import("./core/parser/parser.zig").Parser;
 const TypeChecker = @import("./core/analyzer/type_checker.zig").TypeChecker;
+const NodeIndex = @import("./core/parser/ast.zig").NodeIndex;
+const AstTree = @import("./core/parser/ast.zig").AstTree;
 const CEmitter = @import("./core/codegen/c_emitter.zig").CEmitter;
 const AstNode = @import("./core/parser/ast.zig").AstNode;
 const Token = @import("./core/lexer/structs/token.zig").Token;
@@ -20,10 +22,10 @@ const PipelineResult = struct {
     source: []const u8,
     tokens: []const Token,
     parser: Parser,
-    ast: *AstNode,
+    root_idx: NodeIndex,
 };
 
-fn runCompilerPipeline(alloc: std.mem.Allocator, file_path: []const u8, io: IoHelper) !PipelineResult {
+fn runCompilerPipeline(alloc: std.mem.Allocator, tree: *AstTree, file_path: []const u8, io: IoHelper) !PipelineResult {
     const source = try std.fs.cwd().readFileAlloc(alloc, file_path, 1024 * 1024);
     errdefer alloc.free(source);
 
@@ -38,29 +40,40 @@ fn runCompilerPipeline(alloc: std.mem.Allocator, file_path: []const u8, io: IoHe
         .source = source,
     };
     const tokens = try lex.tokenize();
-    var parser = Parser.init(alloc, tokens, source, file_path, io);
-    const ast = try parser.parse();
 
-    var t_checker = try TypeChecker.init(alloc, file_path, source, io);
-    try t_checker.check(ast);
-    if (t_checker.had_error) return error.SemanticCheckFailed;
+    var parser = Parser.init(alloc, tree, tokens, source, file_path, io);
+    const root_idx = try parser.parse();
 
-    return PipelineResult{ .source = source, .tokens = tokens, .parser = parser, .ast = ast };
+    var t_checker = try TypeChecker.init(alloc, tree, file_path, source, io);
+    try t_checker.check(root_idx);
+
+    if (t_checker.had_error) {
+        return error.SemanticCheckFailed;
+    }
+
+    return PipelineResult{
+        .source = source,
+        .tokens = tokens,
+        .parser = parser,
+        .root_idx = root_idx,
+    };
 }
 
 const Linker = struct {
     allocator: std.mem.Allocator,
+    tree: *AstTree, // O Linker opera na árvore global
     visited: std.StringHashMap(void),
-    statements: std.ArrayList(*AstNode),
+    statements: std.ArrayList(NodeIndex),
     results: std.ArrayList(*PipelineResult),
     io: IoHelper,
     has_error: bool = false,
 
-    pub fn init(alloc: std.mem.Allocator, io: IoHelper) Linker {
+    pub fn init(alloc: std.mem.Allocator, tree: *AstTree, io: IoHelper) Linker {
         return .{
             .allocator = alloc,
+            .tree = tree,
             .visited = std.StringHashMap(void).init(alloc),
-            .statements = std.ArrayList(*AstNode).empty,
+            .statements = std.ArrayList(NodeIndex).empty,
             .results = std.ArrayList(*PipelineResult).empty,
             .io = io,
         };
@@ -73,7 +86,6 @@ const Linker = struct {
         for (self.results.items) |res_ptr| {
             self.allocator.free(res_ptr.source);
             self.allocator.free(res_ptr.tokens);
-            res_ptr.parser.deinit();
             self.allocator.destroy(res_ptr);
         }
         self.results.deinit(self.allocator);
@@ -92,7 +104,7 @@ const Linker = struct {
         try self.visited.put(try self.allocator.dupe(u8, abs_path), {});
 
         const result_ptr = try self.allocator.create(PipelineResult);
-        result_ptr.* = runCompilerPipeline(self.allocator, file_path, self.io) catch {
+        result_ptr.* = runCompilerPipeline(self.allocator, self.tree, file_path, self.io) catch {
             self.has_error = true;
             return;
         };
@@ -104,13 +116,17 @@ const Linker = struct {
         }
 
         const base_dir = std.fs.path.dirname(file_path) orelse ".";
-        var local_stmts = std.ArrayList(*AstNode).empty;
+        var local_stmts = std.ArrayList(NodeIndex).empty;
         defer local_stmts.deinit(self.allocator);
         var local_aliases = std.StringHashMap([]const u8).init(self.allocator);
         defer local_aliases.deinit();
 
-        for (result_ptr.ast.program.statements) |stmt| {
-            if (stmt.* == .import_stmt) {
+        const program_node = self.tree.getNode(result_ptr.root_idx);
+
+        for (program_node.program.statements) |stmt_idx| {
+            const stmt = self.tree.getNode(stmt_idx);
+
+            if (stmt == .import_stmt) {
                 const import_raw = stmt.import_stmt.path;
                 const next_alias = stmt.import_stmt.alias;
                 const basename = std.fs.path.basename(import_raw);
@@ -140,73 +156,86 @@ const Linker = struct {
                 try self.linkFile(next_file, canon_name);
                 if (next_alias) |a| try local_aliases.put(a, canon_name);
             } else {
-                try local_stmts.append(self.allocator, stmt);
+                try local_stmts.append(self.allocator, stmt_idx);
             }
         }
 
-        for (local_stmts.items) |stmt| try self.resolveAliases(stmt, &local_aliases);
+        for (local_stmts.items) |stmt_idx| try self.resolveAliases(stmt_idx, &local_aliases);
         if (current_alias) |alias| try self.applyNamespaces(local_stmts.items, alias);
-        for (local_stmts.items) |stmt| try self.statements.append(self.allocator, stmt);
+
+        for (local_stmts.items) |stmt_idx| try self.statements.append(self.allocator, stmt_idx);
     }
 
-    fn applyNamespaces(self: *Linker, statements: []const *AstNode, alias: []const u8) !void {
+    fn applyNamespaces(self: *Linker, statements: []const NodeIndex, alias: []const u8) !void {
         var local_symbols = std.StringHashMap(void).init(self.allocator);
         defer local_symbols.deinit();
-        for (statements) |stmt| {
-            if (stmt.* == .function_decl and !stmt.function_decl.is_extern) try local_symbols.put(stmt.function_decl.name, {}) else if (stmt.* == .struct_decl) try local_symbols.put(stmt.struct_decl.name, {}) else if (stmt.* == .var_decl) try local_symbols.put(stmt.var_decl.name, {});
+        for (statements) |stmt_idx| {
+            const stmt = self.tree.getNode(stmt_idx);
+            if (stmt == .function_decl and !stmt.function_decl.is_extern) try local_symbols.put(stmt.function_decl.name, {}) else if (stmt == .struct_decl) try local_symbols.put(stmt.struct_decl.name, {}) else if (stmt == .var_decl) try local_symbols.put(stmt.var_decl.name, {});
         }
-        for (statements) |stmt| {
-            try self.walkAndPrefix(stmt, &local_symbols, alias);
-            if (stmt.* == .function_decl and !stmt.function_decl.is_extern) stmt.function_decl.name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ alias, stmt.function_decl.name }) else if (stmt.* == .struct_decl) stmt.struct_decl.name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ alias, stmt.struct_decl.name }) else if (stmt.* == .var_decl) stmt.var_decl.name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ alias, stmt.var_decl.name });
+        for (statements) |stmt_idx| {
+            try self.walkAndPrefix(stmt_idx, &local_symbols, alias);
+
+            var node_ptr = &self.tree.nodes.items[stmt_idx];
+            if (node_ptr.* == .function_decl and !node_ptr.function_decl.is_extern) {
+                node_ptr.function_decl.name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ alias, node_ptr.function_decl.name });
+            } else if (node_ptr.* == .struct_decl) {
+                node_ptr.struct_decl.name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ alias, node_ptr.struct_decl.name });
+            } else if (node_ptr.* == .var_decl) {
+                node_ptr.var_decl.name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ alias, node_ptr.var_decl.name });
+            }
         }
     }
 
-    fn resolveAliases(self: *Linker, node: *AstNode, aliases: *std.StringHashMap([]const u8)) anyerror!void {
-        switch (node.*) {
-            .function_decl => |*f| for (f.body) |s| try self.resolveAliases(s, aliases),
-            .if_stmt => |*i| {
+    fn resolveAliases(self: *Linker, idx: NodeIndex, aliases: *std.StringHashMap([]const u8)) anyerror!void {
+        const node = self.tree.getNode(idx);
+        switch (node) {
+            .function_decl => |f| for (f.body) |s| try self.resolveAliases(s, aliases),
+            .if_stmt => |i| {
                 try self.resolveAliases(i.condition, aliases);
                 for (i.then_branch) |s| try self.resolveAliases(s, aliases);
                 if (i.else_branch) |eb| for (eb) |s| try self.resolveAliases(s, aliases);
             },
-            .for_stmt => |*f| {
+            .for_stmt => |f| {
                 try self.resolveAliases(f.iterable, aliases);
                 for (f.body) |s| try self.resolveAliases(s, aliases);
             },
-            .var_decl => |*v| try self.resolveAliases(v.value, aliases),
-            .binary_expr => |*b| {
+            .var_decl => |v| try self.resolveAliases(v.value, aliases),
+            .binary_expr => |b| {
                 try self.resolveAliases(b.left, aliases);
                 try self.resolveAliases(b.right, aliases);
             },
-            .unary_expr => |*u| try self.resolveAliases(u.right, aliases),
-            .pipeline_expr => |*p| {
+            .unary_expr => |u| try self.resolveAliases(u.right, aliases),
+            .pipeline_expr => |p| {
                 try self.resolveAliases(p.left, aliases);
                 try self.resolveAliases(p.right_call, aliases);
             },
-            .call_expr => |*c| {
+            .call_expr => |c| {
                 try self.resolveAliases(c.callee, aliases);
                 for (c.arguments) |a| try self.resolveAliases(a, aliases);
             },
-            .catch_expr => |*c| {
+            .catch_expr => |c| {
                 try self.resolveAliases(c.expression, aliases);
                 for (c.body) |s| try self.resolveAliases(s, aliases);
             },
-            .array_expr => |*a| for (a.elements) |e| try self.resolveAliases(e, aliases),
-            .dict_expr => |*d| for (d.entries) |e| {
+            .array_expr => |a| for (a.elements) |e| try self.resolveAliases(e, aliases),
+            .dict_expr => |d| for (d.entries) |e| {
                 try self.resolveAliases(e.key, aliases);
                 try self.resolveAliases(e.value, aliases);
             },
-            .index_expr => |*i| {
+            .index_expr => |i| {
                 try self.resolveAliases(i.left, aliases);
                 try self.resolveAliases(i.index, aliases);
             },
-            .return_stmt => |*r| if (r.value) |v| try self.resolveAliases(v, aliases),
-            .property_access_expr => |*p| {
+            .return_stmt => |r| if (r.value) |v| try self.resolveAliases(v, aliases),
+            .property_access_expr => |p| {
                 try self.resolveAliases(p.object, aliases);
-                if (p.object.* == .identifier) {
-                    if (aliases.get(p.object.identifier.name)) |canon| {
+                const obj_node = self.tree.getNode(p.object);
+                if (obj_node == .identifier) {
+                    if (aliases.get(obj_node.identifier.name)) |canon| {
                         const new_name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ canon, p.property_name });
-                        node.* = .{ .identifier = .{ ._type = .{ ._type = .identifier_token, .value = new_name, .line = 0, .column = 0 }, .name = new_name } };
+                        const node_ptr = &self.tree.nodes.items[idx];
+                        node_ptr.* = .{ .identifier = .{ ._type = .{ ._type = .identifier_token, .value = new_name, .line = 0, .column = 0 }, .name = new_name } };
                     }
                 }
             },
@@ -214,50 +243,55 @@ const Linker = struct {
         }
     }
 
-    fn walkAndPrefix(self: *Linker, node: *AstNode, locals: *std.StringHashMap(void), alias: []const u8) anyerror!void {
-        switch (node.*) {
-            .function_decl => |*f| for (f.body) |s| try self.walkAndPrefix(s, locals, alias),
-            .if_stmt => |*i| {
+    fn walkAndPrefix(self: *Linker, idx: NodeIndex, locals: *std.StringHashMap(void), alias: []const u8) anyerror!void {
+        const node = self.tree.getNode(idx);
+        switch (node) {
+            .function_decl => |f| for (f.body) |s| try self.walkAndPrefix(s, locals, alias),
+            .if_stmt => |i| {
                 try self.walkAndPrefix(i.condition, locals, alias);
                 for (i.then_branch) |s| try self.walkAndPrefix(s, locals, alias);
                 if (i.else_branch) |eb| for (eb) |s| try self.walkAndPrefix(s, locals, alias);
             },
-            .for_stmt => |*f| {
+            .for_stmt => |f| {
                 try self.walkAndPrefix(f.iterable, locals, alias);
                 for (f.body) |s| try self.walkAndPrefix(s, locals, alias);
             },
-            .var_decl => |*v| try self.walkAndPrefix(v.value, locals, alias),
-            .binary_expr => |*b| {
+            .var_decl => |v| try self.walkAndPrefix(v.value, locals, alias),
+            .binary_expr => |b| {
                 try self.walkAndPrefix(b.left, locals, alias);
                 try self.walkAndPrefix(b.right, locals, alias);
             },
-            .unary_expr => |*u| try self.walkAndPrefix(u.right, locals, alias),
-            .pipeline_expr => |*p| {
+            .unary_expr => |u| try self.walkAndPrefix(u.right, locals, alias),
+            .pipeline_expr => |p| {
                 try self.walkAndPrefix(p.left, locals, alias);
                 try self.walkAndPrefix(p.right_call, locals, alias);
             },
-            .call_expr => |*c| {
-                if (c.callee.* == .identifier) {
-                    const name = c.callee.identifier.name;
-                    if (locals.contains(name)) c.callee.identifier.name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ alias, name });
+            .call_expr => |c| {
+                const callee_node = self.tree.getNode(c.callee);
+                if (callee_node == .identifier) {
+                    const name = callee_node.identifier.name;
+                    if (locals.contains(name)) {
+                        var node_ptr = &self.tree.nodes.items[c.callee];
+                        node_ptr.identifier.name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ alias, name });
+                    }
                 } else try self.walkAndPrefix(c.callee, locals, alias);
                 for (c.arguments) |arg| try self.walkAndPrefix(arg, locals, alias);
             },
-            .catch_expr => |*c| {
+            .catch_expr => |c| {
                 try self.walkAndPrefix(c.expression, locals, alias);
                 for (c.body) |s| try self.walkAndPrefix(s, locals, alias);
             },
-            .array_expr => |*a| for (a.elements) |e| try self.walkAndPrefix(e, locals, alias),
-            .dict_expr => |*d| for (d.entries) |e| {
+            .array_expr => |a| for (a.elements) |e| try self.walkAndPrefix(e, locals, alias),
+            .dict_expr => |d| for (d.entries) |e| {
                 try self.walkAndPrefix(e.key, locals, alias);
                 try self.walkAndPrefix(e.value, locals, alias);
             },
-            .index_expr => |*i| {
+            .index_expr => |i| {
                 try self.walkAndPrefix(i.left, locals, alias);
                 try self.walkAndPrefix(i.index, locals, alias);
             },
-            .return_stmt => |*r| if (r.value) |v| try self.walkAndPrefix(v, locals, alias),
-            .property_access_expr => |*p| try self.walkAndPrefix(p.object, locals, alias),
+            .return_stmt => |r| if (r.value) |v| try self.walkAndPrefix(v, locals, alias),
+            .property_access_expr => |p| try self.walkAndPrefix(p.object, locals, alias),
             else => {},
         }
     }
@@ -323,9 +357,12 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper) !void {
 
     if (checker.strEquals(cmd, "parse")) {
         const file_path = try getFlFile(&args, io);
-        var result = runCompilerPipeline(alloc, file_path, io) catch return;
+
+        var global_tree = AstTree.init();
+        defer global_tree.deinit(alloc);
+
+        const result = runCompilerPipeline(alloc, &global_tree, file_path, io) catch return;
         defer alloc.free(result.source);
-        defer result.parser.deinit();
         defer alloc.free(result.tokens);
         try io.stdout.print("Parser finished. AST generated successfully.\n", .{});
         return;
@@ -353,20 +390,25 @@ fn getFlFile(args: *std.process.ArgIterator, io: anytype) ![]const u8 {
 }
 
 fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: []const u8, io: anytype, is_run: bool) !void {
-    var linker = Linker.init(alloc, io);
+    var global_tree = AstTree.init();
+    defer global_tree.deinit(alloc);
+
+    var linker = Linker.init(alloc, &global_tree, io);
     defer linker.deinit();
+
     linker.linkFile(file_path, null) catch {};
     if (linker.has_error) return;
 
-    var merged_ast = AstNode{ .program = .{ .statements = linker.statements.items } };
-    var emitter = CEmitter.init(alloc, file_path);
+    const merged_root_idx = try global_tree.addNode(alloc, .{ .program = .{ .statements = linker.statements.items } });
+
+    var emitter = CEmitter.init(alloc, &global_tree, file_path);
     const out_c = try std.fmt.allocPrint(alloc, ".flint_temp_{x}.c", .{std.hash.Wyhash.hash(0, file_path)});
     defer alloc.free(out_c);
 
     var out_file = try std.fs.cwd().createFile(out_c, .{});
     var buffer: [4096]u8 = undefined;
     var out_writer = out_file.writer(&buffer);
-    try emitter.generate(&out_writer.interface, &merged_ast);
+    try emitter.generate(&out_writer.interface, merged_root_idx);
     _ = out_writer.interface.flush() catch {};
     out_file.close();
 
@@ -551,9 +593,7 @@ const ClangCompiler = struct {
 
         try args.append(alloc, "-lcurl");
 
-        return args.toOwnedSlice(
-            alloc,
-        );
+        return args.toOwnedSlice(alloc);
     }
 };
 
@@ -582,9 +622,7 @@ const GccCompiler = struct {
         try args.append(alloc, "-Wno-unused-value");
         try args.append(alloc, "-lcurl");
 
-        return args.toOwnedSlice(
-            alloc,
-        );
+        return args.toOwnedSlice(alloc);
     }
 };
 
@@ -608,9 +646,7 @@ const TccCompiler = struct {
 
         try args.append(alloc, "-lcurl");
 
-        return args.toOwnedSlice(
-            alloc,
-        );
+        return args.toOwnedSlice(alloc);
     }
 };
 

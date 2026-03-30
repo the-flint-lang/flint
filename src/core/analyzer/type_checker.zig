@@ -1,5 +1,8 @@
 const std = @import("std");
-const AstNode = @import("../parser/ast.zig").AstNode;
+const ast = @import("../parser/ast.zig");
+const AstNode = ast.AstNode;
+const AstTree = ast.AstTree;
+const NodeIndex = ast.NodeIndex;
 const Token = @import("../lexer/structs/token.zig").Token;
 const sym = @import("./symbol_table.zig");
 const SymbolTable = sym.SymbolTable;
@@ -10,6 +13,7 @@ const DiagnosticLabel = @import("../errors/diagnostics.zig").DiagnosticLabel;
 
 pub const TypeChecker = struct {
     allocator: std.mem.Allocator,
+    tree: *const AstTree,
     global_scope: *SymbolTable,
     current_scope: *SymbolTable,
 
@@ -21,7 +25,7 @@ pub const TypeChecker = struct {
     source: []const u8,
     had_error: bool = false,
 
-    pub fn init(allocator: std.mem.Allocator, file_path: []const u8, source: []const u8, io: IoHelpers) !TypeChecker {
+    pub fn init(allocator: std.mem.Allocator, tree: *const AstTree, file_path: []const u8, source: []const u8, io: IoHelpers) !TypeChecker {
         const global = try allocator.create(SymbolTable);
         global.* = SymbolTable.init(allocator, null);
 
@@ -41,7 +45,7 @@ pub const TypeChecker = struct {
         _ = global.define("ensure", .t_val, true, 0, 0, null, &[_]FlintType{ .t_val, .t_bool, .t_string });
         _ = global.define("lines", .t_arr, true, 0, 0, null, &[_]FlintType{.t_any});
         _ = global.define("grep", .t_arr, true, 0, 0, null, &[_]FlintType{ .t_any, .t_string });
-        _ = global.define("build_str", .t_string, true, 0, 0, null, null); // Variádico (tamanho flexível)
+        _ = global.define("build_str", .t_string, true, 0, 0, null, null); // Variádico
         _ = global.define("chars", .t_arr, true, 0, 0, null, &[_]FlintType{.t_string});
         _ = global.define("strings_split", .t_arr, true, 0, 0, null, &[_]FlintType{ .t_string, .t_string });
 
@@ -96,6 +100,7 @@ pub const TypeChecker = struct {
 
         return .{
             .allocator = allocator,
+            .tree = tree,
             .global_scope = global,
             .current_scope = global,
             .current_function_return_type = null,
@@ -107,42 +112,45 @@ pub const TypeChecker = struct {
         };
     }
 
-    pub fn check(self: *TypeChecker, program: *AstNode) !void {
-        if (program.* != .program) return;
+    pub fn check(self: *TypeChecker, root_idx: NodeIndex) !void {
+        const program_node = self.tree.getNode(root_idx);
+        if (program_node != .program) return;
 
-        for (program.program.statements) |stmt| {
-            _ = try self.checkNode(stmt);
+        for (program_node.program.statements) |stmt_idx| {
+            _ = try self.checkNodeIndex(stmt_idx);
         }
     }
 
-    fn checkNode(self: *TypeChecker, node: *AstNode) anyerror!FlintType {
-        return switch (node.*) {
-            .var_decl => try self.checkVarDecl(node),
-            .identifier => try self.checkIdentifier(node),
+    fn checkNodeIndex(self: *TypeChecker, index: NodeIndex) anyerror!FlintType {
+        const node = self.tree.getNode(index);
+        return switch (node) {
+            .var_decl => try self.checkVarDecl(index, node),
+            .identifier => try self.checkIdentifier(index, node),
             .literal => try self.checkLiteral(node),
-            .binary_expr => try self.checkBinaryExpr(node),
-            .unary_expr => try self.checkUnaryExpr(node),
+            .binary_expr => try self.checkBinaryExpr(index, node),
+            .unary_expr => try self.checkUnaryExpr(index, node),
             .if_stmt => try self.checkIfStmt(node),
             .for_stmt => try self.checkForStmt(node),
-            .call_expr => try self.checkCallExpr(node),
-            .pipeline_expr => try self.checkPipelineExpr(node),
-            .function_decl => try self.checkFunctionDecl(node),
+            .call_expr => try self.checkCallExpr(index, node),
+            .pipeline_expr => try self.checkPipelineExpr(index, node),
+            .function_decl => try self.checkFunctionDecl(index, node),
             .return_stmt => try self.checkReturnStmt(node),
-            .property_access_expr => try self.checkPropertyAccessExpr(node),
+            .property_access_expr => try self.checkPropertyAccessExpr(index, node),
             .import_stmt => try self.checkImportStmt(node),
-            .array_expr => try self.checkArrayExpr(node),
-            .dict_expr => try self.checkDictExpr(node),
-            .index_expr => try self.checkIndexExpr(node),
-            .catch_expr => try self.checkCatchExpr(node),
-            .struct_decl => try self.checkStructDecl(node),
+            .array_expr => try self.checkArrayExpr(index, node),
+            .dict_expr => try self.checkDictExpr(index, node),
+            .index_expr => try self.checkIndexExpr(index, node),
+            .catch_expr => try self.checkCatchExpr(index, node),
+            .struct_decl => try self.checkStructDecl(index, node),
             else => .t_unknown,
         };
     }
 
-    fn checkStructDecl(self: *TypeChecker, node: *AstNode) !FlintType {
+    fn checkStructDecl(self: *TypeChecker, index: NodeIndex, node: AstNode) !FlintType {
         const decl = node.struct_decl;
 
-        const success = self.global_scope.define(decl.name, .t_any, true, 0, 0, node, null);
+        // O SymbolTable agora armazena o índice do nó (NodeIndex) no lugar de *AstNode
+        const success = self.global_scope.define(decl.name, .t_any, true, 0, 0, index, null);
 
         if (!success) {
             try self.reportErrorContext(0, 0, @intCast(decl.name.len), "A struct or function with this name already exists.");
@@ -181,19 +189,19 @@ pub const TypeChecker = struct {
         }
     }
 
-    fn checkBlock(self: *TypeChecker, statements: []const *AstNode) !void {
+    fn checkBlock(self: *TypeChecker, statements: []const NodeIndex) !void {
         try self.beginScope();
         defer self.endScope();
 
-        for (statements) |stmt| {
-            _ = try self.checkNode(stmt);
+        for (statements) |stmt_idx| {
+            _ = try self.checkNodeIndex(stmt_idx);
         }
     }
 
     // semantic rules
-    fn checkVarDecl(self: *TypeChecker, node: *AstNode) !FlintType {
+    fn checkVarDecl(self: *TypeChecker, _: NodeIndex, node: AstNode) !FlintType {
         const decl = node.var_decl;
-        const expr_type = try self.checkNode(decl.value);
+        const expr_type = try self.checkNodeIndex(decl.value);
 
         if (expr_type == .t_void) {
             self.had_error = true;
@@ -296,15 +304,23 @@ pub const TypeChecker = struct {
             if (self.current_scope.symbols.getPtr(decl.name)) |sym_ptr| {
                 sym_ptr.struct_name = s_name;
             }
-        } else if (decl.value.* == .call_expr) {
-            const call = decl.value.call_expr;
-            if (call.callee.* == .identifier and std.mem.eql(u8, call.callee.identifier.name, "parse_json_as")) {
-                if (call.arguments.len > 0 and call.arguments[0].* == .identifier) {
-                    const inferred_struct = call.arguments[0].identifier.name;
+        } else {
+            const val_node = self.tree.getNode(decl.value);
+            if (val_node == .call_expr) {
+                const call = val_node.call_expr;
+                const callee_node = self.tree.getNode(call.callee);
 
-                    if (self.global_scope.lookup(inferred_struct) != null) {
-                        if (self.current_scope.symbols.getPtr(decl.name)) |sym_ptr| {
-                            sym_ptr.struct_name = inferred_struct;
+                if (callee_node == .identifier and std.mem.eql(u8, callee_node.identifier.name, "parse_json_as")) {
+                    if (call.arguments.len > 0) {
+                        const arg_node = self.tree.getNode(call.arguments[0]);
+                        if (arg_node == .identifier) {
+                            const inferred_struct = arg_node.identifier.name;
+
+                            if (self.global_scope.lookup(inferred_struct) != null) {
+                                if (self.current_scope.symbols.getPtr(decl.name)) |sym_ptr| {
+                                    sym_ptr.struct_name = inferred_struct;
+                                }
+                            }
                         }
                     }
                 }
@@ -314,7 +330,7 @@ pub const TypeChecker = struct {
         return .t_void;
     }
 
-    fn checkIdentifier(self: *TypeChecker, node: *AstNode) !FlintType {
+    fn checkIdentifier(self: *TypeChecker, _: NodeIndex, node: AstNode) !FlintType {
         const name = node.identifier.name;
         const token = node.identifier._type;
 
@@ -336,9 +352,8 @@ pub const TypeChecker = struct {
         return .t_error;
     }
 
-    fn checkLiteral(self: *TypeChecker, node: *AstNode) !FlintType {
+    fn checkLiteral(self: *TypeChecker, node: AstNode) !FlintType {
         _ = self;
-
         const token = node.literal.token;
         return switch (token._type) {
             .integer_literal_token => .t_int,
@@ -348,18 +363,20 @@ pub const TypeChecker = struct {
         };
     }
 
-    fn checkBinaryExpr(self: *TypeChecker, node: *AstNode) !FlintType {
+    fn checkBinaryExpr(self: *TypeChecker, _: NodeIndex, node: AstNode) !FlintType {
         const op = node.binary_expr.operator;
 
         if (op._type == .assign_token) {
-            if (node.binary_expr.left.* == .identifier) {
-                const name = node.binary_expr.left.identifier.name;
+            const left_node = self.tree.getNode(node.binary_expr.left);
+
+            if (left_node == .identifier) {
+                const name = left_node.identifier.name;
 
                 if (std.mem.eql(u8, name, "_")) {
-                    return try self.checkNode(node.binary_expr.right);
+                    return try self.checkNodeIndex(node.binary_expr.right);
                 }
 
-                const right_type = try self.checkNode(node.binary_expr.right);
+                const right_type = try self.checkNodeIndex(node.binary_expr.right);
 
                 if (self.current_scope.lookup(name)) |symbol| {
                     if (symbol.is_const) {
@@ -389,22 +406,21 @@ pub const TypeChecker = struct {
                     }
                     return symbol.type;
                 } else {
-                    const id_node = node.binary_expr.left.identifier._type;
+                    const id_node = left_node.identifier._type;
                     try self.reportErrorContext(id_node.line, id_node.column, @intCast(name.len), "Assignment to undefined variable.");
                     return .t_error;
                 }
-            } else if (node.binary_expr.left.* == .index_expr or node.binary_expr.left.* == .property_access_expr) {
-                _ = try self.checkNode(node.binary_expr.left);
-
-                return try self.checkNode(node.binary_expr.right);
+            } else if (left_node == .index_expr or left_node == .property_access_expr) {
+                _ = try self.checkNodeIndex(node.binary_expr.left);
+                return try self.checkNodeIndex(node.binary_expr.right);
             } else {
                 try self.reportErrorContext(op.line, op.column, 1, "Invalid assignment target. You can only assign to variables, array indices, or properties.");
                 return .t_error;
             }
         }
 
-        const left_type = try self.checkNode(node.binary_expr.left);
-        const right_type = try self.checkNode(node.binary_expr.right);
+        const left_type = try self.checkNodeIndex(node.binary_expr.left);
+        const right_type = try self.checkNodeIndex(node.binary_expr.right);
 
         switch (op._type) {
             .plus_token, .minus_token, .star_token, .slash_token, .remainder_token => {
@@ -421,10 +437,9 @@ pub const TypeChecker = struct {
         }
     }
 
-    fn checkUnaryExpr(self: *TypeChecker, node: *AstNode) !FlintType {
+    fn checkUnaryExpr(self: *TypeChecker, _: NodeIndex, node: AstNode) !FlintType {
         const unary = node.unary_expr;
-
-        const right_type = try self.checkNode(unary.right);
+        const right_type = try self.checkNodeIndex(unary.right);
         const op = unary.operator;
 
         switch (op._type) {
@@ -446,10 +461,10 @@ pub const TypeChecker = struct {
         }
     }
 
-    fn checkIfStmt(self: *TypeChecker, node: *AstNode) !FlintType {
+    fn checkIfStmt(self: *TypeChecker, node: AstNode) !FlintType {
         const stmt = node.if_stmt;
 
-        const condition_type = try self.checkNode(stmt.condition);
+        const condition_type = try self.checkNodeIndex(stmt.condition);
         if (condition_type != .t_bool and condition_type != .t_any and condition_type != .t_val and condition_type != .t_unknown) {
             var line: u32 = 0;
             var col: u32 = 0;
@@ -467,10 +482,10 @@ pub const TypeChecker = struct {
         return .t_void;
     }
 
-    fn checkForStmt(self: *TypeChecker, node: *AstNode) !FlintType {
+    fn checkForStmt(self: *TypeChecker, node: AstNode) !FlintType {
         const stmt = node.for_stmt;
 
-        const iterable_type = try self.checkNode(stmt.iterable);
+        const iterable_type = try self.checkNodeIndex(stmt.iterable);
         if (iterable_type != .t_arr and iterable_type != .t_string and iterable_type != .t_any and iterable_type != .t_val and iterable_type != .t_unknown) {
             var line: u32 = 0;
             var col: u32 = 0;
@@ -484,25 +499,37 @@ pub const TypeChecker = struct {
 
         _ = self.current_scope.define(stmt.iterator_name, .t_any, true, 0, 0, null, null);
 
-        for (stmt.body) |body_stmt| {
-            _ = try self.checkNode(body_stmt);
+        for (stmt.body) |body_stmt_idx| {
+            _ = try self.checkNodeIndex(body_stmt_idx);
         }
 
         return .t_void;
     }
 
-    fn checkCallExpr(self: *TypeChecker, node: *AstNode) !FlintType {
+    fn checkCallExpr(self: *TypeChecker, _: NodeIndex, node: AstNode) !FlintType {
         const call = node.call_expr;
-        const callee_type = try self.checkNode(call.callee);
+        const callee_type = try self.checkNodeIndex(call.callee);
 
         const injected_arg = self.pipe_injected_type;
         self.pipe_injected_type = null;
 
-        if (call.callee.* == .identifier) {
-            const func_name = call.callee.identifier.name;
+        const callee_node = self.tree.getNode(call.callee);
+
+        if (callee_node == .identifier) {
+            const func_name = callee_node.identifier.name;
 
             if (self.current_scope.lookup(func_name)) |symbol| {
-                const is_user_func = symbol.node != null and symbol.node.?.* == .function_decl;
+                var is_user_func = false;
+                var func_decl: AstNode = undefined;
+
+                if (symbol.node) |sym_node_idx| {
+                    const n = self.tree.getNode(sym_node_idx);
+                    if (n == .function_decl) {
+                        is_user_func = true;
+                        func_decl = n;
+                    }
+                }
+
                 const is_builtin = (symbol.node == null and symbol.line == 0) or symbol.builtin_signature != null;
 
                 if (is_user_func or is_builtin) {
@@ -511,7 +538,7 @@ pub const TypeChecker = struct {
                     var has_signature = false;
 
                     if (is_user_func) {
-                        expected_len = symbol.node.?.function_decl.arguments.len;
+                        expected_len = func_decl.function_decl.arguments.len;
                         has_signature = true;
                     } else if (is_builtin and symbol.builtin_signature != null) {
                         expected_len = symbol.builtin_signature.?.len;
@@ -548,7 +575,8 @@ pub const TypeChecker = struct {
                         if (has_signature) {
                             var expected_arg_type: FlintType = .t_any;
                             if (is_user_func) {
-                                expected_arg_type = self.tokenToFlintType(symbol.node.?.function_decl.arguments[0].identifier._type);
+                                const a_node = self.tree.getNode(func_decl.function_decl.arguments[0]);
+                                expected_arg_type = self.tokenToFlintType(a_node.identifier._type);
                             } else {
                                 expected_arg_type = symbol.builtin_signature.?[0];
                             }
@@ -576,13 +604,14 @@ pub const TypeChecker = struct {
                         arg_idx += 1;
                     }
 
-                    for (provided_args) |arg_node| {
-                        const provided_arg_type = try self.checkNode(arg_node);
+                    for (provided_args) |provided_arg_idx| {
+                        const provided_arg_type = try self.checkNodeIndex(provided_arg_idx);
 
                         if (has_signature) {
                             var expected_arg_type: FlintType = .t_any;
                             if (is_user_func) {
-                                expected_arg_type = self.tokenToFlintType(symbol.node.?.function_decl.arguments[arg_idx].identifier._type);
+                                const a_node = self.tree.getNode(func_decl.function_decl.arguments[arg_idx]);
+                                expected_arg_type = self.tokenToFlintType(a_node.identifier._type);
                             } else {
                                 expected_arg_type = symbol.builtin_signature.?[arg_idx];
                             }
@@ -592,7 +621,7 @@ pub const TypeChecker = struct {
                                 var err_line: u32 = 0;
                                 var err_col: u32 = 0;
                                 var err_len: u32 = 1;
-                                self.extractCoords(arg_node, &err_line, &err_col, &err_len);
+                                self.extractCoords(provided_arg_idx, &err_line, &err_col, &err_len);
 
                                 var diag = DiagnosticBuilder.init(self.allocator, "SEMANTIC ERROR", "E0308", "Mismatched argument type", self.source, self.file_path);
                                 defer diag.deinit();
@@ -632,18 +661,20 @@ pub const TypeChecker = struct {
             }
         }
 
-        for (call.arguments) |arg| {
-            _ = try self.checkNode(arg);
+        for (call.arguments) |arg_idx| {
+            _ = try self.checkNodeIndex(arg_idx);
         }
 
         return callee_type;
     }
 
-    fn checkPipelineExpr(self: *TypeChecker, node: *AstNode) !FlintType {
+    fn checkPipelineExpr(self: *TypeChecker, _: NodeIndex, node: AstNode) !FlintType {
         const pipe = node.pipeline_expr;
-        const left_type = try self.checkNode(pipe.left);
+        const left_type = try self.checkNodeIndex(pipe.left);
 
-        if (pipe.right_call.* != .call_expr) {
+        const right_node = self.tree.getNode(pipe.right_call);
+
+        if (right_node != .call_expr) {
             self.had_error = true;
             var line: u32 = 0;
             var col: u32 = 0;
@@ -660,18 +691,18 @@ pub const TypeChecker = struct {
         const prev_injected = self.pipe_injected_type;
         self.pipe_injected_type = left_type;
 
-        const right_type = try self.checkNode(pipe.right_call);
+        const right_type = try self.checkNodeIndex(pipe.right_call);
 
         self.pipe_injected_type = prev_injected;
 
         return right_type;
     }
 
-    fn checkFunctionDecl(self: *TypeChecker, node: *AstNode) !FlintType {
+    fn checkFunctionDecl(self: *TypeChecker, index: NodeIndex, node: AstNode) !FlintType {
         const decl = node.function_decl;
         const return_type = self.tokenToFlintType(decl.return_type);
 
-        _ = self.current_scope.define(decl.name, return_type, true, decl.return_type.line, 0, node, null);
+        _ = self.current_scope.define(decl.name, return_type, true, decl.return_type.line, 0, index, null);
 
         if (decl.is_extern) return .t_void;
 
@@ -682,19 +713,21 @@ pub const TypeChecker = struct {
         try self.beginScope();
         defer self.endScope();
 
-        for (decl.arguments) |arg| {
-            const arg_name = arg.identifier.name;
-            const arg_type = self.tokenToFlintType(arg.identifier._type);
-            _ = self.current_scope.define(arg_name, arg_type, true, arg.identifier._type.line, 0, null, null);
+        for (decl.arguments) |arg_idx| {
+            const arg_node = self.tree.getNode(arg_idx);
+            const arg_name = arg_node.identifier.name;
+            const arg_type = self.tokenToFlintType(arg_node.identifier._type);
+            _ = self.current_scope.define(arg_name, arg_type, true, arg_node.identifier._type.line, 0, null, null);
         }
 
-        for (decl.body) |stmt| {
-            _ = try self.checkNode(stmt);
+        for (decl.body) |stmt_idx| {
+            _ = try self.checkNodeIndex(stmt_idx);
         }
 
         return .t_void;
     }
-    fn checkReturnStmt(self: *TypeChecker, node: *AstNode) !FlintType {
+
+    fn checkReturnStmt(self: *TypeChecker, node: AstNode) !FlintType {
         const stmt = node.return_stmt;
         var actual_return_type: FlintType = .t_void;
 
@@ -702,21 +735,21 @@ pub const TypeChecker = struct {
         var err_col: u32 = 0;
         var err_len: u32 = 6;
 
-        if (stmt.value) |val| {
-            actual_return_type = try self.checkNode(val);
-            self.extractCoords(val, &err_line, &err_col, &err_len);
+        if (stmt.value) |val_idx| {
+            actual_return_type = try self.checkNodeIndex(val_idx);
+            self.extractCoords(val_idx, &err_line, &err_col, &err_len);
         }
 
         if (self.current_function_return_type) |expected_type| {
             if (expected_type != actual_return_type and expected_type != .t_any and actual_return_type != .t_any and actual_return_type != .t_error) {
-                self.had_error = true; // <--- TRAVA O COMPILADOR
+                self.had_error = true;
                 var diag = DiagnosticBuilder.init(self.allocator, "SEMANTIC ERROR", "E0308", "Mismatched return type", self.source, self.file_path);
                 defer diag.deinit();
                 const expected_str = self.flintTypeToStr(expected_type);
                 const found_str = self.flintTypeToStr(actual_return_type);
                 const lbl_msg = try std.fmt.allocPrint(self.allocator, "expected `{s}`, found `{s}`", .{ expected_str, found_str });
 
-                try diag.addLabel(err_line, err_col, err_len, lbl_msg, true); // <--- Alinhado!
+                try diag.addLabel(err_line, err_col, err_len, lbl_msg, true);
                 try diag.emit(self.io);
                 self.allocator.free(lbl_msg);
                 return .t_error;
@@ -740,20 +773,23 @@ pub const TypeChecker = struct {
         return .t_void;
     }
 
-    fn checkPropertyAccessExpr(self: *TypeChecker, node: *AstNode) !FlintType {
+    fn checkPropertyAccessExpr(self: *TypeChecker, _: NodeIndex, node: AstNode) !FlintType {
         const prop_access = node.property_access_expr;
 
         const prev_had_error = self.had_error;
-        const obj_type = self.checkNode(prop_access.object) catch .t_unknown;
+        const obj_type = self.checkNodeIndex(prop_access.object) catch .t_unknown;
 
-        if (prop_access.object.* == .identifier) {
-            const obj_name = prop_access.object.identifier.name;
+        const obj_node = self.tree.getNode(prop_access.object);
+
+        if (obj_node == .identifier) {
+            const obj_name = obj_node.identifier.name;
 
             if (self.current_scope.lookup(obj_name)) |symbol| {
                 if (symbol.struct_name) |s_name| {
                     if (self.global_scope.lookup(s_name)) |struct_sym| {
-                        if (struct_sym.node) |s_node| {
-                            if (s_node.* == .struct_decl) {
+                        if (struct_sym.node) |s_node_idx| {
+                            const s_node = self.tree.getNode(s_node_idx);
+                            if (s_node == .struct_decl) {
                                 for (s_node.struct_decl.fields) |field| {
                                     if (std.mem.eql(u8, field.name, prop_access.property_name)) {
                                         return self.tokenToFlintType(field._type);
@@ -788,11 +824,6 @@ pub const TypeChecker = struct {
 
             if (self.global_scope.lookup(namespaced_func_name)) |mod_func_sym| {
                 self.had_error = prev_had_error;
-                node.* = .{ .identifier = .{
-                    ._type = Token{ ._type = .identifier_token, .value = try self.allocator.dupe(u8, namespaced_func_name), .line = prop_access.line, .column = 0 },
-                    .name = try self.allocator.dupe(u8, namespaced_func_name),
-                } };
-
                 return mod_func_sym.type;
             } else {
                 if (std.mem.eql(u8, obj_name, "os") or std.mem.eql(u8, obj_name, "io") or std.mem.eql(u8, obj_name, "http") or std.mem.eql(u8, obj_name, "strings") or std.mem.eql(u8, obj_name, "json") or std.mem.eql(u8, obj_name, "utils")) {
@@ -821,7 +852,6 @@ pub const TypeChecker = struct {
         }
 
         if (obj_type == .t_error or obj_type == .t_unknown) return .t_error;
-
         if (obj_type == .t_any) return .t_any;
 
         var err_line: u32 = 0;
@@ -847,18 +877,18 @@ pub const TypeChecker = struct {
     }
 
     // imports and data structures
-    fn checkImportStmt(self: *TypeChecker, node: *AstNode) !FlintType {
+    fn checkImportStmt(self: *TypeChecker, node: AstNode) !FlintType {
         const stmt = node.import_stmt;
         const module_name = stmt.alias orelse stmt.path;
         _ = self.current_scope.define(module_name, .t_any, true, 0, 0, null, null);
         return .t_void;
     }
 
-    fn checkArrayExpr(self: *TypeChecker, node: *AstNode) !FlintType {
+    fn checkArrayExpr(self: *TypeChecker, _: NodeIndex, node: AstNode) !FlintType {
         const arr = node.array_expr;
         if (arr.elements.len == 0) return .t_arr;
 
-        const first_type = try self.checkNode(arr.elements[0]);
+        const first_type = try self.checkNodeIndex(arr.elements[0]);
         var array_has_error = false;
 
         var first_line: u32 = 0;
@@ -866,8 +896,8 @@ pub const TypeChecker = struct {
         var first_len: u32 = 1;
         self.extractCoords(arr.elements[0], &first_line, &first_col, &first_len);
 
-        for (arr.elements[1..]) |elem| {
-            const elem_type = try self.checkNode(elem);
+        for (arr.elements[1..]) |elem_idx| {
+            const elem_type = try self.checkNodeIndex(elem_idx);
 
             if (elem_type != first_type and first_type != .t_any and elem_type != .t_any and elem_type != .t_error) {
                 self.had_error = true;
@@ -876,7 +906,7 @@ pub const TypeChecker = struct {
                 var err_line: u32 = 0;
                 var err_col: u32 = 0;
                 var err_len: u32 = 1;
-                self.extractCoords(elem, &err_line, &err_col, &err_len);
+                self.extractCoords(elem_idx, &err_line, &err_col, &err_len);
 
                 var diag = DiagnosticBuilder.init(self.allocator, "SEMANTIC ERROR", "E0308", "Mismatched types in array", self.source, self.file_path);
 
@@ -903,11 +933,11 @@ pub const TypeChecker = struct {
         return .t_arr;
     }
 
-    fn checkDictExpr(self: *TypeChecker, node: *AstNode) !FlintType {
+    fn checkDictExpr(self: *TypeChecker, _: NodeIndex, node: AstNode) !FlintType {
         const dict = node.dict_expr;
 
         for (dict.entries) |entry| {
-            const key_type = try self.checkNode(entry.key);
+            const key_type = try self.checkNodeIndex(entry.key);
 
             if (key_type != .t_string and key_type != .t_any and key_type != .t_error) {
                 self.had_error = true;
@@ -930,18 +960,18 @@ pub const TypeChecker = struct {
                 return .t_error;
             }
 
-            _ = try self.checkNode(entry.value);
+            _ = try self.checkNodeIndex(entry.value);
         }
 
         return .t_val;
     }
 
     // indexing and error handling
-    fn checkIndexExpr(self: *TypeChecker, node: *AstNode) !FlintType {
+    fn checkIndexExpr(self: *TypeChecker, _: NodeIndex, node: AstNode) !FlintType {
         const idx = node.index_expr;
 
-        const left_type = try self.checkNode(idx.left);
-        _ = try self.checkNode(idx.index);
+        const left_type = try self.checkNodeIndex(idx.left);
+        _ = try self.checkNodeIndex(idx.index);
 
         if (left_type != .t_arr and left_type != .t_val and left_type != .t_any and left_type != .t_error) {
             self.had_error = true;
@@ -967,9 +997,9 @@ pub const TypeChecker = struct {
         return .t_any;
     }
 
-    fn checkCatchExpr(self: *TypeChecker, node: *AstNode) !FlintType {
+    fn checkCatchExpr(self: *TypeChecker, _: NodeIndex, node: AstNode) !FlintType {
         const catch_stmt = node.catch_expr;
-        const expr_type = try self.checkNode(catch_stmt.expression);
+        const expr_type = try self.checkNodeIndex(catch_stmt.expression);
 
         if (expr_type == .t_error) return .t_error;
 
@@ -978,8 +1008,8 @@ pub const TypeChecker = struct {
 
         _ = self.current_scope.define(catch_stmt.error_identifier, .t_string, true, 0, 0, null, null);
 
-        for (catch_stmt.body) |stmt| {
-            _ = try self.checkNode(stmt);
+        for (catch_stmt.body) |stmt_idx| {
+            _ = try self.checkNodeIndex(stmt_idx);
         }
 
         return expr_type;
@@ -1001,50 +1031,65 @@ pub const TypeChecker = struct {
         };
     }
 
-    fn extractCoords(self: *TypeChecker, node: *AstNode, line: *u32, col: *u32, len: *u32) void {
-        if (node.* == .literal) {
-            line.* = node.literal.token.line;
-            col.* = node.literal.token.column;
+    fn extractCoords(self: *TypeChecker, index: NodeIndex, line: *u32, col: *u32, len: *u32) void {
+        const node = self.tree.getNode(index);
 
-            var actual_len: u32 = @intCast(node.literal.token.value.len);
-            const t_type = node.literal.token._type;
+        switch (node) {
+            .literal => {
+                line.* = node.literal.token.line;
+                col.* = node.literal.token.column;
 
-            if (t_type == .string_literal_token or t_type == .char_literal_token) {
-                actual_len += 2;
-            } else if (t_type == .multile_string_literal_token) {
-                actual_len += 2;
-            }
-            len.* = actual_len;
-        } else if (node.* == .identifier) {
-            line.* = node.identifier._type.line;
-            col.* = node.identifier._type.column;
-            len.* = @intCast(node.identifier.name.len);
-        } else if (node.* == .binary_expr) {
-            line.* = node.binary_expr.operator.line;
-            col.* = node.binary_expr.operator.column;
-            len.* = @intCast(node.binary_expr.operator.value.len);
-        } else if (node.* == .unary_expr) {
-            line.* = node.unary_expr.operator.line;
-            col.* = node.unary_expr.operator.column;
-            len.* = @intCast(node.unary_expr.operator.value.len);
-        } else if (node.* == .property_access_expr) {
-            line.* = node.property_access_expr.line;
-            col.* = 0;
-            len.* = @intCast(node.property_access_expr.property_name.len);
-        } else if (node.* == .call_expr) {
-            self.extractCoords(node.call_expr.callee, line, col, len);
-        } else if (node.* == .pipeline_expr) {
-            self.extractCoords(node.pipeline_expr.right_call, line, col, len);
-        } else if (node.* == .array_expr or node.* == .dict_expr) {
-            len.* = 1;
-        } else if (node.* == .import_stmt) {
-            len.* = 6;
-        } else if (node.* == .index_expr) {
-            self.extractCoords(node.index_expr.left, line, col, len);
-        } else if (node.* == .catch_expr) {
-            self.extractCoords(node.catch_expr.expression, line, col, len);
-        } else {
-            len.* = 1;
+                var actual_len: u32 = @intCast(node.literal.token.value.len);
+                const t_type = node.literal.token._type;
+
+                if (t_type == .string_literal_token or t_type == .char_literal_token) {
+                    actual_len += 2;
+                } else if (t_type == .multile_string_literal_token) {
+                    actual_len += 2;
+                }
+                len.* = actual_len;
+            },
+            .identifier => {
+                line.* = node.identifier._type.line;
+                col.* = node.identifier._type.column;
+                len.* = @intCast(node.identifier.name.len);
+            },
+            .binary_expr => {
+                line.* = node.binary_expr.operator.line;
+                col.* = node.binary_expr.operator.column;
+                len.* = @intCast(node.binary_expr.operator.value.len);
+            },
+            .unary_expr => {
+                line.* = node.unary_expr.operator.line;
+                col.* = node.unary_expr.operator.column;
+                len.* = @intCast(node.unary_expr.operator.value.len);
+            },
+            .property_access_expr => {
+                line.* = node.property_access_expr.line;
+                col.* = 0;
+                len.* = @intCast(node.property_access_expr.property_name.len);
+            },
+            .call_expr => {
+                self.extractCoords(node.call_expr.callee, line, col, len);
+            },
+            .pipeline_expr => {
+                self.extractCoords(node.pipeline_expr.right_call, line, col, len);
+            },
+            .array_expr, .dict_expr => {
+                len.* = 1;
+            },
+            .import_stmt => {
+                len.* = 6;
+            },
+            .index_expr => {
+                self.extractCoords(node.index_expr.left, line, col, len);
+            },
+            .catch_expr => {
+                self.extractCoords(node.catch_expr.expression, line, col, len);
+            },
+            else => {
+                len.* = 1;
+            },
         }
     }
 

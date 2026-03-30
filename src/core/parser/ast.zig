@@ -1,45 +1,19 @@
 const std = @import("std");
-
 const Token = @import("../lexer/structs/token.zig").Token;
 
-pub const NodeType = enum {
-    program,
+pub const NodeIndex = u32;
 
-    function_decl,
-    var_decl,
-    struct_decl,
-    import_stmt,
-    return_stmt,
-    if_stmt,
-
-    call_expr,
-    binary_expr,
-    unary_expr,
-
-    index_expr,
-    property_access_expr,
-    array_expr,
-    dict_expr,
-
-    pipeline_expr,
-    for_stmt,
-    catch_expr,
-
-    identifier,
-    literal,
-};
-
-pub const AstNode = union(NodeType) {
+pub const AstNode = union(enum) {
     program: struct {
-        statements: []const *AstNode,
+        statements: []const NodeIndex,
     },
 
     function_decl: struct {
         is_extern: bool,
         name: []const u8,
         return_type: Token,
-        arguments: []const *AstNode,
-        body: []const *AstNode,
+        arguments: []const NodeIndex,
+        body: []const NodeIndex,
     },
 
     var_decl: struct {
@@ -47,12 +21,12 @@ pub const AstNode = union(NodeType) {
         _type: ?Token,
         is_const: bool,
         name: []const u8,
-        value: *AstNode,
+        value: NodeIndex,
     },
 
     struct_decl: struct {
         name: []const u8,
-        fields: []const *StructField,
+        fields: []const StructField,
     },
 
     import_stmt: struct {
@@ -61,60 +35,60 @@ pub const AstNode = union(NodeType) {
     },
 
     return_stmt: struct {
-        value: ?*AstNode,
+        value: ?NodeIndex,
     },
 
     if_stmt: struct {
-        condition: *AstNode,
-        then_branch: []const *AstNode,
-        else_branch: ?[]const *AstNode,
+        condition: NodeIndex,
+        then_branch: []const NodeIndex,
+        else_branch: ?[]const NodeIndex,
     },
 
     call_expr: struct {
         line: u32,
-        callee: *AstNode,
-        arguments: []const *AstNode,
+        callee: NodeIndex,
+        arguments: []const NodeIndex,
     },
 
     binary_expr: struct {
-        left: *AstNode,
+        left: NodeIndex,
         operator: Token,
-        right: *AstNode,
+        right: NodeIndex,
     },
 
     unary_expr: struct {
         operator: Token,
-        right: *AstNode,
+        right: NodeIndex,
     },
 
     index_expr: struct {
-        left: *AstNode,
-        index: *AstNode,
+        left: NodeIndex,
+        index: NodeIndex,
     },
 
     property_access_expr: struct {
         line: u32,
-        object: *AstNode,
+        object: NodeIndex,
         property_name: []const u8,
     },
 
     array_expr: struct {
-        elements: []const *AstNode,
+        elements: []const NodeIndex,
     },
 
     dict_expr: struct {
-        entries: []const *DictEntry,
+        entries: []const DictEntry,
     },
 
     pipeline_expr: struct {
-        left: *AstNode,
-        right_call: *AstNode,
+        left: NodeIndex,
+        right_call: NodeIndex,
     },
 
     for_stmt: struct {
         iterator_name: []const u8,
-        iterable: *AstNode,
-        body: []const *AstNode,
+        iterable: NodeIndex,
+        body: []const NodeIndex,
     },
 
     catch_expr: CatchExpr,
@@ -130,17 +104,41 @@ pub const AstNode = union(NodeType) {
 };
 
 pub const DictEntry = struct {
-    key: *AstNode,
-    value: *AstNode,
+    key: NodeIndex,
+    value: NodeIndex,
 };
 
 pub const CatchExpr = struct {
-    expression: *AstNode,
+    expression: NodeIndex,
     error_identifier: []const u8,
-    body: []*AstNode,
+    body: []const NodeIndex,
 };
 
 pub const StructField = struct {
     name: []const u8,
     _type: Token,
+};
+
+pub const AstTree = struct {
+    nodes: std.ArrayList(AstNode),
+
+    pub fn init() AstTree {
+        return .{
+            .nodes = std.ArrayList(AstNode).empty,
+        };
+    }
+
+    pub fn deinit(self: *AstTree, allocator: std.mem.Allocator) void {
+        self.nodes.deinit(allocator);
+    }
+
+    pub fn addNode(self: *AstTree, allocator: std.mem.Allocator, node: AstNode) !NodeIndex {
+        const index = @as(NodeIndex, @intCast(self.nodes.items.len));
+        try self.nodes.append(allocator, node);
+        return index;
+    }
+
+    pub fn getNode(self: AstTree, index: NodeIndex) AstNode {
+        return self.nodes.items[index];
+    }
 };
