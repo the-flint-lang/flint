@@ -1,5 +1,9 @@
 const std = @import("std");
 
+const tcc = @cImport({
+    @cInclude("libtcc.h");
+});
+
 const checker = @import("./core/helpers/utils/checkers.zig");
 pub const IoHelper = @import("./core/helpers/structs/structs.zig").IoHelpers;
 const Lexer = @import("./core/lexer/lexer.zig").Lexer;
@@ -27,7 +31,6 @@ const PipelineResult = struct {
 
 fn runCompilerPipeline(alloc: std.mem.Allocator, tree: *AstTree, file_path: []const u8, io: IoHelper) !PipelineResult {
     if (!std.mem.endsWith(u8, file_path, ".fl")) {
-        try io.stderr.print("Error: The file '{s}' is not a valid Flint source file (.fl).\n", .{file_path});
         return error.InvalidFileType;
     }
 
@@ -408,11 +411,6 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
 
     const merged_root_idx = try global_tree.addNode(alloc, .{ .program = .{ .statements = linker.statements.items } });
 
-    if (!is_run) {
-        try io.stdout.print("\x1b[38;5;208m[FLINT]\x1b[0m Transpiling and compiling native binary...\n", .{});
-        _ = try io.stdout.flush();
-    }
-
     const exe_name = std.fs.path.stem(file_path);
     const system_rt_o = "/usr/share/flint/flint_rt.o";
     const system_rt_h = "/usr/share/flint/flint_rt.h";
@@ -440,15 +438,94 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
         }
     }
 
+    if (is_run) {
+        var c_code_buffer = std.ArrayList(u8).empty;
+        defer c_code_buffer.deinit(alloc);
+
+        var emitter = CEmitter.init(alloc, &global_tree, file_path);
+        try emitter.generate(c_code_buffer.writer(alloc), merged_root_idx);
+        try c_code_buffer.append(alloc, 0);
+
+        const tcc_state = tcc.tcc_new();
+        if (tcc_state == null) {
+            try io.stderr.print("Fatal: Failed to initialize libtcc.\n", .{});
+            return;
+        }
+        defer tcc.tcc_delete(tcc_state);
+
+        _ = tcc.tcc_set_output_type(tcc_state, tcc.TCC_OUTPUT_MEMORY);
+
+        _ = tcc.tcc_add_include_path(tcc_state, ".");
+        if (precompiled) {
+            _ = tcc.tcc_add_include_path(tcc_state, "/usr/share/flint");
+        }
+
+        _ = tcc.tcc_add_library_path(tcc_state, "/usr/lib/x86_64-linux-gnu");
+        _ = tcc.tcc_add_library_path(tcc_state, "/usr/lib");
+        _ = tcc.tcc_add_library_path(tcc_state, "/usr/local/lib");
+
+        if (tcc.tcc_add_library(tcc_state, "curl") == -1) {
+            try io.stderr.print("JIT Warning: Could not explicitly link libcurl. HTTP module might fail.\n", .{});
+        }
+
+        const rt_path_z = try alloc.dupeZ(u8, rt_path);
+        defer alloc.free(rt_path_z);
+        if (tcc.tcc_add_file(tcc_state, rt_path_z) == -1) {
+            try io.stderr.print("Fatal: Could not load flint runtime object.\n", .{});
+            return;
+        }
+
+        if (tcc.tcc_compile_string(tcc_state, c_code_buffer.items.ptr) == -1) {
+            try io.stderr.print("JIT Compilation Failed.\n", .{});
+            return;
+        }
+
+        if (tcc.tcc_relocate(tcc_state, tcc.TCC_RELOCATE_AUTO) < 0) {
+            try io.stderr.print("JIT Relocation Failed.\n", .{});
+            return;
+        }
+
+        const main_sym = tcc.tcc_get_symbol(tcc_state, "main");
+        if (main_sym == null) {
+            try io.stderr.print("JIT Error: main() not found.\n", .{});
+            return;
+        }
+
+        const MainFn = *const fn (c_int, [*c][*c]u8) callconv(.c) c_int;
+        const main_func: MainFn = @ptrCast(main_sym);
+
+        var run_args = std.ArrayList([*c]u8).empty;
+        defer run_args.deinit(alloc);
+
+        const exe_name_z = try alloc.dupeZ(u8, exe_name);
+        defer alloc.free(exe_name_z);
+        try run_args.append(alloc, exe_name_z);
+
+        while (args.next()) |a| {
+            try run_args.append(alloc, try alloc.dupeZ(u8, a));
+        }
+        try run_args.append(alloc, null);
+
+        const ret = main_func(@intCast(run_args.items.len - 1), run_args.items.ptr);
+
+        if (ret != 0) {
+            std.process.exit(@intCast(ret));
+        }
+        return;
+    }
+
+    try io.stdout.print("\x1b[38;5;208m[FLINT]\x1b[0m Transpiling and compiling native binary...\n", .{});
+    _ = try io.stdout.flush();
+
     const system_rt_pch = "/usr/share/flint/flint_rt.h.pch";
     const has_pch = blk: {
         std.fs.cwd().access(system_rt_pch, .{}) catch break :blk false;
         break :blk true;
     };
 
-    const compiler = getBestCCompiler(alloc, is_run);
+    const compiler = getBestCCompiler(alloc, false);
 
-    const c_args = try compiler.getArgsExtended(alloc, exe_name, rt_path, precompiled, is_run, has_pch);
+    const c_args = try compiler.getArgsExtended(alloc, exe_name, rt_path, precompiled, false, has_pch);
     defer alloc.free(c_args);
 
     var child = std.process.Child.init(c_args, alloc);
@@ -457,13 +534,9 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
     try child.spawn();
     {
         var buf: [4096]u8 = undefined;
-
         var writer = child.stdin.?.writer(&buf);
-
         var emitter = CEmitter.init(alloc, &global_tree, file_path);
-
         try emitter.generate(&writer.interface, merged_root_idx);
-
         try writer.interface.flush();
     }
 
@@ -473,23 +546,8 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
     const term = try child.wait();
     if (term != .Exited or term.Exited != 0) return;
 
-    if (is_run) {
-        const run_path = try std.fmt.allocPrint(alloc, "./{s}", .{exe_name});
-        defer {
-            alloc.free(run_path);
-            std.fs.cwd().deleteFile(exe_name) catch {};
-        }
-        var run_args = std.ArrayList([]const u8).empty;
-        defer run_args.deinit(alloc);
-
-        try run_args.append(alloc, run_path);
-        while (args.next()) |a| try run_args.append(alloc, a);
-        var child_run = std.process.Child.init(run_args.items, alloc);
-        _ = try child_run.spawnAndWait();
-    } else {
-        try io.stdout.print("\x1b[1;32m[SUCCESS]\x1b[0m Executable '{s}' generated.\n", .{exe_name});
-        _ = io.stdout.flush() catch {};
-    }
+    try io.stdout.print("\x1b[1;32m[SUCCESS]\x1b[0m Executable '{s}' generated.\n", .{exe_name});
+    _ = io.stdout.flush() catch {};
 }
 
 const TestResult = struct {
@@ -578,9 +636,7 @@ const ClangCompiler = struct {
         var args = std.ArrayList([]const u8).empty;
 
         try args.append(alloc, "clang");
-
         try args.append(alloc, rt);
-
         try args.append(alloc, "-x");
         try args.append(alloc, "c");
         try args.append(alloc, "-");
@@ -618,9 +674,7 @@ const GccCompiler = struct {
         var args = std.ArrayList([]const u8).empty;
 
         try args.append(alloc, "gcc");
-
         try args.append(alloc, rt);
-
         try args.append(alloc, "-x");
         try args.append(alloc, "c");
         try args.append(alloc, "-");
@@ -652,9 +706,7 @@ const TccCompiler = struct {
         var args = std.ArrayList([]const u8).empty;
 
         try args.append(alloc, "tcc");
-
         try args.append(alloc, if (pre) "/usr/share/flint/flint_rt.c" else "flint_rt.c");
-
         try args.append(alloc, "-x");
         try args.append(alloc, "c");
         try args.append(alloc, "-");

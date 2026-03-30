@@ -27,6 +27,9 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
+    exe.linkLibC();
+    exe.linkSystemLibrary("tcc");
+
     exe.root_module.strip = true;
     exe.link_gc_sections = true;
     exe.want_lto = true;
