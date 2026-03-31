@@ -12,6 +12,7 @@ extern fn flint_to_int(v: val) int;
 extern fn flint_str_eql(a: string, b: string) bool; 
 extern fn flint_starts_with(s: string, p: string) bool;
 extern fn flint_ends_with(s: string, p: string) bool;
+extern fn flint_repeat(s: string, c: int) string ;
 
 # public API 
 fn split(text: string, delim: string) arr {
@@ -52,4 +53,8 @@ fn ends_with(s: string, p: string) bool {
 
 fn starts_with(s: string, p: string) bool {
     return flint_starts_with(s, p);
+}
+
+fn repeat(s: string, x: int) string {
+    return flint_repeat(s, x);
 }

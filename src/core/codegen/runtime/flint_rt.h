@@ -334,6 +334,7 @@ static inline long long flint_to_int_func(FlintValue v)
 
 bool flint_starts_with(flint_str s, flint_str p);
 bool flint_ends_with(flint_str s, flint_str p);
+flint_str flint_repeat(flint_str s, long long x);
 
 /* =========================
    UTIL

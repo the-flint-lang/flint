@@ -1133,6 +1133,25 @@ bool flint_ends_with(flint_str s, flint_str p)
     return memcmp(s.ptr + (s.len - p.len), p.ptr, p.len) == 0;
 }
 
+flint_str flint_repeat(flint_str s, long long x)
+{
+    if (x <= 0 || s.len == 0)
+    {
+        return FLINT_STR("");
+    }
+
+    size_t total_len = (size_t)x * s.len;
+
+    char *buf = flint_alloc_raw(total_len + 1);
+    for (size_t i = 0; i < (size_t)x; i++)
+    {
+        memcpy(buf + i * s.len, s.ptr, s.len);
+    }
+    buf[total_len] = '\0';
+
+    return (flint_str){.ptr = buf, .len = total_len};
+}
+
 /* =========================
    UTIL E HASHMAP
    ========================= */

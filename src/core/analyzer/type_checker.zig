@@ -99,6 +99,7 @@ pub const TypeChecker = struct {
         try defineBuiltin(global, allocator, pool, "strings_grep", .t_arr, &[_]FlintType{ .t_any, .t_string });
         try defineBuiltin(global, allocator, pool, "strings_starts_with", .t_bool, &[_]FlintType{ .t_string, .t_string });
         try defineBuiltin(global, allocator, pool, "strings_ends_with", .t_bool, &[_]FlintType{ .t_string, .t_string });
+        try defineBuiltin(global, allocator, pool, "strings_repeat", .t_string, &[_]FlintType{ .t_string, .t_int });
 
         // json and utils module
         try defineBuiltin(global, allocator, pool, "json_parse", .t_val, &[_]FlintType{.t_string});
