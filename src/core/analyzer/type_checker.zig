@@ -72,15 +72,16 @@ pub const TypeChecker = struct {
         try defineBuiltin(global, allocator, pool, "os_spawn", .t_val, &[_]FlintType{ .t_string, .t_bool });
         try defineBuiltin(global, allocator, pool, "os_env", .t_string, &[_]FlintType{.t_string});
         try defineBuiltin(global, allocator, pool, "os_exit", .t_void, &[_]FlintType{.t_int});
-        try defineBuiltin(global, allocator, pool, "os_args", .t_arr, &[_]FlintType{});
+        try defineBuiltin(global, allocator, pool, "os_args", .t_arr, &[_]FlintType{.t_void});
         try defineBuiltin(global, allocator, pool, "os_assert", .t_val, &[_]FlintType{ .t_val, .t_string });
         try defineBuiltin(global, allocator, pool, "os_if_fail", .t_any, &[_]FlintType{ .t_val, .t_string });
-        try defineBuiltin(global, allocator, pool, "os_is_tty", .t_any, &[_]FlintType{});
+        try defineBuiltin(global, allocator, pool, "os_is_tty", .t_any, &[_]FlintType{.t_void});
 
         // io module
-        try defineBuiltin(global, allocator, pool, "io_read_line", .t_string, &[_]FlintType{.t_string});
         try defineBuiltin(global, allocator, pool, "io_read_file", .t_val, &[_]FlintType{.t_string});
         try defineBuiltin(global, allocator, pool, "io_write_file", .t_val, &[_]FlintType{ .t_string, .t_string });
+        try defineBuiltin(global, allocator, pool, "io_read_line", .t_string, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "io_clear", .t_void, &[_]FlintType{.t_void});
 
         // http module
         try defineBuiltin(global, allocator, pool, "http_fetch", .t_val, &[_]FlintType{.t_string});

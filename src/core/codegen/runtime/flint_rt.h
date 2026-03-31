@@ -266,11 +266,16 @@ FlintValue flint_file_size(flint_str path);
 FlintValue flint_mv(flint_str old_path, flint_str new_path);
 FlintValue flint_copy(flint_str src, flint_str dest);
 
+// terminal
+
+void flint_clear();
+
 /* =========================
    PROCESS
    ========================= */
 
-flint_str flint_exec(flint_str cmd);
+flint_str
+flint_exec(flint_str cmd);
 FlintValue flint_spawn(flint_str cmd, bool echo);
 
 /* =========================

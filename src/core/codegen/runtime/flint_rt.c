@@ -442,6 +442,12 @@ FlintValue flint_ls(flint_str path)
     return flint_make_str(FLINT_SLICE(final_buf, total_len));
 }
 
+// terminal
+void flint_clear()
+{
+    fprintf(stdout, "\033[H\033[2J");
+}
+
 /* =========================
    ENV & PROCESS
    ========================= */
