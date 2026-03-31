@@ -527,7 +527,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
         }
 
         const MainFn = *const fn (c_int, [*c][*c]u8) callconv(.c) c_int;
-        const main_func: MainFn = @ptrCast(main_sym);
+        const main_func: MainFn = @ptrCast(@alignCast(main_sym));
 
         var run_args = std.ArrayList([*c]u8).empty;
         defer run_args.deinit(alloc);
