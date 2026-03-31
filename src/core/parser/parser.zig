@@ -360,6 +360,9 @@ pub const Parser = struct {
 
                     try entries.append(self.allocator, .{ .key = key_idx, .value = val_idx });
 
+                    // this is to pass "a" , without next declaration in the dicts
+                    // if (self.match(&.{.comma_token}) and self.peek()._type == .rbrace_token) break;
+
                     if (!self.match(&.{.comma_token})) break;
                 }
             }

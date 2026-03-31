@@ -271,7 +271,7 @@ FlintValue flint_copy(flint_str src, flint_str dest);
    ========================= */
 
 flint_str flint_exec(flint_str cmd);
-FlintValue flint_spawn(flint_str cmd);
+FlintValue flint_spawn(flint_str cmd, bool echo);
 
 /* =========================
    ENV

@@ -14,7 +14,7 @@ extern fn flint_file_size(path: string) val;
 extern fn flint_mv(old_path: string, new_path: string) val;
 extern fn flint_copy(src: string, dest: string) val;
 extern fn flint_exec(cmd: string) string;
-extern fn flint_spawn(cmd: string) val;
+extern fn flint_spawn(cmd: string, echo: bool) val;
 extern fn flint_env(name: string) string;
 extern fn flint_exit(code: int) void;
 extern fn flint_args() arr;
@@ -69,8 +69,8 @@ fn exec(cmd: string) string {
     return flint_exec(cmd); 
 }
 
-fn spawn(cmd: string) val {
-    return flint_spawn(cmd); 
+fn spawn(cmd: string, echo: bool) val {
+    return flint_spawn(cmd, echo); 
 }
 
 fn env(name: string) string {

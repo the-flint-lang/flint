@@ -516,7 +516,7 @@ flint_str flint_exec(flint_str cmd)
     return FLINT_SLICE(final_arena_buf, total_read);
 }
 
-FlintValue flint_spawn(flint_str cmd)
+FlintValue flint_spawn(flint_str cmd, bool echo)
 {
     if (cmd.len == 0 || !cmd.ptr)
         return flint_make_error(FLINT_STR("Empty command"));
@@ -599,7 +599,10 @@ FlintValue flint_spawn(flint_str cmd)
                 ssize_t n = read(fds[i].fd, *buf + *len, 1024);
                 if (n > 0)
                 {
-                    write((i == 0) ? STDOUT_FILENO : STDERR_FILENO, *buf + *len, n);
+                    if (echo)
+                    {
+                        write((i == 0) ? STDOUT_FILENO : STDERR_FILENO, *buf + *len, n);
+                    }
 
                     *len += n;
                 }

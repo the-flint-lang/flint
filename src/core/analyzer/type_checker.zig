@@ -69,7 +69,7 @@ pub const TypeChecker = struct {
         try defineBuiltin(global, allocator, pool, "os_mv", .t_val, &[_]FlintType{ .t_string, .t_string });
         try defineBuiltin(global, allocator, pool, "os_copy", .t_val, &[_]FlintType{ .t_string, .t_string });
         try defineBuiltin(global, allocator, pool, "os_exec", .t_string, &[_]FlintType{.t_string});
-        try defineBuiltin(global, allocator, pool, "os_spawn", .t_val, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "os_spawn", .t_val, &[_]FlintType{ .t_string, .t_bool });
         try defineBuiltin(global, allocator, pool, "os_env", .t_string, &[_]FlintType{.t_string});
         try defineBuiltin(global, allocator, pool, "os_exit", .t_void, &[_]FlintType{.t_int});
         try defineBuiltin(global, allocator, pool, "os_args", .t_arr, &[_]FlintType{});
