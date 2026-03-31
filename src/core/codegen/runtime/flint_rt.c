@@ -539,6 +539,8 @@ FlintValue flint_spawn(flint_str cmd)
     posix_spawn_file_actions_addclose(&actions, out_pipe[1]);
     posix_spawn_file_actions_addclose(&actions, err_pipe[1]);
 
+    posix_spawn_file_actions_adddup2(&actions, STDIN_FILENO, STDIN_FILENO);
+
     char *argv[] = {"sh", "-c", c_cmd, NULL};
     pid_t pid;
 
@@ -597,6 +599,8 @@ FlintValue flint_spawn(flint_str cmd)
                 ssize_t n = read(fds[i].fd, *buf + *len, 1024);
                 if (n > 0)
                 {
+                    write((i == 0) ? STDOUT_FILENO : STDERR_FILENO, *buf + *len, n);
+
                     *len += n;
                 }
                 else
