@@ -234,9 +234,14 @@ void flint_printerr_bool(bool b)
    INPUT
    ========================= */
 
-flint_str flint_read_line()
+flint_str flint_read_line(flint_str s)
 {
     char buffer[1024];
+
+    if (s.len > 0)
+    {
+        fprintf(stdout, "%.*s", (int)s.len, s.ptr);
+    }
 
     // read to a temp buffer
     if (fgets(buffer, sizeof(buffer), stdin) != NULL)

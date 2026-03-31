@@ -78,7 +78,7 @@ pub const TypeChecker = struct {
         try defineBuiltin(global, allocator, pool, "os_is_tty", .t_any, &[_]FlintType{});
 
         // io module
-        try defineBuiltin(global, allocator, pool, "io_read_line", .t_any, &[_]FlintType{});
+        try defineBuiltin(global, allocator, pool, "io_read_line", .t_string, &[_]FlintType{.t_string});
         try defineBuiltin(global, allocator, pool, "io_read_file", .t_val, &[_]FlintType{.t_string});
         try defineBuiltin(global, allocator, pool, "io_write_file", .t_val, &[_]FlintType{ .t_string, .t_string });
 

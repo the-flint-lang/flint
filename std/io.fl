@@ -1,13 +1,13 @@
 # std/io.fl
 
-extern fn flint_read_line() string;
+extern fn flint_read_line(s: string) string;
 extern fn flint_read_file(path: string) val;
 extern fn flint_write_file(text: string, path: string) val;
 
 # public API
 
-fn read_line() string {
-    return flint_read_line();
+fn read_line(s: string) string {
+    return flint_read_line(s);
 }
 
 fn read_file(path: string) val {

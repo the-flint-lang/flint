@@ -284,7 +284,7 @@ flint_str_array flint_args();
    INPUT
    ========================= */
 
-flint_str flint_read_line();
+flint_str flint_read_line(flint_str s);
 
 /* =========================
    STREAMS
