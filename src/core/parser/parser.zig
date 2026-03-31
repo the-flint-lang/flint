@@ -448,8 +448,28 @@ pub const Parser = struct {
         });
     }
 
-    fn parseExpression(self: *Parser) anyerror!NodeIndex {
+    pub fn parseExpression(self: *Parser) !NodeIndex {
         return try self.parseAssignment();
+    }
+
+    fn parseLogicalOr(self: *Parser) !NodeIndex {
+        var left = try self.parseLogicalAnd();
+        while (self.match(&.{.or_token})) {
+            const op_token = self.previous();
+            const right = try self.parseLogicalAnd();
+            left = try self.tree.addNode(self.allocator, .{ .logical_or = .{ .left = left, .operator = op_token, .right = right } });
+        }
+        return left;
+    }
+
+    fn parseLogicalAnd(self: *Parser) !NodeIndex {
+        var left = try self.parseEquality();
+        while (self.match(&.{.and_token})) {
+            const op_token = self.previous();
+            const right = try self.parseEquality();
+            left = try self.tree.addNode(self.allocator, .{ .logical_and = .{ .left = left, .operator = op_token, .right = right } });
+        }
+        return left;
     }
 
     fn parseAssignment(self: *Parser) anyerror!NodeIndex {
@@ -497,10 +517,10 @@ pub const Parser = struct {
     }
 
     fn parsePipeline(self: *Parser) anyerror!NodeIndex {
-        var expr_idx = try self.parseEquality();
+        var expr_idx = try self.parseLogicalOr();
 
         while (self.match(&.{.pipeline_token})) {
-            const right_idx = try self.parseEquality();
+            const right_idx = try self.parseLogicalOr();
 
             const right_node = self.tree.getNode(right_idx);
 

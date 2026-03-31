@@ -152,6 +152,26 @@ pub const TypeChecker = struct {
             .index_expr => try self.checkIndexExpr(index, node),
             .catch_expr => try self.checkCatchExpr(index, node),
             .struct_decl => try self.checkStructDecl(index, node),
+
+            .logical_and, .logical_or => |bin| {
+                const left_type = try self.checkNodeIndex(bin.left);
+                const right_type = try self.checkNodeIndex(bin.right);
+
+                if (left_type != .t_bool or right_type != .t_bool) {
+                    self.had_error = true;
+
+                    var diag = DiagnosticBuilder.init(self.allocator, "SEMANTIC ERROR", "E0308", "Logical operators ('and', 'or') require boolean operands.", self.source, self.file_path);
+                    defer diag.deinit();
+
+                    try diag.addLabel(1, 1, 1, "both sides must evaluate to a boolean", true);
+                    try diag.emit(self.io);
+
+                    return .t_error;
+                }
+
+                return .t_bool;
+            },
+
             else => .t_unknown,
         };
     }

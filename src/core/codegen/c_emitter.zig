@@ -183,6 +183,18 @@ pub const CEmitter = struct {
             .struct_decl => try self.visitStructDecl(node, writer),
             .return_stmt => try self.visitReturnStmt(node, writer),
             .property_access_expr => try self.visitPropertyAccessExpr(node, writer),
+
+            .logical_and => |bin| {
+                try self.visitNodeIndex(bin.left, writer);
+                try writer.writeAll(" && ");
+                try self.visitNodeIndex(bin.right, writer);
+            },
+            .logical_or => |bin| {
+                try self.visitNodeIndex(bin.left, writer);
+                try writer.writeAll(" || ");
+                try self.visitNodeIndex(bin.right, writer);
+            },
+
             else => {
                 std.debug.print("Codegen not implemented for: {s}\n", .{@tagName(node)});
                 return error.NotImplemented;

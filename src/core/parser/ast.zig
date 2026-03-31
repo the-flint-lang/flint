@@ -90,6 +90,10 @@ pub const AstNode = union(enum) {
         right: NodeIndex,
     },
 
+    logical_and: LogicalExpr,
+
+    logical_or: LogicalExpr,
+
     unary_expr: struct {
         operator: Token,
         right: NodeIndex,
@@ -135,6 +139,12 @@ pub const AstNode = union(enum) {
     literal: struct {
         token: Token,
     },
+};
+
+pub const LogicalExpr = struct {
+    left: NodeIndex,
+    operator: Token,
+    right: NodeIndex,
 };
 
 pub const DictEntry = struct {
