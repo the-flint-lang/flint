@@ -40,9 +40,9 @@ pub const TypeChecker = struct {
         // global functions
         try defineBuiltin(global, allocator, pool, "print", .t_void, &[_]FlintType{.t_any});
         try defineBuiltin(global, allocator, pool, "printerr", .t_void, &[_]FlintType{.t_any});
-        try defineBuiltin(global, allocator, pool, "len", .t_int, &[_]FlintType{.t_any});
-        try defineBuiltin(global, allocator, pool, "push", .t_void, &[_]FlintType{ .t_arr, .t_any });
-        try defineBuiltin(global, allocator, pool, "range", .t_arr, &[_]FlintType{ .t_int, .t_int });
+        // try defineBuiltin(global, allocator, pool, "len", .t_int, &[_]FlintType{.t_any});
+        // try defineBuiltin(global, allocator, pool, "push", .t_void, &[_]FlintType{ .t_arr, .t_any });
+        try defineBuiltin(global, allocator, pool, "range", .t_int_arr, &[_]FlintType{ .t_int, .t_int });
         try defineBuiltin(global, allocator, pool, "if_fail", .t_any, &[_]FlintType{ .t_val, .t_string });
         try defineBuiltin(global, allocator, pool, "fallback", .t_any, &[_]FlintType{ .t_val, .t_any });
         try defineBuiltin(global, allocator, pool, "concat", .t_string, &[_]FlintType{ .t_string, .t_string });
@@ -51,11 +51,11 @@ pub const TypeChecker = struct {
         try defineBuiltin(global, allocator, pool, "parse_json_as", .t_val, &[_]FlintType{ .t_any, .t_string });
         try defineBuiltin(global, allocator, pool, "parse_json", .t_val, &[_]FlintType{.t_string});
         try defineBuiltin(global, allocator, pool, "ensure", .t_val, &[_]FlintType{ .t_val, .t_bool, .t_string });
-        try defineBuiltin(global, allocator, pool, "lines", .t_arr, &[_]FlintType{.t_any});
-        try defineBuiltin(global, allocator, pool, "grep", .t_arr, &[_]FlintType{ .t_any, .t_string });
+        try defineBuiltin(global, allocator, pool, "lines", .t_str_arr, &[_]FlintType{.t_any});
+        try defineBuiltin(global, allocator, pool, "grep", .t_str_arr, &[_]FlintType{ .t_any, .t_string });
         try defineBuiltin(global, allocator, pool, "build_str", .t_string, null);
-        try defineBuiltin(global, allocator, pool, "chars", .t_arr, &[_]FlintType{.t_string});
-        try defineBuiltin(global, allocator, pool, "strings_split", .t_arr, &[_]FlintType{ .t_string, .t_string });
+        try defineBuiltin(global, allocator, pool, "chars", .t_str_arr, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "strings_split", .t_str_arr, &[_]FlintType{ .t_string, .t_string });
 
         // os module
         try defineBuiltin(global, allocator, pool, "os_mkdir", .t_val, &[_]FlintType{.t_string});
@@ -72,12 +72,12 @@ pub const TypeChecker = struct {
         try defineBuiltin(global, allocator, pool, "os_spawn", .t_val, &[_]FlintType{ .t_string, .t_bool });
         try defineBuiltin(global, allocator, pool, "os_env", .t_string, &[_]FlintType{.t_string});
         try defineBuiltin(global, allocator, pool, "os_exit", .t_void, &[_]FlintType{.t_int});
-        try defineBuiltin(global, allocator, pool, "os_args", .t_arr, &[_]FlintType{.t_void});
+        try defineBuiltin(global, allocator, pool, "os_args", .t_str_arr, &[_]FlintType{.t_void});
         try defineBuiltin(global, allocator, pool, "os_assert", .t_val, &[_]FlintType{ .t_val, .t_string });
         try defineBuiltin(global, allocator, pool, "os_if_fail", .t_any, &[_]FlintType{ .t_val, .t_string });
         try defineBuiltin(global, allocator, pool, "os_is_tty", .t_any, &[_]FlintType{.t_void});
         try defineBuiltin(global, allocator, pool, "os_is_root", .t_bool, &[_]FlintType{.t_void});
-        try defineBuiltin(global, allocator, pool, "os_require_root", .t_val, &[_]FlintType{.t_arr});
+        try defineBuiltin(global, allocator, pool, "os_require_root", .t_val, &[_]FlintType{.t_str_arr});
         try defineBuiltin(global, allocator, pool, "os_command_exists", .t_bool, &[_]FlintType{.t_string});
 
         // io module
@@ -91,7 +91,7 @@ pub const TypeChecker = struct {
         try defineBuiltin(global, allocator, pool, "http_fetch", .t_val, &[_]FlintType{.t_string});
 
         // strings module
-        try defineBuiltin(global, allocator, pool, "strings_join", .t_string, &[_]FlintType{ .t_arr, .t_string });
+        try defineBuiltin(global, allocator, pool, "strings_join", .t_string, &[_]FlintType{ .t_str_arr, .t_string });
         try defineBuiltin(global, allocator, pool, "strings_trim", .t_string, &[_]FlintType{.t_string});
         try defineBuiltin(global, allocator, pool, "strings_count_matches", .t_int, &[_]FlintType{ .t_string, .t_string });
         try defineBuiltin(global, allocator, pool, "strings_replace", .t_string, &[_]FlintType{ .t_string, .t_string, .t_string });
@@ -100,8 +100,8 @@ pub const TypeChecker = struct {
         try defineBuiltin(global, allocator, pool, "strings_concat", .t_string, &[_]FlintType{ .t_string, .t_string });
         try defineBuiltin(global, allocator, pool, "strings_to_int", .t_int, &[_]FlintType{.t_any});
         try defineBuiltin(global, allocator, pool, "strings_str_eql", .t_bool, &[_]FlintType{ .t_string, .t_string });
-        try defineBuiltin(global, allocator, pool, "strings_lines", .t_arr, &[_]FlintType{.t_any});
-        try defineBuiltin(global, allocator, pool, "strings_grep", .t_arr, &[_]FlintType{ .t_any, .t_string });
+        try defineBuiltin(global, allocator, pool, "strings_lines", .t_str_arr, &[_]FlintType{.t_any});
+        try defineBuiltin(global, allocator, pool, "strings_grep", .t_str_arr, &[_]FlintType{ .t_any, .t_string });
         try defineBuiltin(global, allocator, pool, "strings_starts_with", .t_bool, &[_]FlintType{ .t_string, .t_string });
         try defineBuiltin(global, allocator, pool, "strings_ends_with", .t_bool, &[_]FlintType{ .t_string, .t_string });
         try defineBuiltin(global, allocator, pool, "strings_repeat", .t_string, &[_]FlintType{ .t_string, .t_int });
@@ -110,6 +110,11 @@ pub const TypeChecker = struct {
         try defineBuiltin(global, allocator, pool, "json_parse", .t_val, &[_]FlintType{.t_string});
         try defineBuiltin(global, allocator, pool, "utils_is_err", .t_bool, &[_]FlintType{.t_val});
         try defineBuiltin(global, allocator, pool, "utils_get_err", .t_string, &[_]FlintType{.t_val});
+
+        // empty constructors
+        try defineBuiltin(global, allocator, pool, "int_array", .t_int_arr, &[_]FlintType{});
+        try defineBuiltin(global, allocator, pool, "str_array", .t_str_arr, &[_]FlintType{});
+        try defineBuiltin(global, allocator, pool, "bool_array", .t_bool_arr, &[_]FlintType{});
 
         return .{
             .allocator = allocator,
@@ -522,9 +527,9 @@ pub const TypeChecker = struct {
 
     fn checkForStmt(self: *TypeChecker, node: AstNode) !FlintType {
         const stmt = node.for_stmt;
-
         const iterable_type = try self.checkNodeIndex(stmt.iterable);
-        if (iterable_type != .t_arr and iterable_type != .t_string and iterable_type != .t_any and iterable_type != .t_val and iterable_type != .t_unknown) {
+
+        if (iterable_type != .t_int_arr and iterable_type != .t_str_arr and iterable_type != .t_bool_arr and iterable_type != .t_string and iterable_type != .t_any and iterable_type != .t_val and iterable_type != .t_unknown) {
             var line: u32 = 0;
             var col: u32 = 0;
             var len: u32 = 1;
@@ -532,10 +537,29 @@ pub const TypeChecker = struct {
             try self.reportErrorContext(line, col, len, "The target of a 'for' loop must be iterable (array or string).");
         }
 
+        var iter_type: FlintType = .t_any;
+        const iterable_node = self.tree.getNode(stmt.iterable);
+
+        if (iterable_type == .t_string) {
+            iter_type = .t_string;
+        } else if (iterable_node == .array_expr and iterable_node.array_expr.elements.len > 0) {
+            iter_type = try self.checkNodeIndex(iterable_node.array_expr.elements[0]);
+        } else if (iterable_node == .call_expr) {
+            const callee_node = self.tree.getNode(iterable_node.call_expr.callee);
+            if (callee_node == .identifier) {
+                const func_name = self.pool.get(callee_node.identifier.name_id);
+                if (std.mem.eql(u8, func_name, "range")) {
+                    iter_type = .t_int;
+                } else if (std.mem.eql(u8, func_name, "lines") or std.mem.eql(u8, func_name, "grep") or std.mem.eql(u8, func_name, "chars") or std.mem.eql(u8, func_name, "strings_split")) {
+                    iter_type = .t_string;
+                }
+            }
+        }
+
         try self.beginScope();
         defer self.endScope();
 
-        _ = self.current_scope.define(stmt.iterator_name_id, .t_any, true, 0, 0, null, null);
+        _ = self.current_scope.define(stmt.iterator_name_id, iter_type, true, 0, 0, null, null);
 
         for (stmt.body) |body_stmt_idx| {
             _ = try self.checkNodeIndex(body_stmt_idx);
@@ -556,6 +580,111 @@ pub const TypeChecker = struct {
         if (callee_node == .identifier) {
             const func_name_id = callee_node.identifier.name_id;
             const func_name_str = self.pool.get(func_name_id);
+
+            if (std.mem.eql(u8, func_name_str, "push")) {
+                const total_args = call.arguments.len + (if (injected_arg != null) @as(usize, 1) else 0);
+
+                if (total_args != 2) {
+                    self.had_error = true;
+                    var err_line: u32 = call.line;
+                    var err_col: u32 = 0;
+                    var err_len: u32 = @intCast(func_name_str.len);
+                    self.extractCoords(call.callee, &err_line, &err_col, &err_len);
+
+                    var diag = DiagnosticBuilder.init(self.allocator, "SEMANTIC ERROR", "E0040", "Arity mismatch", self.source, self.file_path);
+                    defer diag.deinit();
+                    const msg = try std.fmt.allocPrint(self.allocator, "the 'push' function takes 2 arguments but {d} were supplied", .{total_args});
+                    try diag.addLabel(err_line, err_col, err_len, msg, true);
+                    try diag.emit(self.io);
+                    self.allocator.free(msg);
+                    return .t_error;
+                }
+
+                var arr_type: FlintType = undefined;
+                var val_type: FlintType = undefined;
+                var val_node_idx: NodeIndex = undefined;
+
+                if (injected_arg) |inj| {
+                    arr_type = inj;
+                    val_node_idx = call.arguments[0];
+                    val_type = try self.checkNodeIndex(val_node_idx);
+                } else {
+                    arr_type = try self.checkNodeIndex(call.arguments[0]);
+                    val_node_idx = call.arguments[1];
+                    val_type = try self.checkNodeIndex(val_node_idx);
+                }
+
+                var type_error: ?[]const u8 = null;
+                if (arr_type == .t_int_arr and val_type != .t_int and val_type != .t_any) {
+                    type_error = "Type mismatch. Cannot push a non-integer into an int_array.";
+                } else if (arr_type == .t_str_arr and val_type != .t_string and val_type != .t_any) {
+                    type_error = "Type mismatch. Cannot push a non-string into a str_array.";
+                } else if (arr_type == .t_bool_arr and val_type != .t_bool and val_type != .t_any) {
+                    type_error = "Type mismatch. Cannot push a non-boolean into a bool_array.";
+                } else if (arr_type != .t_int_arr and arr_type != .t_str_arr and arr_type != .t_bool_arr and arr_type != .t_any) {
+                    type_error = "First argument of 'push' must be an array.";
+                }
+
+                if (type_error) |err_msg| {
+                    self.had_error = true;
+                    var err_line: u32 = 0;
+                    var err_col: u32 = 0;
+                    var err_len: u32 = 1;
+                    self.extractCoords(val_node_idx, &err_line, &err_col, &err_len);
+
+                    var diag = DiagnosticBuilder.init(self.allocator, "SEMANTIC ERROR", "E0308", "Mismatched push type", self.source, self.file_path);
+                    defer diag.deinit();
+                    try diag.addLabel(err_line, err_col, err_len, err_msg, true);
+                    try diag.emit(self.io);
+                    return .t_error;
+                }
+                return .t_void;
+            }
+
+            if (std.mem.eql(u8, func_name_str, "len")) {
+                const total_args = call.arguments.len + (if (injected_arg != null) @as(usize, 1) else 0);
+
+                if (total_args != 1) {
+                    self.had_error = true;
+                    var err_line: u32 = call.line;
+                    var err_col: u32 = 0;
+                    var err_len: u32 = @intCast(func_name_str.len);
+                    self.extractCoords(call.callee, &err_line, &err_col, &err_len);
+
+                    var diag = DiagnosticBuilder.init(self.allocator, "SEMANTIC ERROR", "E0040", "Arity mismatch", self.source, self.file_path);
+                    defer diag.deinit();
+                    const msg = try std.fmt.allocPrint(self.allocator, "the 'len' function takes 1 argument but {d} were supplied", .{total_args});
+                    try diag.addLabel(err_line, err_col, err_len, msg, true);
+                    try diag.emit(self.io);
+                    self.allocator.free(msg);
+                    return .t_int;
+                }
+
+                var arg_type: FlintType = undefined;
+                var err_target_node: NodeIndex = call.callee;
+
+                if (injected_arg) |inj| {
+                    arg_type = inj;
+                } else {
+                    err_target_node = call.arguments[0];
+                    arg_type = try self.checkNodeIndex(err_target_node);
+                }
+
+                if (arg_type != .t_str_arr and arg_type != .t_int_arr and arg_type != .t_bool_arr and arg_type != .t_string and arg_type != .t_any) {
+                    self.had_error = true;
+                    var err_line: u32 = 0;
+                    var err_col: u32 = 0;
+                    var err_len: u32 = 1;
+                    self.extractCoords(err_target_node, &err_line, &err_col, &err_len);
+
+                    var diag = DiagnosticBuilder.init(self.allocator, "SEMANTIC ERROR", "E0308", "Invalid len target", self.source, self.file_path);
+                    defer diag.deinit();
+                    try diag.addLabel(err_line, err_col, err_len, "The 'len' function only accepts arrays or strings.", true);
+                    try diag.emit(self.io);
+                    return .t_error;
+                }
+                return .t_int;
+            }
 
             if (self.current_scope.lookup(func_name_id)) |symbol| {
                 var is_user_func = false;
@@ -930,7 +1059,8 @@ pub const TypeChecker = struct {
 
     fn checkArrayExpr(self: *TypeChecker, _: NodeIndex, node: AstNode) !FlintType {
         const arr = node.array_expr;
-        if (arr.elements.len == 0) return .t_arr;
+
+        if (arr.elements.len == 0) return .t_str_arr;
 
         const first_type = try self.checkNodeIndex(arr.elements[0]);
         var array_has_error = false;
@@ -974,7 +1104,12 @@ pub const TypeChecker = struct {
 
         if (array_has_error) return .t_error;
 
-        return .t_arr;
+        return switch (first_type) {
+            .t_int => .t_int_arr,
+            .t_string => .t_str_arr,
+            .t_bool => .t_bool_arr,
+            else => .t_str_arr,
+        };
     }
 
     fn checkDictExpr(self: *TypeChecker, _: NodeIndex, node: AstNode) !FlintType {
@@ -1017,7 +1152,7 @@ pub const TypeChecker = struct {
         const left_type = try self.checkNodeIndex(idx.left);
         _ = try self.checkNodeIndex(idx.index);
 
-        if (left_type != .t_arr and left_type != .t_val and left_type != .t_any and left_type != .t_error) {
+        if (left_type != .t_int_arr and left_type != .t_str_arr and left_type != .t_bool_arr and left_type != .t_val and left_type != .t_any and left_type != .t_error) {
             self.had_error = true;
             var err_line: u32 = 0;
             var err_col: u32 = 0;
@@ -1031,7 +1166,7 @@ pub const TypeChecker = struct {
             const msg = try std.fmt.allocPrint(self.allocator, "type `{s}` cannot be indexed", .{t_str});
 
             try diag.addLabel(err_line, err_col, err_len, msg, true);
-            diag.note("only arrays (`arr`) and dynamic objects (`val`) support bracket `[ ]` indexing");
+            diag.note("only arrays and dynamic objects (`val`) support bracket `[ ]` indexing");
             try diag.emit(self.io);
             self.allocator.free(msg);
 
@@ -1067,7 +1202,11 @@ pub const TypeChecker = struct {
             .t_string => "string",
             .t_bool => "bool",
             .t_val => "val",
-            .t_arr => "arr",
+
+            .t_int_arr => "int_array",
+            .t_str_arr => "str_array",
+            .t_bool_arr => "bool_array",
+
             .t_void => "void",
             .t_any => "any",
             .t_error => "error",
@@ -1144,7 +1283,7 @@ pub const TypeChecker = struct {
             .string_type_token, .char_type_token => .t_string,
             .boolean_type_token => .t_bool,
             .value_type_token => .t_val,
-            .array_type_token => .t_arr,
+            .array_type_token => .t_str_arr,
             else => .t_unknown,
         };
     }

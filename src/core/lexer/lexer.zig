@@ -150,23 +150,48 @@ pub const Lexer = struct {
 
             switch (c) {
                 '+' => {
-                    _type = .plus_token;
+                    if (self.match('=')) {
+                        _type = .plus_equal_token;
+                        self.advance();
+                    } else {
+                        _type = .plus_token;
+                    }
                 },
 
                 '-' => {
-                    _type = .minus_token;
+                    if (self.match('=')) {
+                        _type = .minus_equal_token;
+                        self.advance();
+                    } else {
+                        _type = .minus_token;
+                    }
                 },
 
                 '*' => {
-                    _type = .star_token;
+                    if (self.match('=')) {
+                        _type = .star_equal_token;
+                        self.advance();
+                    } else {
+                        _type = .star_token;
+                    }
                 },
 
                 '/' => {
-                    _type = .slash_token;
+                    if (self.match('=')) {
+                        _type = .slash_equal_token;
+                        self.advance();
+                    } else {
+                        _type = .slash_token;
+                    }
                 },
 
                 '%' => {
-                    _type = .remainder_token;
+                    if (self.match('=')) {
+                        _type = .remainder_equal_token;
+                        self.advance();
+                    } else {
+                        _type = .remainder_token;
+                    }
                 },
 
                 ';' => {

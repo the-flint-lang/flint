@@ -38,6 +38,11 @@ pub const TokenType = enum {
     extern_token,
     value_type_token,
     array_type_token,
+    plus_equal_token,
+    minus_equal_token,
+    star_equal_token,
+    slash_equal_token,
+    remainder_equal_token,
 
     and_token,
     or_token,

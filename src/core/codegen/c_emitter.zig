@@ -114,6 +114,18 @@ pub const CEmitter = struct {
         }
     }
 
+    // checks if the function is a candidate for inline
+    fn shouldInline(self: *CEmitter, body: []const NodeIndex) bool {
+        if (body.len > 5) return false;
+
+        for (body) |stmt_idx| {
+            const stmt = self.tree.getNode(stmt_idx);
+            if (stmt == .for_stmt) return false;
+        }
+
+        return true;
+    }
+
     fn visitFunctionDecl(self: *CEmitter, node: AstNode, writer: anytype) !void {
         const func = node.function_decl;
         if (func.is_extern) return;
@@ -126,6 +138,10 @@ pub const CEmitter = struct {
             .boolean_type_token => "bool",
             else => "flint_str",
         };
+
+        if (self.shouldInline(func.body)) {
+            try writer.writeAll("static inline ");
+        }
 
         try writer.writeAll(ret_type);
         try writer.writeAll(" ");
@@ -529,6 +545,11 @@ pub const CEmitter = struct {
             .greater_token => " > ",
             .less_equal_token => " <= ",
             .greater_equal_token => " >= ",
+            .plus_equal_token => " += ",
+            .minus_equal_token => " -= ",
+            .star_equal_token => " *= ",
+            .slash_equal_token => " /= ",
+            .remainder_equal_token => " %= ",
             else => " ?? ",
         };
 
@@ -581,6 +602,19 @@ pub const CEmitter = struct {
 
         if (callee_node == .identifier) {
             const func_name = self.pool.get(callee_node.identifier.name_id);
+
+            if (std.mem.eql(u8, func_name, "int_array")) {
+                try writer.writeAll("(flint_int_array){.items = NULL, .count = 0, .capacity = 0}");
+                return;
+            }
+            if (std.mem.eql(u8, func_name, "str_array")) {
+                try writer.writeAll("(flint_str_array){.items = NULL, .count = 0, .capacity = 0}");
+                return;
+            }
+            if (std.mem.eql(u8, func_name, "bool_array")) {
+                try writer.writeAll("(flint_bool_array){.items = NULL, .count = 0, .capacity = 0}");
+                return;
+            }
 
             if (std.mem.eql(u8, func_name, "to_str")) {
                 try writer.writeAll("flint_to_str(FLINT_BOX(");
@@ -655,8 +689,8 @@ pub const CEmitter = struct {
         const arr = node.array_expr;
 
         if (arr.elements.len == 0) {
-            std.debug.print("Error: Empty arrays not supported in v1.2 without explicit typing.\n", .{});
-            return error.NotImplemented;
+            try writer.writeAll("(flint_str_array){.items = NULL, .count = 0, .capacity = 0}");
+            return;
         }
 
         const first_node = self.tree.getNode(arr.elements[0]);
@@ -846,9 +880,6 @@ pub const CEmitter = struct {
         return if (h == 0) 1 else h;
     }
 
-    // ==============================================================
-    // NOVA FUNÇÃO: Infere o tipo em C para evitar o typeof() em macros
-    // ==============================================================
     fn inferCType(self: *CEmitter, index: NodeIndex) ?[]const u8 {
         const node = self.tree.getNode(index);
         switch (node) {
@@ -895,6 +926,8 @@ pub const CEmitter = struct {
                         if (t == .integer_literal_token) return "flint_int_array";
                         if (t == .true_literal_token or t == .false_literal_token) return "flint_bool_array";
                     }
+                } else {
+                    return "flint_str_array";
                 }
             },
             .dict_expr => return "FlintDict*",

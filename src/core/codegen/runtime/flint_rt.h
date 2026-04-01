@@ -85,13 +85,14 @@ void flint_arena_release(FlintArenaMark m);
 #define DECLARE_FLINT_ARRAY(Type, Name) \
     typedef struct                      \
     {                                   \
-        Type *items;                    \
+        Type *restrict items;           \
         size_t count;                   \
         size_t capacity;                \
     } Name;
 
 DECLARE_FLINT_ARRAY(long long, flint_int_array)
 DECLARE_FLINT_ARRAY(flint_str, flint_str_array)
+DECLARE_FLINT_ARRAY(bool, flint_bool_array)
 
 #define flint_array_init(a) \
     do                      \

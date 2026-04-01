@@ -500,17 +500,27 @@ pub const Parser = struct {
             } });
         }
 
-        if (self.match(&.{.assign_token})) {
-            const equals = self.previous();
-            const value_idx = try self.parseAssignment();
+        if (self.match(&.{.assign_token}) or
+            self.match(&.{.plus_equal_token}) or
+            self.match(&.{.minus_equal_token}) or
+            self.match(&.{.star_equal_token}) or
+            self.match(&.{.slash_equal_token}) or
+            self.match(&.{.remainder_equal_token}))
+        {
+            const equals_token = self.previous();
+            const value = try self.parseAssignment();
 
-            const left_node = self.tree.getNode(expr_idx);
+            const expr_node = self.tree.getNode(expr_idx);
 
-            if (left_node == .identifier or left_node == .index_expr or left_node == .property_access_expr) {
-                return try self.tree.addNode(self.allocator, .{ .binary_expr = .{ .left = expr_idx, .operator = equals, .right = value_idx } });
+            if (expr_node == .identifier or expr_node == .index_expr or expr_node == .property_access_expr) {
+                return try self.tree.addNode(self.allocator, .{ .binary_expr = .{
+                    .left = expr_idx,
+                    .operator = equals_token,
+                    .right = value,
+                } });
             }
 
-            return self.reportSyntaxError(equals, "E1004", "Invalid assignment target", "invalid assignment target", false);
+            return self.reportSyntaxError(equals_token, "E1004", "Invalid assignment target", "invalid assignment target", false);
         }
 
         return expr_idx;
