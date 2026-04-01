@@ -24,6 +24,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <poll.h>
+#include <limits.h>
 
 #include <spawn.h>
 #include <limits.h>
@@ -875,6 +876,69 @@ FlintValue flint_grep_inner(FlintValue iterable, FlintValue pattern_val)
     }
 
     return flint_make_error(FLINT_STR("Grep Error: Invalid iterable type"));
+}
+
+bool flint_os_command_exists(flint_str bin)
+{
+    if (bin.len == 0 || !bin.ptr)
+        return false;
+
+    if (memchr(bin.ptr, '/', bin.len) != NULL)
+    {
+        if (bin.len >= PATH_MAX)
+            return false;
+
+        char *path = flint_alloc_zero(bin.len + 1);
+        memcpy(path, bin.ptr, bin.len);
+        path[bin.len] = '\0';
+
+        return access(path, X_OK) == 0;
+    }
+
+    // default search in system PATH
+    const char *path_env = getenv("PATH");
+    if (!path_env)
+        return false;
+
+    char *full_path = flint_alloc_zero(PATH_MAX);
+    const char *start = path_env;
+    const char *end;
+
+    while ((end = strchr(start, ':')) != NULL)
+    {
+        size_t dir_len = end - start;
+
+        // checks if the concatenation fits in the buffer (+2 for '/' and '\0')
+        if (dir_len + 1 + bin.len < PATH_MAX)
+        {
+            memcpy(full_path, start, dir_len);
+            full_path[dir_len] = '/';
+            memcpy(full_path + dir_len + 1, bin.ptr, bin.len);
+            full_path[dir_len + 1 + bin.len] = '\0';
+
+            if (access(full_path, X_OK) == 0)
+            {
+                return true;
+            }
+        }
+        start = end + 1;
+    }
+
+    size_t dir_len = strlen(start);
+    if (dir_len > 0 && dir_len + 1 + bin.len < PATH_MAX)
+    {
+        memcpy(full_path, start, dir_len);
+        full_path[dir_len] = '/';
+        memcpy(full_path + dir_len + 1, bin.ptr, bin.len);
+        full_path[dir_len + 1 + bin.len] = '\0';
+
+        if (access(full_path, X_OK) == 0)
+        {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /* =========================

@@ -21,6 +21,7 @@ extern fn flint_args() arr;
 extern fn flint_is_tty() bool;
 extern fn flint_is_root() bool;
 extern fn flint_require_root(plus_args: arr) val;
+extern fn flint_os_command_exists(bin: string) bool;
 
 # public API
 fn file_exists(path: string) bool {
@@ -115,4 +116,8 @@ fn is_root() bool {
 
 fn require_root(plus_args: arr) val {
     return flint_require_root(plus_args);
+}
+
+fn command_exists(bin: string) bool {
+    return flint_os_command_exists(bin);
 }

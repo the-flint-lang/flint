@@ -15,7 +15,7 @@ pub const CEmitter = struct {
     source_file: []const u8,
     is_run: bool,
 
-    built_ins: [15][]const u8,
+    built_ins: [16][]const u8,
 
     current_placeholder_name: ?[]const u8 = null,
 
@@ -27,9 +27,9 @@ pub const CEmitter = struct {
             .source_file = source_file,
             .is_run = is_run,
             .built_ins = [_][]const u8{
-                "print",  "printerr", "len",    "push",       "range",  "if_fail", "fallback",
-                "concat", "to_str",   "to_int", "parse_json", "ensure", "lines",   "grep",
-                "chars",
+                "print",  "printerr",          "len",    "push",       "range",  "if_fail", "fallback",
+                "concat", "to_str",            "to_int", "parse_json", "ensure", "lines",   "grep",
+                "chars",  "os_command_exists",
             },
             .current_placeholder_name = null,
         };

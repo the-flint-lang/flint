@@ -288,6 +288,7 @@ FlintValue flint_spawn(flint_str cmd, bool echo);
 
 flint_str flint_env(flint_str name);
 flint_str_array flint_args();
+bool flint_os_command_exists(flint_str bin);
 
 /* =========================
    INPUT

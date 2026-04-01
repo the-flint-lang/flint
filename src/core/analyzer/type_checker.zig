@@ -76,9 +76,9 @@ pub const TypeChecker = struct {
         try defineBuiltin(global, allocator, pool, "os_assert", .t_val, &[_]FlintType{ .t_val, .t_string });
         try defineBuiltin(global, allocator, pool, "os_if_fail", .t_any, &[_]FlintType{ .t_val, .t_string });
         try defineBuiltin(global, allocator, pool, "os_is_tty", .t_any, &[_]FlintType{.t_void});
-
         try defineBuiltin(global, allocator, pool, "os_is_root", .t_bool, &[_]FlintType{.t_void});
         try defineBuiltin(global, allocator, pool, "os_require_root", .t_val, &[_]FlintType{.t_arr});
+        try defineBuiltin(global, allocator, pool, "os_command_exists", .t_bool, &[_]FlintType{.t_string});
 
         // io module
         try defineBuiltin(global, allocator, pool, "io_write", .t_val, &[_]FlintType{ .t_string, .t_string });
