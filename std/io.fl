@@ -4,6 +4,7 @@ extern fn flint_read_line(s: string) string;
 extern fn flint_read_file(path: string) val;
 extern fn flint_write_file(text: string, path: string) val;
 extern fn flint_clear() void;
+extern fn flint_write(way: string, msg: string) void;
 
 # public API
 
@@ -21,4 +22,8 @@ fn write_file(text: string, path: string) val {
 
 fn clear() void {
     return flint_clear();
+}
+
+fn write(way: string, msg: string) void {
+    return flint_write(way, msg);
 }

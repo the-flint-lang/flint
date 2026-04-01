@@ -19,6 +19,8 @@ extern fn flint_env(name: string) string;
 extern fn flint_exit(code: int) void;
 extern fn flint_args() arr;
 extern fn flint_is_tty() bool;
+extern fn flint_is_root() bool;
+extern fn flint_require_root(plus_args: arr) val;
 
 # public API
 fn file_exists(path: string) bool {
@@ -105,4 +107,12 @@ fn assert(proc: val, error_msg: string) val {
 
 fn is_tty() bool {
     return flint_is_tty();
+}
+
+fn is_root() bool {
+    return flint_is_root(); 
+}
+
+fn require_root(plus_args: arr) val {
+    return flint_require_root(plus_args);
 }

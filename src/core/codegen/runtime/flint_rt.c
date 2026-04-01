@@ -186,7 +186,7 @@ void flint_print_bool(bool b)
 void flint_printerr_str(flint_str text)
 {
     fprintf(stderr, "%.*s\n", (int)text.len, text.ptr);
-    fflush(stdout);
+    fflush(stderr);
 }
 void flint_printerr_int(long long v) { fprintf(stderr, "%lld\n", v); }
 void flint_printerr_dict(FlintDict *d) { fprintf(stderr, "[Flint Dictionary: %zu keys]\n", d ? d->count : 0); }
@@ -446,6 +446,72 @@ FlintValue flint_ls(flint_str path)
 void flint_clear()
 {
     fprintf(stdout, "\033[H\033[2J");
+}
+
+void flint_write(flint_str way, flint_str msg)
+{
+    if (msg.len > 0)
+    {
+        if (way.len != 6)
+        {
+            flint_panic("IO Error: Stream not recognized (must be 'stdout' or 'stderr').");
+        }
+
+        if (memcmp(way.ptr, FLINT_STR("stdout").ptr, 6) == 0)
+        {
+            fprintf(stdout, "%.*s", (int)msg.len, msg.ptr);
+            fflush(stdout);
+        }
+        else if (memcmp(way.ptr, FLINT_STR("stderr").ptr, 6) == 0)
+        {
+            fprintf(stderr, "%.*s", (int)msg.len, msg.ptr);
+            fflush(stderr);
+        }
+        else
+        {
+            flint_panic("IO Error: Invalid stream name.");
+        }
+    }
+}
+
+bool flint_is_root()
+{
+    return geteuid() == 0;
+}
+
+FlintValue flint_require_root(flint_str_array plus_args)
+{
+    if (flint_is_root())
+    {
+        return flint_make_bool(true);
+    }
+
+    size_t total = 1 + global_argc + plus_args.count + 1;
+    char **new_argv = flint_alloc_zero(sizeof(char *) * total);
+
+    new_argv[0] = "sudo";
+    for (size_t i = 0; i < global_argc; i++)
+    {
+        new_argv[i + 1] = global_argv[i];
+    }
+
+    for (size_t i = 0; i < plus_args.count; i++)
+    {
+
+        flint_str arg = plus_args.items[i];
+        char *safe_str = flint_alloc_zero(arg.len + 1);
+        memcpy(safe_str, arg.ptr, arg.len);
+
+        new_argv[global_argc + 1 + i] = safe_str;
+    }
+
+    new_argv[total - 1] = NULL;
+
+    // replace the current process
+    execvp("sudo", new_argv);
+
+    // if execvp works, it never gets here
+    return flint_make_error(FLINT_STR("Falha ao elevar privilégios. O 'sudo' está disponível?"));
 }
 
 /* =========================

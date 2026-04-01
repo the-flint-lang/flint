@@ -269,6 +269,10 @@ FlintValue flint_copy(flint_str src, flint_str dest);
 // terminal
 
 void flint_clear();
+void flint_write(flint_str way, flint_str msg);
+
+bool flint_is_root();
+FlintValue flint_require_root(flint_str_array plus_args);
 
 /* =========================
    PROCESS
