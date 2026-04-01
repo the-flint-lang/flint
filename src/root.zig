@@ -338,6 +338,8 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper) !void {
     _ = args.next();
 
     var command: ?[]const u8 = null;
+    var is_less_mode = false;
+
     while (args.next()) |arg| {
         if (checker.cliArgsEquals(arg, &.{ "-h", "--help" })) {
             try help(io);
@@ -347,6 +349,12 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper) !void {
             try version(io);
             return;
         }
+
+        if (checker.cliArgsEquals(arg, &.{ "-s", "--small" })) {
+            is_less_mode = true;
+            continue;
+        }
+
         command = arg;
         break;
     }
@@ -409,12 +417,12 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper) !void {
 
     if (checker.strEquals(cmd, "run")) {
         const file = try getFlFile(&args, io);
-        try runner(alloc, &args, file, io, true);
+        try runner(alloc, &args, file, io, true, is_less_mode);
         return;
     }
     if (checker.strEquals(cmd, "build")) {
         const file = try getFlFile(&args, io);
-        try runner(alloc, &args, file, io, false);
+        try runner(alloc, &args, file, io, false, is_less_mode);
         return;
     }
     try help(io);
@@ -428,7 +436,7 @@ fn getFlFile(args: *std.process.ArgIterator, io: anytype) ![]const u8 {
     return file_path;
 }
 
-fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: []const u8, io: anytype, is_run: bool) !void {
+fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: []const u8, io: anytype, is_run: bool, is_less_mode: bool) !void {
     var global_tree = AstTree.init();
     defer global_tree.deinit(alloc);
 
@@ -560,7 +568,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
 
     const compiler = getBestCCompiler(alloc, false);
 
-    const c_args = try compiler.getArgsExtended(alloc, exe_name, rt_path, precompiled, false, has_pch);
+    const c_args = try compiler.getArgsExtended(alloc, exe_name, rt_path, precompiled, false, has_pch, is_less_mode);
     defer alloc.free(c_args);
 
     var child = std.process.Child.init(c_args, alloc);
@@ -666,7 +674,7 @@ pub fn runTests(alloc: std.mem.Allocator, io: IoHelper) !void {
 }
 
 const ClangCompiler = struct {
-    pub fn getArgsExtended(self: ClangCompiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool) ![]const []const u8 {
+    pub fn getArgsExtended(self: ClangCompiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool, is_less_mode: bool) ![]const []const u8 {
         _ = self;
         var args = std.ArrayList([]const u8).empty;
 
@@ -685,10 +693,17 @@ const ClangCompiler = struct {
         if (is_run) {
             try args.append(alloc, "-O0");
         } else {
-            try args.append(alloc, "-O3");
+            try args.append(alloc, if (is_less_mode) "-Os" else "-O3");
+            try args.append(alloc, "-flto");
             try args.append(alloc, "-march=native");
-        }
+            try args.append(alloc, "-Wl,--gc-sections");
 
+            try args.append(alloc, "-fno-unwind-tables");
+            try args.append(alloc, "-fno-asynchronous-unwind-tables");
+            try args.append(alloc, "-fno-ident");
+            try args.append(alloc, "-Wl,--build-id=none");
+            try args.append(alloc, "-s");
+        }
         try args.append(alloc, "-Wno-unused-value");
 
         if (has_pch and is_run) {
@@ -703,7 +718,7 @@ const ClangCompiler = struct {
 };
 
 const GccCompiler = struct {
-    pub fn getArgsExtended(self: GccCompiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool) ![]const []const u8 {
+    pub fn getArgsExtended(self: GccCompiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool, is_less_mode: bool) ![]const []const u8 {
         _ = self;
         _ = has_pch;
         var args = std.ArrayList([]const u8).empty;
@@ -723,20 +738,28 @@ const GccCompiler = struct {
         if (is_run) {
             try args.append(alloc, "-O0");
         } else {
-            try args.append(alloc, "-O3");
+            try args.append(alloc, if (is_less_mode) "-Os" else "-O3");
+            try args.append(alloc, "-flto");
             try args.append(alloc, "-march=native");
+            try args.append(alloc, "-Wl,--gc-sections");
+            try args.append(alloc, "-s");
+            try args.append(alloc, "-fno-unwind-tables");
+            try args.append(alloc, "-fno-asynchronous-unwind-tables");
+            try args.append(alloc, "-fno-ident");
+            try args.append(alloc, "-Wl,--build-id=none");
+            try args.append(alloc, "-lcurl");
         }
 
         try args.append(alloc, "-Wno-unused-value");
-        try args.append(alloc, "-lcurl");
 
         return args.toOwnedSlice(alloc);
     }
 };
 
 const TccCompiler = struct {
-    pub fn getArgsExtended(self: TccCompiler, alloc: std.mem.Allocator, out_exe: []const u8, pre: bool) ![]const []const u8 {
+    pub fn getArgsExtended(self: TccCompiler, alloc: std.mem.Allocator, out_exe: []const u8, pre: bool, is_less_mode: bool) ![]const []const u8 {
         _ = self;
+        _ = is_less_mode;
 
         var args = std.ArrayList([]const u8).empty;
 
@@ -763,11 +786,11 @@ pub const Compiler = union(enum) {
     gcc: GccCompiler,
     tcc: TccCompiler,
 
-    pub fn getArgsExtended(self: Compiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool) ![]const []const u8 {
+    pub fn getArgsExtended(self: Compiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool, is_less_mode: bool) ![]const []const u8 {
         return switch (self) {
-            .tcc => |t| t.getArgsExtended(alloc, out_exe, pre),
-            .clang => |c| c.getArgsExtended(alloc, out_exe, rt, pre, is_run, has_pch),
-            .gcc => |g| g.getArgsExtended(alloc, out_exe, rt, pre, is_run, has_pch),
+            .tcc => |t| t.getArgsExtended(alloc, out_exe, pre, is_less_mode),
+            .clang => |c| c.getArgsExtended(alloc, out_exe, rt, pre, is_run, has_pch, is_less_mode),
+            .gcc => |g| g.getArgsExtended(alloc, out_exe, rt, pre, is_run, has_pch, is_less_mode),
         };
     }
 };
