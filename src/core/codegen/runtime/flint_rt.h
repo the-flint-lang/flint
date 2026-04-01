@@ -352,8 +352,8 @@ static inline FlintValue flint_box_val_safe(FlintValue v)
     flint_str: flint_box_str_safe,             \
     FlintValue: flint_box_val_safe)(__VA_ARGS__)
 
-#define flint_if_fail(v, ...) flint_expect_inner((v), (__VA_ARGS__))
-#define flint_fallback(v, ...) flint_fallback_inner((v), FLINT_BOX(__VA_ARGS__))
+#define flint_if_fail(v, ...) flint_expect_inner(FLINT_BOX(v), (__VA_ARGS__))
+#define flint_fallback(v, ...) flint_fallback_inner(FLINT_BOX(v), FLINT_BOX(__VA_ARGS__))
 
 static inline FlintValue flint_expect_inner(FlintValue v, flint_str msg)
 {
