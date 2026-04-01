@@ -1,4 +1,4 @@
-flint (1.8.1) unstable; urgency=medium
+flint (1.9.0) unstable; urgency=medium
 
   * Implemented Rust-style dense error diagnostics with contextual labels.
   * Added strict Type Checker validation for Array homogeneity and Dict keys.

@@ -51,9 +51,9 @@ Flint uses "Poison Types" for smart error recovery, meaning it will show you all
 
 ---
 
-## Industrial-Grade Performance (v1.8.1)
+## Industrial-Grade Performance (v1.9.0)
 
-Flint v1.8.1 is engineered using **Data-Oriented Design (DoD)**. By using contiguous memory arrays and a centralized String Pool, the compiler frontend operates at the theoretical limits of modern CPU caches.
+Flint v1.9.0 is engineered using **Data-Oriented Design (DoD)**. By using contiguous memory arrays and a centralized String Pool, the compiler frontend operates at the theoretical limits of modern CPU caches.
 
 - **Near-Zero Startup:** `flint run` executes scripts in **~13ms**, outperforming both Python and Node.js.
 - **Native JIT:** Powered by an embedded `libtcc`, Flint compiles code directly in RAM and jumps to machine instructions without the overhead of external processes.
@@ -149,7 +149,7 @@ Flint uses a 4GB virtual arena allocator:
 
 ## Performance (Summary)
 
-Flint is engineered for maximum throughput in DevOps workloads. In our v1.8.1 benchmarks:
+Flint is engineered for maximum throughput in DevOps workloads. In our v1.9.0 benchmarks:
 
 * **JSON Extraction:** ~29x faster than Node.js and ~22x faster than Python (parses 17MB in ~13ms using O(1) Lazy Scanning).
 * **Mass File Stat:** ~650x faster than Bash when inspecting 10,000 files.
@@ -185,7 +185,7 @@ flint run my_script.fl
 
 ## Architecture & Stability
 
-Current version: **v1.8.1**
+Current version: **v1.9.0**
 
 Flint is a transpiler:
 `.fl → AST (Zig) → Type Checker → C99 → native binary`

@@ -21,3 +21,5 @@ debian/files
 debian/*.log
 debian/*.substvars
 temp/
+
+tmp/

@@ -1,4 +1,4 @@
-# Flint Standard Library Reference (v1.8.1)
+# Flint Standard Library Reference (v1.9.0)
 
 Flint's Standard Library is written in Flint itself (`std/*.fl`) and binds directly to the zero-dependency C99 runtime (`flint_rt.c`). 
 

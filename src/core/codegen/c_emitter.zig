@@ -388,6 +388,48 @@ pub const CEmitter = struct {
         const iter_name = self.temp_counter;
         const target_iter_name = self.pool.get(for_node.iterator_name_id);
 
+        // ====================================================================
+        // OPTIMIZATION: Range Lowering (O(1) Memory Loop)
+        // Se for um range(), ejetamos um loop nativo em C e pulamos o _Generic
+        // ====================================================================
+        const iterable_node = self.tree.getNode(for_node.iterable);
+        var is_range_call = false;
+
+        if (iterable_node == .call_expr) {
+            const callee_node = self.tree.getNode(iterable_node.call_expr.callee);
+            if (callee_node == .identifier and std.mem.eql(u8, self.pool.get(callee_node.identifier.name_id), "range")) {
+                is_range_call = true;
+            }
+        }
+
+        if (is_range_call) {
+            const call = iterable_node.call_expr;
+
+            // Avalia start e end apenas uma vez
+            try writer.print("{{\n        long long _start_{d} = ", .{iter_name});
+            try self.visitNodeIndex(call.arguments[0], writer);
+            try writer.writeAll(";\n        long long _end_");
+            try writer.print("{d} = ", .{iter_name});
+            try self.visitNodeIndex(call.arguments[1], writer);
+            try writer.writeAll(";\n");
+
+            // Loop C nativo mantendo o gerenciamento da Arena
+            try writer.print("        for (long long {s} = _start_{d}, _mark_{d} = flint_arena_mark(); {s} < _end_{d}; flint_arena_release(_mark_{d}), _mark_{d} = flint_arena_mark(), {s}++) {{\n", .{ target_iter_name, iter_name, iter_name, target_iter_name, iter_name, iter_name, iter_name, target_iter_name });
+
+            for (for_node.body) |stmt_idx| {
+                try writer.writeAll("            ");
+                try self.visitNodeIndex(stmt_idx, writer);
+                try writer.writeAll(";\n");
+            }
+            try writer.writeAll("        }\n    }\n");
+
+            // Retornamos cedo para ignorar a macro _Generic
+            return;
+        }
+
+        // ====================================================================
+        // FALLBACK: Generic Array/Stream Iteration (O que você já tinha)
+        // ====================================================================
         try writer.writeAll("{\n        typeof(");
         try self.visitNodeIndex(for_node.iterable, writer);
         try writer.print(") _iter_{d} = ", .{iter_name});

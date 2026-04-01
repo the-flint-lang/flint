@@ -693,17 +693,29 @@ const ClangCompiler = struct {
         if (is_run) {
             try args.append(alloc, "-O0");
         } else {
-            try args.append(alloc, if (is_less_mode) "-Os" else "-O3");
+            try args.append(alloc, if (is_less_mode) "-Os" else "-Ofast");
             try args.append(alloc, "-flto");
             try args.append(alloc, "-march=native");
+            try args.append(alloc, "-mtune=native");
+            try args.append(alloc, "-ffast-math");
+            try args.append(alloc, "-finline-functions");
+            try args.append(alloc, "-ffunction-sections");
+            try args.append(alloc, "-fdata-sections");
             try args.append(alloc, "-Wl,--gc-sections");
-
+            try args.append(alloc, "-fno-stack-protector");
             try args.append(alloc, "-fno-unwind-tables");
             try args.append(alloc, "-fno-asynchronous-unwind-tables");
             try args.append(alloc, "-fno-ident");
             try args.append(alloc, "-Wl,--build-id=none");
+            try args.append(alloc, "-fvisibility=hidden");
             try args.append(alloc, "-s");
+            try args.append(alloc, "-fomit-frame-pointer");
+            try args.append(alloc, "-fstrict-aliasing");
+            try args.append(alloc, "-fno-semantic-interposition");
+            try args.append(alloc, "-fno-plt");
+            try args.append(alloc, "-fmerge-all-constants");
         }
+
         try args.append(alloc, "-Wno-unused-value");
 
         if (has_pch and is_run) {
@@ -738,16 +750,28 @@ const GccCompiler = struct {
         if (is_run) {
             try args.append(alloc, "-O0");
         } else {
-            try args.append(alloc, if (is_less_mode) "-Os" else "-O3");
+            try args.append(alloc, if (is_less_mode) "-Os" else "-Ofast");
             try args.append(alloc, "-flto");
             try args.append(alloc, "-march=native");
+            try args.append(alloc, "-mtune=native");
+            try args.append(alloc, "-ffast-math");
+            try args.append(alloc, "-finline-functions");
+            try args.append(alloc, "-ffunction-sections");
+            try args.append(alloc, "-fdata-sections");
             try args.append(alloc, "-Wl,--gc-sections");
-            try args.append(alloc, "-s");
+            try args.append(alloc, "-fno-stack-protector");
             try args.append(alloc, "-fno-unwind-tables");
             try args.append(alloc, "-fno-asynchronous-unwind-tables");
             try args.append(alloc, "-fno-ident");
             try args.append(alloc, "-Wl,--build-id=none");
-            try args.append(alloc, "-lcurl");
+            try args.append(alloc, "-fvisibility=hidden");
+            try args.append(alloc, "-s");
+            try args.append(alloc, "-fomit-frame-pointer");
+            try args.append(alloc, "-fstrict-aliasing");
+            try args.append(alloc, "-fno-semantic-interposition");
+            try args.append(alloc, "-fno-plt");
+            try args.append(alloc, "-fmerge-all-constants");
+            try args.append(alloc, "-fwhole-program");
         }
 
         try args.append(alloc, "-Wno-unused-value");
@@ -768,14 +792,13 @@ const TccCompiler = struct {
         try args.append(alloc, "-x");
         try args.append(alloc, "c");
         try args.append(alloc, "-");
-
         try args.append(alloc, "-I.");
         try args.append(alloc, if (pre) "-I/usr/share/flint" else "-I.");
-
         try args.append(alloc, "-o");
         try args.append(alloc, out_exe);
-
         try args.append(alloc, "-lcurl");
+        try args.append(alloc, "-s");
+        try args.append(alloc, "-b");
 
         return args.toOwnedSlice(alloc);
     }

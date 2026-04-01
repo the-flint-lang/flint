@@ -1,4 +1,4 @@
-# Flint Language Specification (v1.8.1)
+# Flint Language Specification (v1.9.0)
 
 This document defines the formal syntax, semantics, and data types of the Flint programming language. It serves as the single source of truth for the compiler implementation.
 

@@ -1,4 +1,4 @@
-# Flint Architecture & Design Principles (v1.8.1)
+# Flint Architecture & Design Principles (v1.9.0)
 
 This document outlines the internal architecture of the Flint compiler and its runtime. It is intended for contributors, language nerds, and anyone curious about how a `.fl` script becomes a dependency-free, highly optimized native C99 executable.
 
