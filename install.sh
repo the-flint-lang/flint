@@ -13,7 +13,6 @@ step() { echo -e "${BOLD}${WHITE}$1${NC}"; }
 pipeline() { echo -e "    ${BOLD}${ORANGE}~>${NC} ${GRAY}$1${NC}\n"; }
 
 # header
-clear
 echo -e "${BOLD}${ORANGE}Flint${NC} ${BOLD}installer${NC}  ${GRAY}github.com/lucaas-d3v/flint${NC}"
 divider
 echo -e "${GRAY}deps ~> download ~> install${NC}\n"
