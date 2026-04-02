@@ -11,11 +11,14 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write
+
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Install Target Dependencies (Clang & libcurl)
+    - name: Install Target Dependencies (Clang, libcurl & tcc)
       run: |
         sudo apt-get update
         sudo apt-get install -y clang libcurl4-openssl-dev tcc libtcc-dev 
