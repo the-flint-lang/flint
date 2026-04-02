@@ -40,8 +40,6 @@ pub const TypeChecker = struct {
         // global functions
         try defineBuiltin(global, allocator, pool, "print", .t_void, &[_]FlintType{.t_any});
         try defineBuiltin(global, allocator, pool, "printerr", .t_void, &[_]FlintType{.t_any});
-        // try defineBuiltin(global, allocator, pool, "len", .t_int, &[_]FlintType{.t_any});
-        // try defineBuiltin(global, allocator, pool, "push", .t_void, &[_]FlintType{ .t_arr, .t_any });
         try defineBuiltin(global, allocator, pool, "range", .t_int_arr, &[_]FlintType{ .t_int, .t_int });
         try defineBuiltin(global, allocator, pool, "if_fail", .t_any, &[_]FlintType{ .t_val, .t_string });
         try defineBuiltin(global, allocator, pool, "fallback", .t_any, &[_]FlintType{ .t_val, .t_any });
@@ -72,11 +70,11 @@ pub const TypeChecker = struct {
         try defineBuiltin(global, allocator, pool, "os_spawn", .t_val, &[_]FlintType{ .t_string, .t_bool });
         try defineBuiltin(global, allocator, pool, "os_env", .t_string, &[_]FlintType{.t_string});
         try defineBuiltin(global, allocator, pool, "os_exit", .t_void, &[_]FlintType{.t_int});
-        try defineBuiltin(global, allocator, pool, "os_args", .t_str_arr, &[_]FlintType{.t_void});
+        try defineBuiltin(global, allocator, pool, "os_args", .t_str_arr, &[_]FlintType{});
         try defineBuiltin(global, allocator, pool, "os_assert", .t_val, &[_]FlintType{ .t_val, .t_string });
         try defineBuiltin(global, allocator, pool, "os_if_fail", .t_any, &[_]FlintType{ .t_val, .t_string });
-        try defineBuiltin(global, allocator, pool, "os_is_tty", .t_any, &[_]FlintType{.t_void});
-        try defineBuiltin(global, allocator, pool, "os_is_root", .t_bool, &[_]FlintType{.t_void});
+        try defineBuiltin(global, allocator, pool, "os_is_tty", .t_any, &[_]FlintType{});
+        try defineBuiltin(global, allocator, pool, "os_is_root", .t_bool, &[_]FlintType{});
         try defineBuiltin(global, allocator, pool, "os_require_root", .t_val, &[_]FlintType{.t_str_arr});
         try defineBuiltin(global, allocator, pool, "os_command_exists", .t_bool, &[_]FlintType{.t_string});
 
@@ -85,7 +83,7 @@ pub const TypeChecker = struct {
         try defineBuiltin(global, allocator, pool, "io_read_file", .t_val, &[_]FlintType{.t_string});
         try defineBuiltin(global, allocator, pool, "io_write_file", .t_val, &[_]FlintType{ .t_string, .t_string });
         try defineBuiltin(global, allocator, pool, "io_read_line", .t_string, &[_]FlintType{.t_string});
-        try defineBuiltin(global, allocator, pool, "io_clear", .t_void, &[_]FlintType{.t_void});
+        try defineBuiltin(global, allocator, pool, "io_clear", .t_void, &[_]FlintType{});
 
         // http module
         try defineBuiltin(global, allocator, pool, "http_fetch", .t_val, &[_]FlintType{.t_string});
@@ -576,8 +574,22 @@ pub const TypeChecker = struct {
 
         const callee_node = self.tree.getNode(call.callee);
 
+        var target_func_id: ?StringId = null;
+
         if (callee_node == .identifier) {
-            const func_name_id = callee_node.identifier.name_id;
+            target_func_id = callee_node.identifier.name_id;
+        } else if (callee_node == .property_access_expr) {
+            const obj_node = self.tree.getNode(callee_node.property_access_expr.object);
+            if (obj_node == .identifier) {
+                const obj_str = self.pool.get(obj_node.identifier.name_id);
+                const prop_str = self.pool.get(callee_node.property_access_expr.property_name_id);
+                const full_name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ obj_str, prop_str });
+                defer self.allocator.free(full_name);
+                target_func_id = try self.pool.intern(self.allocator, full_name);
+            }
+        }
+
+        if (target_func_id) |func_name_id| {
             const func_name_str = self.pool.get(func_name_id);
 
             if (std.mem.eql(u8, func_name_str, "push")) {
@@ -669,7 +681,7 @@ pub const TypeChecker = struct {
                     arg_type = try self.checkNodeIndex(err_target_node);
                 }
 
-                if (arg_type != .t_str_arr and arg_type != .t_int_arr and arg_type != .t_bool_arr and arg_type != .t_string and arg_type != .t_any) {
+                if (arg_type != .t_str_arr and arg_type != .t_int_arr and arg_type != .t_bool_arr and arg_type != .t_string and arg_type != .t_any and arg_type != .t_error) {
                     self.had_error = true;
                     var err_line: u32 = 0;
                     var err_col: u32 = 0;
@@ -1252,9 +1264,20 @@ pub const TypeChecker = struct {
                 len.* = @intCast(node.unary_expr.operator.value.len);
             },
             .property_access_expr => {
+                var obj_line: u32 = 0;
+                var obj_col: u32 = 0;
+                var obj_len: u32 = 0;
+                self.extractCoords(node.property_access_expr.object, &obj_line, &obj_col, &obj_len);
+
                 line.* = node.property_access_expr.line;
-                col.* = 0;
-                len.* = @intCast(self.pool.get(node.property_access_expr.property_name_id).len);
+                const prop_len: u32 = @intCast(self.pool.get(node.property_access_expr.property_name_id).len);
+
+                if (obj_line == line.*) {
+                    col.* = obj_col + 1 + prop_len;
+                } else {
+                    col.* = prop_len;
+                }
+                len.* = prop_len;
             },
             .call_expr => {
                 self.extractCoords(node.call_expr.callee, line, col, len);
