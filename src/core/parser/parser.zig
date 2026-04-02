@@ -146,9 +146,16 @@ pub const Parser = struct {
         var else_body_indices: ?[]const NodeIndex = null;
 
         if (self.match(&.{.else_token})) {
-            _ = try self.consume(.lbrace_token, "'{' expected before else block");
-            else_body_indices = try self.parseBody();
-            _ = try self.consumeDelimiter(.rbrace_token, "'}' expected to close else block");
+            if (self.match(&.{.if_token})) {
+                const else_if_idx = try self.parseIfStatement();
+                var else_array = try self.allocator.alloc(NodeIndex, 1);
+                else_array[0] = else_if_idx;
+                else_body_indices = else_array;
+            } else {
+                _ = try self.consume(.lbrace_token, "'{' expected before else block");
+                else_body_indices = try self.parseBody();
+                _ = try self.consumeDelimiter(.rbrace_token, "'}' expected to close else block");
+            }
         }
 
         return try self.tree.addNode(self.allocator, .{
@@ -224,6 +231,7 @@ pub const Parser = struct {
                 try args.append(self.allocator, arg_idx);
 
                 if (!self.match(&.{.comma_token})) break;
+                if (self.check(.rbrace_token)) break;
             }
         }
 
@@ -360,10 +368,8 @@ pub const Parser = struct {
 
                     try entries.append(self.allocator, .{ .key = key_idx, .value = val_idx });
 
-                    // this is to pass "a" , without next declaration in the dicts
-                    // if (self.match(&.{.comma_token}) and self.peek()._type == .rbrace_token) break;
-
                     if (!self.match(&.{.comma_token})) break;
+                    if (self.check(.rbrace_token)) break;
                 }
             }
 
@@ -644,7 +650,7 @@ pub const Parser = struct {
             len = 1;
         }
 
-        try diag.addLabel(token.line, col + len, len, label_text, true);
+        try diag.addLabel(token.line, col + 1, 1, label_text, true);
         try diag.emit(self.io);
 
         return error.ParseError;
@@ -667,7 +673,7 @@ pub const Parser = struct {
         if (self.check(_type)) return self.advance();
 
         if (_type == .semicolon_token) {
-            return self.reportSyntaxErrorT(self.previous(), "E1001", message, "expected `;`", true);
+            return self.reportSyntaxErrorT(self.previous(), "E1001", message, "expected `;`", false);
         }
 
         return self.reportSyntaxErrorT(self.peek(), "E1003", message, "unexpected token", false);

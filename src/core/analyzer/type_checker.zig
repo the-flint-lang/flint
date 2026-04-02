@@ -570,7 +570,6 @@ pub const TypeChecker = struct {
 
     fn checkCallExpr(self: *TypeChecker, _: NodeIndex, node: AstNode) !FlintType {
         const call = node.call_expr;
-        const callee_type = try self.checkNodeIndex(call.callee);
 
         const injected_arg = self.pipe_injected_type;
         self.pipe_injected_type = null;
@@ -827,7 +826,12 @@ pub const TypeChecker = struct {
 
                 return .t_error;
             }
+
+            _ = try self.checkNodeIndex(call.callee);
+            return .t_error;
         }
+
+        const callee_type = try self.checkNodeIndex(call.callee);
 
         for (call.arguments) |arg_idx| {
             _ = try self.checkNodeIndex(arg_idx);

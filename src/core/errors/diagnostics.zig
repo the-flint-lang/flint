@@ -161,11 +161,19 @@ pub const DiagnosticBuilder = struct {
         try io.stderr.print("   {s}|{s}\n", .{ cyan, reset });
 
         if (self.note_msg) |n| {
-            try io.stderr.print("\n{s}note{s}: {s}\n", .{ cyan, reset, n });
+            try io.stderr.print("\n{s}note{s}: {s}", .{ cyan, reset, n });
+
+            if (self.help_msg) |_| {
+                //
+            } else {
+                try io.stderr.print("\n", .{});
+            }
         }
+
         if (self.help_msg) |h| {
-            try io.stderr.print("{s}help{s}: {s}\n", .{ yellow, reset, h });
+            try io.stderr.print("\n{s}help{s}: {s}\n", .{ yellow, reset, h });
         }
+
         try io.stderr.print("\n", .{});
         _ = try io.stderr.flush();
     }

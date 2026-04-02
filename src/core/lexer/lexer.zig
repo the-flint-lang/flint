@@ -152,7 +152,6 @@ pub const Lexer = struct {
                 '+' => {
                     if (self.match('=')) {
                         _type = .plus_equal_token;
-                        self.advance();
                     } else {
                         _type = .plus_token;
                     }
@@ -161,7 +160,6 @@ pub const Lexer = struct {
                 '-' => {
                     if (self.match('=')) {
                         _type = .minus_equal_token;
-                        self.advance();
                     } else {
                         _type = .minus_token;
                     }
@@ -170,7 +168,6 @@ pub const Lexer = struct {
                 '*' => {
                     if (self.match('=')) {
                         _type = .star_equal_token;
-                        self.advance();
                     } else {
                         _type = .star_token;
                     }
@@ -179,7 +176,6 @@ pub const Lexer = struct {
                 '/' => {
                     if (self.match('=')) {
                         _type = .slash_equal_token;
-                        self.advance();
                     } else {
                         _type = .slash_token;
                     }
@@ -188,7 +184,6 @@ pub const Lexer = struct {
                 '%' => {
                     if (self.match('=')) {
                         _type = .remainder_equal_token;
-                        self.advance();
                     } else {
                         _type = .remainder_token;
                     }
