@@ -42,7 +42,7 @@ jobs:
       run: zig version
 
     - name: Build Flint
-      run: zig build -Doptimize=ReleaseFast 
+      run: zig build -Doptimize=ReleaseFast -Dcpu=baseline
 
     - name: Run Test Battery
       run: ./zig-out/bin/flint test
