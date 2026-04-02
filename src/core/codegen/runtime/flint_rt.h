@@ -470,7 +470,9 @@ static inline FlintValue flint_idx_val_hashed(FlintValue v, flint_str key, uint6
     flint_int_array: flint_idx_int_arr,       \
     flint_str_array: flint_idx_str_arr,       \
     FlintDict *: flint_idx_dict,              \
-    FlintValue: flint_idx_val)((obj), FLINT_BOX(idx))
+    const FlintDict *: flint_idx_dict,        \
+    FlintValue: flint_idx_val,                \
+    const FlintValue: flint_idx_val)((obj), FLINT_BOX(idx))
 
 #define FLINT_GET_HASHED(obj, key, hash) _Generic((obj), \
     FlintDict *: flint_dict_get_hashed,                  \

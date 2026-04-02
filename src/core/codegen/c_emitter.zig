@@ -37,10 +37,21 @@ pub const CEmitter = struct {
 
     pub fn generate(self: *CEmitter, writer: anytype, root_idx: NodeIndex) !void {
         try writer.writeAll("#include \"flint_rt.h\"\n\n");
-
         const program = self.tree.getNode(root_idx);
 
         if (program == .program) {
+            for (program.program.statements) |stmt_idx| {
+                const stmt = self.tree.getNode(stmt_idx);
+                if (stmt == .var_decl) {
+                    const val_node = self.tree.getNode(stmt.var_decl.value);
+                    if (val_node == .literal) {
+                        try self.visitNodeIndex(stmt_idx, writer);
+                        try writer.writeAll(";\n");
+                    }
+                }
+            }
+            try writer.writeAll("\n");
+
             for (program.program.statements) |stmt_idx| {
                 const stmt = self.tree.getNode(stmt_idx);
                 switch (stmt) {
@@ -63,7 +74,9 @@ pub const CEmitter = struct {
         if (program == .program) {
             for (program.program.statements) |stmt_idx| {
                 const stmt = self.tree.getNode(stmt_idx);
-                if (stmt != .function_decl and stmt != .struct_decl) {
+                const is_literal_var = if (stmt == .var_decl) (self.tree.getNode(stmt.var_decl.value) == .literal) else false;
+
+                if (stmt != .function_decl and stmt != .struct_decl and !is_literal_var) {
                     try writer.writeAll("    ");
                     try self.visitNodeIndex(stmt_idx, writer);
                     try writer.writeAll(";\n");
@@ -758,7 +771,7 @@ pub const CEmitter = struct {
             try writer.writeAll(");\n");
         }
 
-        try writer.writeAll("    _d;\n");
+        try writer.writeAll("    (FlintValue){FLINT_VAL_DICT, .as.d = _d};\n");
         try writer.writeAll("})");
     }
 
@@ -885,7 +898,7 @@ pub const CEmitter = struct {
                     return "flint_str_array";
                 }
             },
-            .dict_expr => return "FlintDict*",
+            .dict_expr => return "FlintValue",
             else => return null,
         }
         return null;
