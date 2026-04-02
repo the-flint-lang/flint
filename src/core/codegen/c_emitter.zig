@@ -404,97 +404,41 @@ pub const CEmitter = struct {
         const iter_name = self.temp_counter;
         const target_iter_name = self.pool.get(for_node.iterator_name_id);
 
-        // ====================================================================
-        // OPTIMIZATION: Range Lowering (O(1) Memory Loop)
-        // Se for um range(), ejetamos um loop nativo em C e pulamos o _Generic
-        // ====================================================================
-        const iterable_node = self.tree.getNode(for_node.iterable);
-        var is_range_call = false;
+        const inferred_type = self.inferCType(for_node.iterable) orelse "flint_str_array";
 
-        if (iterable_node == .call_expr) {
-            const callee_node = self.tree.getNode(iterable_node.call_expr.callee);
-            if (callee_node == .identifier and std.mem.eql(u8, self.pool.get(callee_node.identifier.name_id), "range")) {
-                is_range_call = true;
-            }
-        }
+        try writer.writeAll("    {\n        typeof(");
+        try self.visitNodeIndex(for_node.iterable, writer);
+        try writer.print(") _iter_{d} = ", .{iter_name});
+        try self.visitNodeIndex(for_node.iterable, writer);
+        try writer.writeAll(";\n");
 
-        if (is_range_call) {
-            const call = iterable_node.call_expr;
-
-            // Avalia start e end apenas uma vez
-            try writer.print("{{\n        long long _start_{d} = ", .{iter_name});
-            try self.visitNodeIndex(call.arguments[0], writer);
-            try writer.writeAll(";\n        long long _end_");
-            try writer.print("{d} = ", .{iter_name});
-            try self.visitNodeIndex(call.arguments[1], writer);
-            try writer.writeAll(";\n");
-
-            // Loop C nativo mantendo o gerenciamento da Arena
-            try writer.print("        for (long long {s} = _start_{d}, _mark_{d} = flint_arena_mark(); {s} < _end_{d}; flint_arena_release(_mark_{d}), _mark_{d} = flint_arena_mark(), {s}++) {{\n", .{ target_iter_name, iter_name, iter_name, target_iter_name, iter_name, iter_name, iter_name, target_iter_name });
+        if (std.mem.eql(u8, inferred_type, "flint_str_array") or std.mem.eql(u8, inferred_type, "flint_int_array")) {
+            try writer.print("        {s}* _arr_{d} = ({s}*)(void*)&_iter_{d};\n", .{ inferred_type, iter_name, inferred_type, iter_name });
+            try writer.print("        for (size_t _i_{d} = 0, _mark_{d} = flint_arena_mark(); _i_{d} < _arr_{d}->count; flint_arena_release(_mark_{d}), _mark_{d} = flint_arena_mark(), _i_{d}++) {{\n", .{ iter_name, iter_name, iter_name, iter_name, iter_name, iter_name, iter_name });
+            try writer.print("            typeof(_arr_{d}->items[_i_{d}]) {s} = _arr_{d}->items[_i_{d}];\n", .{ iter_name, iter_name, target_iter_name, iter_name, iter_name });
 
             for (for_node.body) |stmt_idx| {
                 try writer.writeAll("            ");
                 try self.visitNodeIndex(stmt_idx, writer);
                 try writer.writeAll(";\n");
             }
-            try writer.writeAll("        }\n    }\n");
+            try writer.writeAll("        }\n");
+        } else {
+            try writer.print("        FlintValue* _val_{d} = (FlintValue*)(void*)&_iter_{d};\n", .{ iter_name, iter_name });
+            try writer.print("        if (_val_{d}->type == FLINT_VAL_STREAM) {{\n", .{iter_name});
+            try writer.print("            flint_stream* _stream_{d} = &_val_{d}->as.stream;\n", .{ iter_name, iter_name });
+            try writer.print("            for (size_t _mark_{d} = flint_arena_mark(); _stream_{d}->has_next; flint_arena_release(_mark_{d}), _mark_{d} = flint_arena_mark()) {{\n", .{ iter_name, iter_name, iter_name, iter_name });
+            try writer.print("                typeof(flint_stream_next(_stream_{d})) {s} = flint_stream_next(_stream_{d});\n", .{ iter_name, target_iter_name, iter_name });
 
-            // Retornamos cedo para ignorar a macro _Generic
-            return;
+            for (for_node.body) |stmt_idx| {
+                try writer.writeAll("                ");
+                try self.visitNodeIndex(stmt_idx, writer);
+                try writer.writeAll(";\n");
+            }
+            try writer.writeAll("            }\n        }\n");
         }
 
-        // ====================================================================
-        // FALLBACK: Generic Array/Stream Iteration (O que você já tinha)
-        // ====================================================================
-        try writer.writeAll("{\n        typeof(");
-        try self.visitNodeIndex(for_node.iterable, writer);
-        try writer.print(") _iter_{d} = ", .{iter_name});
-        try self.visitNodeIndex(for_node.iterable, writer);
-        try writer.writeAll(";\n");
-
-        try writer.print("        _Generic((_iter_{d}), \\\n", .{iter_name});
-
-        try writer.writeAll("            flint_int_array: ({ \\\n");
-        try writer.print("                flint_int_array* _arr_{d} = (flint_int_array*)(void*)&_iter_{d}; \\\n", .{ iter_name, iter_name });
-        try writer.print("                for (size_t _i_{d} = 0, _mark_{d} = flint_arena_mark(); _i_{d} < _arr_{d}->count; flint_arena_release(_mark_{d}), _mark_{d} = flint_arena_mark(), _i_{d}++) {{ \\\n", .{ iter_name, iter_name, iter_name, iter_name, iter_name, iter_name, iter_name });
-        try writer.print("                    typeof(_arr_{d}->items[_i_{d}]) {s} = _arr_{d}->items[_i_{d}]; \\\n", .{ iter_name, iter_name, target_iter_name, iter_name, iter_name });
-        for (for_node.body) |stmt_idx| {
-            try writer.writeAll("                    ");
-            try self.visitNodeIndex(stmt_idx, writer);
-            try writer.writeAll("; \\\n");
-        }
-        try writer.writeAll("                } \\\n");
-        try writer.writeAll("            }), \\\n");
-
-        try writer.writeAll("            flint_str_array: ({ \\\n");
-        try writer.print("                flint_str_array* _arr_{d} = (flint_str_array*)(void*)&_iter_{d}; \\\n", .{ iter_name, iter_name });
-        try writer.print("                for (size_t _i_{d} = 0, _mark_{d} = flint_arena_mark(); _i_{d} < _arr_{d}->count; flint_arena_release(_mark_{d}), _mark_{d} = flint_arena_mark(), _i_{d}++) {{ \\\n", .{ iter_name, iter_name, iter_name, iter_name, iter_name, iter_name, iter_name });
-        try writer.print("                    typeof(_arr_{d}->items[_i_{d}]) {s} = _arr_{d}->items[_i_{d}]; \\\n", .{ iter_name, iter_name, target_iter_name, iter_name, iter_name });
-        for (for_node.body) |stmt_idx| {
-            try writer.writeAll("                    ");
-            try self.visitNodeIndex(stmt_idx, writer);
-            try writer.writeAll("; \\\n");
-        }
-        try writer.writeAll("                } \\\n");
-        try writer.writeAll("            }), \\\n");
-
-        try writer.writeAll("            FlintValue: ({ \\\n");
-        try writer.print("                FlintValue* _val_{d} = (FlintValue*)(void*)&_iter_{d}; \\\n", .{ iter_name, iter_name });
-        try writer.print("                if (_val_{d}->type == FLINT_VAL_STREAM) {{ \\\n", .{iter_name});
-        try writer.print("                    flint_stream* _stream_{d} = &_val_{d}->as.stream; \\\n", .{ iter_name, iter_name });
-
-        try writer.print("                    for (size_t _mark_{d} = flint_arena_mark(); _stream_{d}->has_next; flint_arena_release(_mark_{d}), _mark_{d} = flint_arena_mark()) {{ \\\n", .{ iter_name, iter_name, iter_name, iter_name });
-        try writer.print("                        typeof(flint_stream_next(_stream_{d})) {s} = flint_stream_next(_stream_{d}); \\\n", .{ iter_name, target_iter_name, iter_name });
-        for (for_node.body) |stmt_idx| {
-            try writer.writeAll("                        ");
-            try self.visitNodeIndex(stmt_idx, writer);
-            try writer.writeAll("; \\\n");
-        }
-        try writer.writeAll("                    } \\\n");
-        try writer.writeAll("                } \\\n");
-        try writer.writeAll("            }) \\\n");
-
-        try writer.writeAll("        );\n    }");
+        try writer.writeAll("    }\n");
     }
 
     fn visitBinaryExpr(self: *CEmitter, node: AstNode, writer: anytype) !void {
@@ -888,6 +832,17 @@ pub const CEmitter = struct {
                 if (t == .string_literal_token or t == .multile_string_literal_token) return "flint_str";
                 if (t == .integer_literal_token) return "long long";
                 if (t == .true_literal_token or t == .false_literal_token) return "bool";
+            },
+            .identifier => {
+                const id_node = self.tree.getNode(index);
+                var current_idx: u32 = 0;
+                while (current_idx < index) : (current_idx += 1) {
+                    const n = self.tree.getNode(current_idx);
+                    if (n == .var_decl and n.var_decl.name_id == id_node.identifier.name_id) {
+                        return self.inferCType(n.var_decl.value);
+                    }
+                }
+                return "flint_str_array";
             },
             .call_expr => |c| {
                 const callee = self.tree.getNode(c.callee);

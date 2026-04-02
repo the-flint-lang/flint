@@ -54,6 +54,8 @@ pipeline "version ${WHITE}${BOLD}$VERSION${NC}"
 step "downloading flint $VERSION"
 DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/flint-${OS}-${ARCH}.tar.gz"
 
+echo DOWNLOAD_URL
+
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
 cd "$TMP_DIR"
