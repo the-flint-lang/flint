@@ -243,8 +243,15 @@ pub const Parser = struct {
         defer statements.deinit(self.allocator);
 
         while (!self.check(.rbrace_token) and !self.isAtEnd()) {
-            const stmt_idx = try self.parseDeclaration();
-            try statements.append(self.allocator, stmt_idx);
+            if (self.parseDeclaration()) |stmt_idx| {
+                try statements.append(self.allocator, stmt_idx);
+            } else |err| {
+                if (err == error.ParseError) {
+                    self.synchronize();
+                } else {
+                    return err;
+                }
+            }
         }
 
         return try statements.toOwnedSlice(self.allocator);
