@@ -737,7 +737,7 @@ pub const Parser = struct {
             if (byte < 0x80 or byte >= 0xC0) content_visual_len += 1;
         }
 
-        const inner_start_col = token.column - 1 - content_visual_len;
+        const inner_start_col = token.column - 2 - content_visual_len;
 
         var i: usize = 0;
         var start: usize = 0;
@@ -770,6 +770,7 @@ pub const Parser = struct {
                         var prefix_visual_len: u32 = 0;
                         for (raw[0..start]) |byte| {
                             if (byte < 0x80 or byte >= 0xC0) prefix_visual_len += 1;
+                            if (byte == '\\') prefix_visual_len += 1;
                         }
 
                         var sub_lexer = Lexer{

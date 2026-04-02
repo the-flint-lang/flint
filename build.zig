@@ -32,9 +32,9 @@ pub fn build(b: *std.Build) void {
 
     exe.linkLibC();
 
-    exe.root_module.strip = true;
-    exe.link_gc_sections = true;
-    exe.want_lto = true;
+    // exe.root_module.strip = true;
+    // exe.link_gc_sections = true;
+    // exe.want_lto = true;
 
     b.installArtifact(exe);
 
