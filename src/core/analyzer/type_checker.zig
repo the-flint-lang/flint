@@ -28,6 +28,8 @@ pub const TypeChecker = struct {
     source: []const u8,
     had_error: bool = false,
 
+    node_types: std.AutoHashMap(NodeIndex, FlintType),
+
     fn defineBuiltin(global: *SymbolTable, alloc: std.mem.Allocator, pool: *StringPool, name: []const u8, ret: FlintType, sig: ?[]const FlintType) !void {
         const id = try pool.intern(alloc, name);
         _ = global.define(id, ret, true, 0, 0, null, sig);
@@ -126,6 +128,7 @@ pub const TypeChecker = struct {
             .file_path = file_path,
             .source = source,
             .had_error = false,
+            .node_types = std.AutoHashMap(NodeIndex, FlintType).init(allocator),
         };
     }
 
@@ -139,8 +142,16 @@ pub const TypeChecker = struct {
     }
 
     fn checkNodeIndex(self: *TypeChecker, index: NodeIndex) anyerror!FlintType {
+        const resolved_type = try self.checkNodeIndexInternal(index);
+
+        try self.node_types.put(index, resolved_type);
+
+        return resolved_type;
+    }
+
+    fn checkNodeIndexInternal(self: *TypeChecker, index: NodeIndex) anyerror!FlintType {
         const node = self.tree.getNode(index);
-        return switch (node) {
+        const resolved = switch (node) {
             .var_decl => try self.checkVarDecl(index, node),
             .identifier => try self.checkIdentifier(index, node),
             .literal => try self.checkLiteral(node),
@@ -181,6 +192,9 @@ pub const TypeChecker = struct {
 
             else => .t_unknown,
         };
+
+        try self.node_types.put(index, resolved);
+        return resolved;
     }
 
     fn checkStructDecl(self: *TypeChecker, index: NodeIndex, node: AstNode) !FlintType {
@@ -697,6 +711,32 @@ pub const TypeChecker = struct {
                 return .t_int;
             }
 
+            if (std.mem.eql(u8, func_name_str, "print")) {
+                const total_args = call.arguments.len + (if (injected_arg != null) @as(usize, 1) else 0);
+
+                if (total_args > 1) {
+                    self.had_error = true;
+                    var err_line: u32 = call.line;
+                    var err_col: u32 = 0;
+                    var err_len: u32 = @intCast(func_name_str.len);
+                    self.extractCoords(call.callee, &err_line, &err_col, &err_len);
+
+                    var diag = DiagnosticBuilder.init(self.allocator, "SEMANTIC ERROR", "E0040", "Arity mismatch", self.source, self.file_path);
+                    defer diag.deinit();
+                    const msg = try std.fmt.allocPrint(self.allocator, "the 'print' function takes at most 1 argument but {d} were supplied", .{total_args});
+                    try diag.addLabel(err_line, err_col, err_len, msg, true);
+                    try diag.emit(self.io);
+                    self.allocator.free(msg);
+                    return .t_error;
+                }
+
+                if (injected_arg == null and call.arguments.len == 1) {
+                    _ = try self.checkNodeIndex(call.arguments[0]);
+                }
+
+                return .t_void;
+            }
+
             if (self.current_scope.lookup(func_name_id)) |symbol| {
                 var is_user_func = false;
                 var func_decl: AstNode = undefined;
@@ -1189,7 +1229,12 @@ pub const TypeChecker = struct {
             return .t_error;
         }
 
-        return .t_any;
+        return switch (left_type) {
+            .t_int_arr => .t_int,
+            .t_str_arr => .t_string,
+            .t_bool_arr => .t_bool,
+            else => .t_any,
+        };
     }
 
     fn checkCatchExpr(self: *TypeChecker, _: NodeIndex, node: AstNode) !FlintType {

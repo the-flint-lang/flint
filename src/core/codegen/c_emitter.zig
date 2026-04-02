@@ -4,6 +4,7 @@ const AstNode = ast.AstNode;
 const AstTree = ast.AstTree;
 const NodeIndex = ast.NodeIndex;
 const StringPool = ast.StringPool;
+const FlintType = @import("../analyzer/symbol_table.zig").FlintType;
 const TokenType = @import("../lexer/enums/token_type.zig").TokenType;
 const Token = @import("../lexer/structs/token.zig").Token;
 
@@ -17,9 +18,10 @@ pub const CEmitter = struct {
 
     built_ins: [16][]const u8,
 
+    node_types: std.AutoHashMap(NodeIndex, FlintType),
     current_placeholder_name: ?[]const u8 = null,
 
-    pub fn init(allocator: std.mem.Allocator, tree: *const AstTree, pool: *StringPool, source_file: []const u8, is_run: bool) CEmitter {
+    pub fn init(allocator: std.mem.Allocator, tree: *const AstTree, pool: *StringPool, node_types: std.AutoHashMap(NodeIndex, FlintType), source_file: []const u8, is_run: bool) CEmitter {
         return .{
             .allocator = allocator,
             .tree = tree,
@@ -31,6 +33,7 @@ pub const CEmitter = struct {
                 "concat", "to_str",            "to_int", "parse_json", "ensure", "lines",   "grep",
                 "chars",  "os_command_exists",
             },
+            .node_types = node_types,
             .current_placeholder_name = null,
         };
     }
@@ -560,6 +563,11 @@ pub const CEmitter = struct {
         if (callee_node == .identifier) {
             const func_name = self.pool.get(callee_node.identifier.name_id);
 
+            if (std.mem.eql(u8, func_name, "print") and call.arguments.len == 0) {
+                try writer.print("flint_print(FLINT_STR(\"\"))", .{});
+                return;
+            }
+
             if (std.mem.eql(u8, func_name, "int_array")) {
                 try writer.writeAll("(flint_int_array){.items = NULL, .count = 0, .capacity = 0}");
                 return;
@@ -838,69 +846,18 @@ pub const CEmitter = struct {
     }
 
     fn inferCType(self: *CEmitter, index: NodeIndex) ?[]const u8 {
-        const node = self.tree.getNode(index);
-        switch (node) {
-            .literal => |l| {
-                const t = l.token._type;
-                if (t == .string_literal_token or t == .multile_string_literal_token) return "flint_str";
-                if (t == .integer_literal_token) return "long long";
-                if (t == .true_literal_token or t == .false_literal_token) return "bool";
-            },
-            .identifier => {
-                const id_node = self.tree.getNode(index);
-                var current_idx: u32 = 0;
-                while (current_idx < index) : (current_idx += 1) {
-                    const n = self.tree.getNode(current_idx);
-                    if (n == .var_decl and n.var_decl.name_id == id_node.identifier.name_id) {
-                        return self.inferCType(n.var_decl.value);
-                    }
-                }
-                return "flint_str_array";
-            },
-            .call_expr => |c| {
-                const callee = self.tree.getNode(c.callee);
-                if (callee == .identifier) {
-                    const func_name = self.pool.get(callee.identifier.name_id);
-                    if (std.mem.eql(u8, func_name, "build_str") or
-                        std.mem.eql(u8, func_name, "to_str") or
-                        std.mem.eql(u8, func_name, "concat") or
-                        std.mem.eql(u8, func_name, "os_env") or
-                        std.mem.eql(u8, func_name, "strings_join") or
-                        std.mem.eql(u8, func_name, "strings_trim") or
-                        std.mem.eql(u8, func_name, "strings_replace")) return "flint_str";
+        const flint_type = self.node_types.get(index) orelse return "FlintValue";
 
-                    if (std.mem.eql(u8, func_name, "to_int") or
-                        std.mem.eql(u8, func_name, "len")) return "long long";
-
-                    if (std.mem.eql(u8, func_name, "parse_json") or
-                        std.mem.eql(u8, func_name, "ensure") or
-                        std.mem.eql(u8, func_name, "fallback") or
-                        std.mem.eql(u8, func_name, "os_spawn") or
-                        std.mem.eql(u8, func_name, "io_read_file") or
-                        std.mem.eql(u8, func_name, "http_fetch")) return "FlintValue";
-
-                    if (std.mem.eql(u8, func_name, "lines") or
-                        std.mem.eql(u8, func_name, "grep") or
-                        std.mem.eql(u8, func_name, "chars") or
-                        std.mem.eql(u8, func_name, "strings_split")) return "flint_str_array";
-                }
-            },
-            .array_expr => |a| {
-                if (a.elements.len > 0) {
-                    const first = self.tree.getNode(a.elements[0]);
-                    if (first == .literal) {
-                        const t = first.literal.token._type;
-                        if (t == .string_literal_token or t == .multile_string_literal_token) return "flint_str_array";
-                        if (t == .integer_literal_token) return "flint_int_array";
-                        if (t == .true_literal_token or t == .false_literal_token) return "flint_bool_array";
-                    }
-                } else {
-                    return "flint_str_array";
-                }
-            },
-            .dict_expr => return "FlintValue",
-            else => return null,
-        }
-        return null;
+        return switch (flint_type) {
+            .t_int => "long long",
+            .t_string => "flint_str",
+            .t_bool => "bool",
+            .t_int_arr => "flint_int_array",
+            .t_str_arr => "flint_str_array",
+            .t_bool_arr => "flint_bool_array",
+            .t_void => "void",
+            .t_val => "FlintValue",
+            else => "FlintValue",
+        };
     }
 };

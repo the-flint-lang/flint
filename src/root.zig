@@ -451,6 +451,17 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
 
     const merged_root_idx = try global_tree.addNode(alloc, .{ .program = .{ .statements = linker.statements.items } });
 
+    const main_source = try std.fs.cwd().readFileAlloc(alloc, file_path, 1024 * 1024);
+    defer alloc.free(main_source);
+
+    var final_checker = try TypeChecker.init(alloc, &global_tree, &pool, file_path, main_source, io);
+    try final_checker.check(merged_root_idx);
+
+    if (final_checker.had_error) {
+        try io.stderr.print("Linkage/Semantic error across files.\n", .{});
+        return;
+    }
+
     const exe_name = std.fs.path.stem(file_path);
     const system_rt_o = "/usr/share/flint/flint_rt.o";
     const system_rt_h = "/usr/share/flint/flint_rt.h";
@@ -482,7 +493,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
         var c_code_buffer = std.ArrayList(u8).empty;
         defer c_code_buffer.deinit(alloc);
 
-        var emitter = CEmitter.init(alloc, &global_tree, &pool, file_path, true);
+        var emitter = CEmitter.init(alloc, &global_tree, &pool, final_checker.node_types, file_path, true);
         try emitter.generate(c_code_buffer.writer(alloc), merged_root_idx);
         try c_code_buffer.append(alloc, 0);
 
@@ -578,7 +589,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
     {
         var buf: [4096]u8 = undefined;
         var writer = child.stdin.?.writer(&buf);
-        var emitter = CEmitter.init(alloc, &global_tree, &pool, file_path, false);
+        var emitter = CEmitter.init(alloc, &global_tree, &pool, final_checker.node_types, file_path, false);
         try emitter.generate(&writer.interface, merged_root_idx);
         try writer.interface.flush();
     }
