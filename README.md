@@ -136,7 +136,7 @@ Flint uses a 4GB virtual arena allocator:
 
 ## Performance (Summary)
 
-Flint is engineered for maximum throughput in DevOps workloads. In our v1.8.0 benchmarks:
+Flint is engineered for maximum throughput in DevOps workloads. In our v1.8.1 benchmarks:
 
 * **JSON Extraction:** ~29x faster than Node.js and ~22x faster than Python (parses 17MB in ~13ms using O(1) Lazy Scanning).
 * **Mass File Stat:** ~650x faster than Bash when inspecting 10,000 files.
@@ -172,7 +172,7 @@ flint run my_script.fl
 
 ## Architecture & Stability
 
-Current version: **v1.8.0**
+Current version: **v1.8.1**
 
 Flint is a transpiler:
 `.fl → AST (Zig) → Type Checker → C99 → native binary`

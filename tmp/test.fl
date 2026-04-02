@@ -1,0 +1,7 @@
+var array = int_array();
+
+for i in range(0, 20000000) {
+    push(array, i);
+}
+
+print(len(array));
