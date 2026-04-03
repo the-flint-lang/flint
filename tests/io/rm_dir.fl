@@ -1,14 +1,15 @@
 import io;
-import os;
+import fs;
+import process;
 
-_ = os.mkdir("tests/io/test_rm_dir") catch |err| {
+_ = fs.mkdir("tests/io/test_rm_dir") catch |err| {
     print(err);
-    os.exit(1);
+    process.exit(1);
 };
 
-_ = os.rm_dir("tests/io/test_rm_dir") catch |err| {
+_ = fs.rm_dir("tests/io/test_rm_dir") catch |err| {
     print(err);
-    os.exit(1);
+    process.exit(1);
 };
 
 

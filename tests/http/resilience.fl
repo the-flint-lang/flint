@@ -1,7 +1,8 @@
 import io;
 import http;
 import os;
-import strings;
+import process;
+import str;
 
 print("Starting critical network routine (Zig Style)...");
 
@@ -11,8 +12,8 @@ const request = http.fetch("https://fake-url-by-lucas.com") catch |err| {
     print(err);
     
     print("\nExecuting contingency and exiting gracefully...");
-    os.exit(0);
+    process.exit(0);
 };
 
 print("Network success!");
-print(strings.to_str(request));
+print(str.to_str(request));

@@ -292,7 +292,7 @@ pub const Parser = struct {
 
                 expr_idx = try self.tree.addNode(self.allocator, .{
                     .call_expr = .{
-                        .line = self.previous().line + 1,
+                        .line = self.previous().line,
                         .callee = expr_idx,
                         .arguments = try args.toOwnedSlice(self.allocator),
                     },
@@ -307,7 +307,7 @@ pub const Parser = struct {
                 const prop_id = try self.pool.intern(self.allocator, property_token.value);
 
                 expr_idx = try self.tree.addNode(self.allocator, .{ .property_access_expr = .{
-                    .line = property_token.line + 1,
+                    .line = property_token.line,
                     .object = expr_idx,
                     .property_name_id = prop_id,
                 } });
@@ -733,11 +733,16 @@ pub const Parser = struct {
         const raw = token.value;
 
         var content_visual_len: u32 = 0;
+        var total_newlines: u32 = 0;
         for (raw) |byte| {
+            if (byte == '\n') total_newlines += 1;
             if (byte < 0x80 or byte >= 0xC0) content_visual_len += 1;
         }
 
-        const inner_start_col = token.column - 2 - content_visual_len;
+        var inner_start_col: u32 = 0;
+        if (total_newlines == 0 and token.column > content_visual_len + 2) {
+            inner_start_col = token.column - 2 - content_visual_len;
+        }
 
         var i: usize = 0;
         var start: usize = 0;

@@ -19,7 +19,7 @@ The life cycle of a Flint script:
         │
         ▼
  ┌────────────────┐ 2. Parser & String Pool (Zig)
- │ AST Generation │ Interns strings into IDs and builds a pointer-free AstTree.
+ │ AST Generation │ Interns str into IDs and builds a pointer-free AstTree.
  └──────┬─────────┘
         │
         ▼
@@ -63,7 +63,7 @@ Flint scripts are designed for DevOps — they boot, do their job, and exit. Tra
 
 ### Zero-Copy I/O and `FLINT_C_PATH`
 
-Flint bypasses the Heap and uses `mmap` to map disk data directly to virtual memory. When passing strings to native C functions, Flint uses the `FLINT_C_PATH` macro to allocate temporary C-strings directly on the **CPU Stack**, generating zero Arena garbage.
+Flint bypasses the Heap and uses `mmap` to map disk data directly to virtual memory. When passing str to native C functions, Flint uses the `FLINT_C_PATH` macro to allocate temporary C-str directly on the **CPU Stack**, generating zero Arena garbage.
 
 ### Lazy JSON Parsing
 

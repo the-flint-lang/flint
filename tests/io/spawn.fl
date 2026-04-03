@@ -1,14 +1,15 @@
 import io;
 import os;
-import strings;
+import process;
+import str;
 import utils;
 
 print("Starting subprocess orchestration...");
 
-const proc = os.spawn("cat /pasta_que_nao_existe", true) catch |err| { 
+const proc = process.spawn("cat /pasta_que_nao_existe", true) catch |err| { 
     print("KERNEL ERROR: Unable to spawn!");
     print(err);
-    os.exit(1); 
+    process.exit(1); 
 };
 
 print("--- MEMORY STATE ---");

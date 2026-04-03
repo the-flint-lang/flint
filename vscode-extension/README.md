@@ -12,7 +12,7 @@ This extension turns VS Code into a first-class IDE for Flint:
 * **Pipeline & Safety Support:** Deep integration for Flint's signature data-flow operator (`~>`) and the new v1.9.0 safety primitives (`if_fail`, `fallback`).
 * **AOT Structs & Typings:** Highlights custom strongly-typed data structures and type annotations (`string`, `int`, `bool`).
 * **Standard Library Recognition:** Autocompletion and highlighting for Flint's ultra-fast C99 runtime built-ins (e.g., `fetch`, `parse_json_as`, `exec`, `lines`, `grep`, `count_matches`).
-* **String Parsing:** Full support for standard strings (`" "`), char literals (`' '`), and raw multiline strings (`` ` ` ``).
+* **String Parsing:** Full support for standard str (`" "`), char literals (`' '`), and raw multiline str (`` ` ` ``).
 
 ## Built-in Snippets
 

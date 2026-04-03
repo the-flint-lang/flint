@@ -305,6 +305,27 @@ pub const CEmitter = struct {
 
     fn visitPropertyAccessExpr(self: *CEmitter, node: AstNode, writer: anytype) !void {
         const prop_access = node.property_access_expr;
+        const obj_node = self.tree.getNode(prop_access.object);
+
+        if (obj_node == .identifier) {
+            const obj_name = self.pool.get(obj_node.identifier.name_id);
+            const prop_name = self.pool.get(prop_access.property_name_id);
+
+            const modules = [_][]const u8{ "os", "io", "http", "str", "json", "process", "fs", "term", "utils", "env" };
+            var is_module = false;
+            for (modules) |m| {
+                if (std.mem.eql(u8, obj_name, m)) {
+                    is_module = true;
+                    break;
+                }
+            }
+
+            if (is_module) {
+                try writer.print("{s}_{s}", .{ obj_name, prop_name });
+                return;
+            }
+        }
+
         try writer.writeAll("(");
         try self.visitNodeIndex(prop_access.object, writer);
         try writer.writeAll(".");
@@ -858,6 +879,26 @@ pub const CEmitter = struct {
     }
 
     fn inferCType(self: *CEmitter, index: NodeIndex) ?[]const u8 {
+        const node = self.tree.getNode(index);
+
+        if (node == .call_expr) {
+            const call = node.call_expr;
+            const callee_node = self.tree.getNode(call.callee);
+
+            if (callee_node == .identifier) {
+                const func_name = self.pool.get(callee_node.identifier.name_id);
+
+                if (std.mem.eql(u8, func_name, "parse_json_as")) {
+                    if (call.arguments.len > 0) {
+                        const struct_arg = self.tree.getNode(call.arguments[0]);
+                        if (struct_arg == .identifier) {
+                            return self.pool.get(struct_arg.identifier.name_id);
+                        }
+                    }
+                }
+            }
+        }
+
         const flint_type = self.node_types.get(index) orelse return "FlintValue";
 
         return switch (flint_type) {

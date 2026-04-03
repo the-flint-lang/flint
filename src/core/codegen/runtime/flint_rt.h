@@ -320,7 +320,7 @@ FlintValue flint_grep_inner(FlintValue iterable, FlintValue pattern_val);
 #define flint_grep(iter, pat) flint_grep_inner(FLINT_BOX(iter), FLINT_BOX(pat))
 
 /* =========================
-   STRINGS
+   str
    ========================= */
 
 flint_str_array flint_split(flint_str text, flint_str delimiter);

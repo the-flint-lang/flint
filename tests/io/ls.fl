@@ -1,10 +1,10 @@
-import os;
-import strings;
+import fs;
+import str;
 
-const f = os.ls(".") ~> if_fail("Unable to read current directory");
+const f = fs.ls(".") ~> if_fail("Unable to read current directory");
 
 var i = 0;
-for line in strings.to_str(f) ~> lines() {
+for line in str.to_str(f) ~> lines() {
     print($"{i}. {line}");
     i = i + 1;
 }

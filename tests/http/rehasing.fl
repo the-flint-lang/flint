@@ -1,5 +1,5 @@
 import json;
-import strings;
+import str;
 
 print("Starting Memory Stress Test (Rehashing)...");
 const my_json = json.parse("{}");

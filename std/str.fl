@@ -1,4 +1,4 @@
-# std/strings.fl
+# std/str.fl
 
 extern fn flint_split(text: string, delim: string) arr;
 extern fn flint_join(a: arr, sep: string) string;

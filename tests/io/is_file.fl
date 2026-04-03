@@ -1,9 +1,10 @@
 import io;
-import os;
+import fs;
+import process;
 
-if os.is_file("is_file.fl") {
+if fs.is_file("is_file.fl") {
     print("Is a file");
-    os.exit(0);
+    process.exit(0);
 } 
 
 print("Not is a file");

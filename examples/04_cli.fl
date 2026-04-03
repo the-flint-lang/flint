@@ -1,5 +1,5 @@
 import os;
-import strings;
+import str;
 
 print("--- Argument Injection Test (v1.7) ---");
 
@@ -12,5 +12,5 @@ print($"Total arguments received: {to_str(qty)}");
 print("\nDumping arguments:");
 
 for arg in arguments {
-    print(" -> " ~> strings.concat(arg));
+    print(" -> " ~> str.concat(arg));
 }

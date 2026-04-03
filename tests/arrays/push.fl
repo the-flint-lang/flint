@@ -1,5 +1,4 @@
 import io;
-import utils;
 
 var log_erros = ["timeout", "404"];
 

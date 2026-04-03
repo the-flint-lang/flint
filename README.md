@@ -116,7 +116,7 @@ Avoid Flint for:
 os.exec("ps aux")
     ~> lines()
     ~> grep("root")
-    ~> strings.join("\n")
+    ~> str.join("\n")
 ```
 
 Readable, linear data flow — no nested calls.
@@ -132,7 +132,7 @@ Flint compiles to C99 and produces small native binaries.
 ### Data-Oriented Architecture (New)
 The compiler uses a pointer-free **AstTree** and **String Interning**, making it significantly faster and more memory-efficient than traditional AST implementations.
 
-### Zero-copy I/O & Strings
+### Zero-copy I/O & str
 
 String operations work on slices (`ptr + len`), avoiding unnecessary allocations. File reads bypass the heap entirely using pure kernel-space `mmap`.
 

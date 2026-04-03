@@ -1,14 +1,15 @@
 import io;
-import os;
+import fs;
+import process;
 
-_ = os.touch("tests/io/teste.test") catch |err| {
+_ = fs.touch("tests/io/teste.test") catch |err| {
     print(err);
-    os.exit(1);
+    process.exit(1);
 };
 
-_ = os.rm("tests/io/teste.test") catch |err| {
+_ = fs.rm("tests/io/teste.test") catch |err| {
     print(err);
-    os.exit(1);
+    process.exit(1);
 };
 
 

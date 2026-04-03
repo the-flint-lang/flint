@@ -1,21 +1,21 @@
 import io;
-import os;
+import fs;
 
 fn rm_() void {
-    _ = os.rm_dir("test") catch |err| {
+    _ = fs.rm_dir("test") catch |err| {
         print(err);
     };
 }
 
-_ = os.mkdir("test") catch |err| {
+_ = fs.mkdir("test") catch |err| {
     print(err);
-    os.exit(1);
+    process.exit(1);
 };
 
-if os.is_dir("test") {
+if fs.is_dir("test") {
     print("Is a dir");
     rm_();
-    os.exit(0);
+    process.exit(0);
 } 
 
 print("Not is a dir");

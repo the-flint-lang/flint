@@ -55,26 +55,25 @@ pub const TypeChecker = struct {
         try defineBuiltin(global, allocator, pool, "grep", .t_val, &[_]FlintType{ .t_any, .t_string });
         try defineBuiltin(global, allocator, pool, "build_str", .t_string, null);
         try defineBuiltin(global, allocator, pool, "chars", .t_str_arr, &[_]FlintType{.t_string});
-        try defineBuiltin(global, allocator, pool, "strings_split", .t_str_arr, &[_]FlintType{ .t_string, .t_string });
+        try defineBuiltin(global, allocator, pool, "str_split", .t_str_arr, &[_]FlintType{ .t_string, .t_string });
 
         // os module
-        try defineBuiltin(global, allocator, pool, "os_mkdir", .t_val, &[_]FlintType{.t_string});
-        try defineBuiltin(global, allocator, pool, "os_rm", .t_val, &[_]FlintType{.t_string});
-        try defineBuiltin(global, allocator, pool, "os_rm_dir", .t_val, &[_]FlintType{.t_string});
-        try defineBuiltin(global, allocator, pool, "os_touch", .t_val, &[_]FlintType{.t_string});
-        try defineBuiltin(global, allocator, pool, "os_ls", .t_val, &[_]FlintType{.t_string});
-        try defineBuiltin(global, allocator, pool, "os_is_dir", .t_bool, &[_]FlintType{.t_string});
-        try defineBuiltin(global, allocator, pool, "os_is_file", .t_bool, &[_]FlintType{.t_string});
-        try defineBuiltin(global, allocator, pool, "os_file_size", .t_val, &[_]FlintType{.t_string});
-        try defineBuiltin(global, allocator, pool, "os_mv", .t_val, &[_]FlintType{ .t_string, .t_string });
-        try defineBuiltin(global, allocator, pool, "os_copy", .t_val, &[_]FlintType{ .t_string, .t_string });
-        try defineBuiltin(global, allocator, pool, "os_exec", .t_string, &[_]FlintType{.t_string});
-        try defineBuiltin(global, allocator, pool, "os_spawn", .t_val, &[_]FlintType{ .t_string, .t_bool });
-        try defineBuiltin(global, allocator, pool, "os_env", .t_string, &[_]FlintType{.t_string});
-        try defineBuiltin(global, allocator, pool, "os_exit", .t_void, &[_]FlintType{.t_int});
+        try defineBuiltin(global, allocator, pool, "fs_mkdir", .t_val, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "fs_rm", .t_val, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "fs_rm_dir", .t_val, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "fs_touch", .t_val, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "fs_ls", .t_val, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "fs_is_dir", .t_bool, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "fs_is_file", .t_bool, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "fs_file_size", .t_val, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "fs_mv", .t_val, &[_]FlintType{ .t_string, .t_string });
+        try defineBuiltin(global, allocator, pool, "fs_copy", .t_val, &[_]FlintType{ .t_string, .t_string });
+        try defineBuiltin(global, allocator, pool, "process_exec", .t_string, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "process_assert", .t_val, &[_]FlintType{ .t_val, .t_string });
+        try defineBuiltin(global, allocator, pool, "process_spawn", .t_val, &[_]FlintType{ .t_string, .t_bool });
+        try defineBuiltin(global, allocator, pool, "process_exit", .t_void, &[_]FlintType{.t_int});
+        try defineBuiltin(global, allocator, pool, "env_get", .t_string, &[_]FlintType{.t_string});
         try defineBuiltin(global, allocator, pool, "os_args", .t_str_arr, &[_]FlintType{});
-        try defineBuiltin(global, allocator, pool, "os_assert", .t_val, &[_]FlintType{ .t_val, .t_string });
-        try defineBuiltin(global, allocator, pool, "os_if_fail", .t_any, &[_]FlintType{ .t_val, .t_string });
         try defineBuiltin(global, allocator, pool, "os_is_tty", .t_any, &[_]FlintType{});
         try defineBuiltin(global, allocator, pool, "os_is_root", .t_bool, &[_]FlintType{});
         try defineBuiltin(global, allocator, pool, "os_require_root", .t_val, &[_]FlintType{.t_str_arr});
@@ -82,29 +81,29 @@ pub const TypeChecker = struct {
 
         // io module
         try defineBuiltin(global, allocator, pool, "io_write", .t_val, &[_]FlintType{ .t_string, .t_string });
-        try defineBuiltin(global, allocator, pool, "io_read_file", .t_val, &[_]FlintType{.t_string});
-        try defineBuiltin(global, allocator, pool, "io_write_file", .t_val, &[_]FlintType{ .t_string, .t_string });
+        try defineBuiltin(global, allocator, pool, "fs_read_file", .t_val, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "fs_write_file", .t_val, &[_]FlintType{ .t_string, .t_string });
         try defineBuiltin(global, allocator, pool, "io_read_line", .t_string, &[_]FlintType{.t_string});
-        try defineBuiltin(global, allocator, pool, "io_clear", .t_void, &[_]FlintType{});
+        try defineBuiltin(global, allocator, pool, "term_clear", .t_void, &[_]FlintType{});
 
         // http module
         try defineBuiltin(global, allocator, pool, "http_fetch", .t_val, &[_]FlintType{.t_string});
 
-        // strings module
-        try defineBuiltin(global, allocator, pool, "strings_join", .t_string, &[_]FlintType{ .t_str_arr, .t_string });
-        try defineBuiltin(global, allocator, pool, "strings_trim", .t_string, &[_]FlintType{.t_string});
-        try defineBuiltin(global, allocator, pool, "strings_count_matches", .t_int, &[_]FlintType{ .t_string, .t_string });
-        try defineBuiltin(global, allocator, pool, "strings_replace", .t_string, &[_]FlintType{ .t_string, .t_string, .t_string });
-        try defineBuiltin(global, allocator, pool, "strings_to_str", .t_string, &[_]FlintType{.t_any});
-        try defineBuiltin(global, allocator, pool, "strings_int_to_str", .t_string, &[_]FlintType{.t_int});
-        try defineBuiltin(global, allocator, pool, "strings_concat", .t_string, &[_]FlintType{ .t_string, .t_string });
-        try defineBuiltin(global, allocator, pool, "strings_to_int", .t_int, &[_]FlintType{.t_any});
-        try defineBuiltin(global, allocator, pool, "strings_str_eql", .t_bool, &[_]FlintType{ .t_string, .t_string });
-        try defineBuiltin(global, allocator, pool, "strings_lines", .t_str_arr, &[_]FlintType{.t_any});
-        try defineBuiltin(global, allocator, pool, "strings_grep", .t_str_arr, &[_]FlintType{ .t_any, .t_string });
-        try defineBuiltin(global, allocator, pool, "strings_starts_with", .t_bool, &[_]FlintType{ .t_string, .t_string });
-        try defineBuiltin(global, allocator, pool, "strings_ends_with", .t_bool, &[_]FlintType{ .t_string, .t_string });
-        try defineBuiltin(global, allocator, pool, "strings_repeat", .t_string, &[_]FlintType{ .t_string, .t_int });
+        // str module
+        try defineBuiltin(global, allocator, pool, "str_join", .t_string, &[_]FlintType{ .t_str_arr, .t_string });
+        try defineBuiltin(global, allocator, pool, "str_trim", .t_string, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "str_count_matches", .t_int, &[_]FlintType{ .t_string, .t_string });
+        try defineBuiltin(global, allocator, pool, "str_replace", .t_string, &[_]FlintType{ .t_string, .t_string, .t_string });
+        try defineBuiltin(global, allocator, pool, "str_to_str", .t_string, &[_]FlintType{.t_any});
+        try defineBuiltin(global, allocator, pool, "str_int_to_str", .t_string, &[_]FlintType{.t_int});
+        try defineBuiltin(global, allocator, pool, "str_concat", .t_string, &[_]FlintType{ .t_string, .t_string });
+        try defineBuiltin(global, allocator, pool, "str_to_int", .t_int, &[_]FlintType{.t_any});
+        try defineBuiltin(global, allocator, pool, "str_str_eql", .t_bool, &[_]FlintType{ .t_string, .t_string });
+        try defineBuiltin(global, allocator, pool, "str_lines", .t_str_arr, &[_]FlintType{.t_any});
+        try defineBuiltin(global, allocator, pool, "str_grep", .t_str_arr, &[_]FlintType{ .t_any, .t_string });
+        try defineBuiltin(global, allocator, pool, "str_starts_with", .t_bool, &[_]FlintType{ .t_string, .t_string });
+        try defineBuiltin(global, allocator, pool, "str_ends_with", .t_bool, &[_]FlintType{ .t_string, .t_string });
+        try defineBuiltin(global, allocator, pool, "str_repeat", .t_string, &[_]FlintType{ .t_string, .t_int });
 
         // json and utils module
         try defineBuiltin(global, allocator, pool, "json_parse", .t_val, &[_]FlintType{.t_string});
@@ -139,6 +138,8 @@ pub const TypeChecker = struct {
         for (program_node.program.statements) |stmt_idx| {
             _ = try self.checkNodeIndex(stmt_idx);
         }
+
+        if (self.had_error) return error.SemanticError;
     }
 
     fn checkNodeIndex(self: *TypeChecker, index: NodeIndex) anyerror!FlintType {
@@ -614,7 +615,7 @@ pub const TypeChecker = struct {
                 const func_name = self.pool.get(callee_node.identifier.name_id);
                 if (std.mem.eql(u8, func_name, "range")) {
                     iter_type = .t_int;
-                } else if (std.mem.eql(u8, func_name, "lines") or std.mem.eql(u8, func_name, "grep") or std.mem.eql(u8, func_name, "chars") or std.mem.eql(u8, func_name, "strings_split")) {
+                } else if (std.mem.eql(u8, func_name, "lines") or std.mem.eql(u8, func_name, "grep") or std.mem.eql(u8, func_name, "chars") or std.mem.eql(u8, func_name, "str_split")) {
                     iter_type = .t_string;
                 }
             }
@@ -756,7 +757,7 @@ pub const TypeChecker = struct {
 
                     var diag = DiagnosticBuilder.init(self.allocator, "SEMANTIC ERROR", "E0308", "Invalid len target", self.source, self.file_path);
                     defer diag.deinit();
-                    try diag.addLabel(err_line, err_col, err_len, "The 'len' function only accepts arrays or strings.", true);
+                    try diag.addLabel(err_line, err_col, err_len, "The 'len' function only accepts arrays or str.", true);
                     try diag.emit(self.io);
                     return .t_error;
                 }
@@ -931,7 +932,33 @@ pub const TypeChecker = struct {
                 return .t_error;
             }
 
-            _ = try self.checkNodeIndex(call.callee);
+            self.had_error = true;
+            var err_line: u32 = call.line;
+            var err_col: u32 = 0;
+            var err_len: u32 = @intCast(func_name_str.len);
+            self.extractCoords(call.callee, &err_line, &err_col, &err_len);
+
+            if (std.mem.indexOf(u8, func_name_str, "_")) |idx| {
+                const mod_name = func_name_str[0..idx];
+                const fn_name = func_name_str[idx + 1 ..];
+
+                var diag = DiagnosticBuilder.init(self.allocator, "SEMANTIC ERROR", "E0609", "Function does not exist in module", self.source, self.file_path);
+                defer diag.deinit();
+                try diag.addLabel(err_line, err_col, err_len, "module does not export this function", true);
+
+                const note_str = try std.fmt.allocPrint(self.allocator, "the module `{s}` has no function called `{s}`", .{ mod_name, fn_name });
+                diag.note(note_str);
+                try diag.emit(self.io);
+                self.allocator.free(note_str);
+            } else {
+                var diag = DiagnosticBuilder.init(self.allocator, "SEMANTIC ERROR", "E0425", "Undefined function", self.source, self.file_path);
+                defer diag.deinit();
+                const msg = try std.fmt.allocPrint(self.allocator, "cannot find function `{s}` in this scope", .{func_name_str});
+                try diag.addLabel(err_line, err_col, err_len, "not found in this scope", true);
+                try diag.emit(self.io);
+                self.allocator.free(msg);
+            }
+
             return .t_error;
         }
 
@@ -1106,7 +1133,7 @@ pub const TypeChecker = struct {
                 self.had_error = prev_had_error;
                 return mod_func_sym.type;
             } else {
-                if (std.mem.eql(u8, obj_name_str, "os") or std.mem.eql(u8, obj_name_str, "io") or std.mem.eql(u8, obj_name_str, "http") or std.mem.eql(u8, obj_name_str, "strings") or std.mem.eql(u8, obj_name_str, "json") or std.mem.eql(u8, obj_name_str, "utils")) {
+                if (std.mem.eql(u8, obj_name_str, "os") or std.mem.eql(u8, obj_name_str, "io") or std.mem.eql(u8, obj_name_str, "http") or std.mem.eql(u8, obj_name_str, "str") or std.mem.eql(u8, obj_name_str, "json") or std.mem.eql(u8, obj_name_str, "utils")) {
                     self.had_error = true;
                     var err_line: u32 = 0;
                     var err_col: u32 = 0;
@@ -1160,8 +1187,9 @@ pub const TypeChecker = struct {
     // imports and data structures
     fn checkImportStmt(self: *TypeChecker, node: AstNode) !FlintType {
         const stmt = node.import_stmt;
-        const module_id = stmt.alias_id orelse try self.pool.intern(self.allocator, stmt.path);
-        _ = self.current_scope.define(module_id, .t_any, true, 0, 0, null, null);
+        if (stmt.alias_id) |alias| {
+            _ = self.current_scope.define(alias, .t_any, true, 0, 0, null, null);
+        }
         return .t_void;
     }
 
@@ -1240,7 +1268,7 @@ pub const TypeChecker = struct {
                 const msg = try std.fmt.allocPrint(self.allocator, "expected `string`, found `{s}`", .{found_str});
 
                 try diag.addLabel(err_line, err_col, err_len, msg, true);
-                diag.note("dictionary keys must be valid strings");
+                diag.note("dictionary keys must be valid str");
                 try diag.emit(self.io);
                 self.allocator.free(msg);
 
@@ -1401,7 +1429,7 @@ pub const TypeChecker = struct {
         }
     }
 
-    fn tokenToFlintType(self: *TypeChecker, token: Token) FlintType {
+    pub fn tokenToFlintType(self: *TypeChecker, token: Token) FlintType {
         _ = self;
         return switch (token._type) {
             .integer_type_token => .t_int,

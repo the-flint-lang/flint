@@ -1,6 +1,6 @@
 # This script demonstrates how Flint replaces Python for API analysis.
 import http;
-import strings;
+import str;
 
 # We define the data contract strictly.
 # The compiler will generate an O(1) memory mapping for this.
@@ -17,8 +17,8 @@ const payload = http.fetch("https://api.github.com/repos/lucaas-d3v/flint")
     ~> if_fail("Network failure: Unable to reach GitHub.");
 
 # parse_json_as transforms the string into our native struct instantly.
-const repo = parse_json_as(RepoInfo, strings.to_str(payload));
+const repo = parse_json_as(RepoInfo, str.to_str(payload));
 
-print($"Repository: {repo.name}" ~> strings.concat(repo.name));
+print($"Repository: {repo.name}" ~> str.concat(repo.name));
 print($"Stars: {to_str(repo.stargazers_count)}" );
 print($"Language: {repo.language}");

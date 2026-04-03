@@ -1,5 +1,5 @@
 import http;
-import strings;
+import str;
 
 struct ReleaseData {
     tag_name: string,
@@ -13,6 +13,6 @@ const payload = http.fetch("https://api.github.com/repos/lucaas-d3v/flint/releas
     ~> if_fail("CI error: Failed to fetch Release metadata.");
 
 # 2. AOT deserialization (O(1) memory mapping, without reflection)
-const release = parse_json_as(ReleaseData, strings.to_str(payload));
+const release = parse_json_as(ReleaseData, str.to_str(payload));
 
 print("Deploying version: {release.tag_name}");

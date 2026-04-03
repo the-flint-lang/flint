@@ -1,0 +1,35 @@
+# std/process.fl
+extern fn flint_exec(cmd: string) string;
+extern fn flint_spawn(cmd: string, echo: bool) val;
+extern fn flint_exit(code: int) void;
+
+# public API
+fn exec(cmd: string) string {
+    return flint_exec(cmd); 
+}
+
+fn spawn(cmd: string, echo: bool) val {
+    return flint_spawn(cmd, echo); 
+}
+
+fn exit(code: int) void {
+    flint_exit(code); 
+}
+
+fn assert(proc: val, error_msg: string) val {
+    const code = str.to_int(proc["exit_code"]);
+    
+    if (code != 0) {
+        print("[FLINT] FATAL PROCESS ASSERTION FAILED ");
+        print($"Message: {error_msg}");
+        
+        const code_str = str.int_to_str(code);
+        print($"Exit Code: {code_str}");
+        
+        print("STDERR:");
+        print(str.to_str(proc["stderr"]));
+        exit(code);
+    }
+    
+    return proc;
+}

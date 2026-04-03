@@ -1,18 +1,19 @@
 import io;
 import http;
 import json;
-import strings;
+import str;
 import utils;
 import os;
+import process;
 
 print("Fetching data from GitHub...");
 
 const raw_payload = http.fetch("https://api.github.com/users/lucaas-d3v") catch |e| {
     print(e);
-    os.exit(1);
+    process.exit(1);
 };
 
-const my_profile = json.parse(strings.to_str(raw_payload));
+const my_profile = json.parse(str.to_str(raw_payload));
 
 print("\n=== DEVELOPER PROFILE ===");
 print("Login:");

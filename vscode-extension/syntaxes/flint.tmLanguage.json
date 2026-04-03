@@ -10,7 +10,7 @@
                 }
             ]
         },
-        "strings": {
+        "str": {
             "patterns": [
                 {
                     "name": "string.quoted.double.interpolated.flint",

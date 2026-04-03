@@ -1,9 +1,10 @@
 import io;
-import os;
+import fs;
+import process;
 
-const size = os.file_size("tests/io/file_size.fl") catch |err| {
+const size = fs.file_size("tests/io/file_size.fl") catch |err| {
     print(err);
-    os.exit(1);
+    process.exit(1);
 };
 
 print(size);

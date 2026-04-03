@@ -1,0 +1,69 @@
+# std/fs.fl
+
+extern fn flint_file_exists(path: string) bool;
+extern fn flint_mkdir(path: string) val;
+extern fn flint_rm(path: string) val;
+extern fn flint_rm_dir(path: string) val;
+extern fn flint_touch(path: string) val;
+extern fn flint_ls(path: string) val;
+extern fn flint_is_dir(path: string) bool;
+extern fn flint_is_file(path: string) bool;
+extern fn flint_file_size(path: string) val;
+extern fn flint_mv(old_path: string, new_path: string) val;
+extern fn flint_copy(src: string, dest: string) val;
+extern fn flint_read_file(path: string) val;
+extern fn flint_write_file(text: string, path: string) val;
+
+# public API
+fn file_exists(path: string) bool {
+    return flint_file_exists(path); 
+}
+
+fn mkdir(path: string) val {
+    return flint_mkdir(path); 
+}
+
+fn rm(path: string) val {
+    return flint_rm(path); 
+}
+
+fn rm_dir(path: string) val {
+    return flint_rm_dir(path); 
+}
+
+fn touch(path: string) val {
+    return flint_touch(path); 
+}
+
+fn ls(path: string) val {
+    return flint_ls(path); 
+}
+
+fn is_dir(path: string) bool {
+    return flint_is_dir(path); 
+}
+
+fn is_file(path: string) bool {
+    return flint_is_file(path); 
+}
+
+fn file_size(path: string) val {
+    return flint_file_size(path); 
+}
+
+fn mv(old_path: string, new_path: string) val {
+    return flint_mv(old_path, new_path); 
+}
+
+fn copy(src: string, dest: string) val {
+    return flint_copy(src, dest); 
+}
+
+fn read_file(path: string) val {
+    return flint_read_file(path);
+}
+
+fn write_file(text: string, path: string) val {
+    return flint_write_file(text, path);
+}
+

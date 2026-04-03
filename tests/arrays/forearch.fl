@@ -1,5 +1,5 @@
 import io;
-import strings;
+import str;
 
 const numbers = [10, 20, 30, 40];
 const servers = ["aws", "gcp", "azure"];

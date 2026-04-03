@@ -1,27 +1,11 @@
 # std/io.fl
 
 extern fn flint_read_line(s: string) string;
-extern fn flint_read_file(path: string) val;
-extern fn flint_write_file(text: string, path: string) val;
-extern fn flint_clear() void;
 extern fn flint_write(way: string, msg: string) void;
 
 # public API
-
 fn read_line(s: string) string {
     return flint_read_line(s);
-}
-
-fn read_file(path: string) val {
-    return flint_read_file(path);
-}
-
-fn write_file(text: string, path: string) val {
-    return flint_write_file(text, path);
-}
-
-fn clear() void {
-    return flint_clear();
 }
 
 fn write(way: string, msg: string) void {

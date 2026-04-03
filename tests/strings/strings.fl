@@ -1,15 +1,15 @@
 import io;
-import strings;
+import str;
 
 const log_sujo = "   ERROR:  banco de dados falhou, ERROR:  timeout na rede   ";
 
 print("Processando o log...");
 
 const partes = log_sujo 
-    ~> strings.replace("ERROR: ", "[FALHA]")
-    ~> strings.split(",");
+    ~> str.replace("ERROR: ", "[FALHA]")
+    ~> str.split(",");
 
 for pedaco in partes {
     print("Encontrado:");
-    print(strings.trim(to_str(pedaco))); 
+    print(str.trim(to_str(pedaco))); 
 }

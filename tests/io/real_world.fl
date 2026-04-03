@@ -1,11 +1,11 @@
-import "./get_default_browser.fl";
+import "./get_default_browser.fl" as b;
 
-import io;
 import http;
+import fs;
 import json;
-import strings;
+import str;
 import utils;
-import os;
+import process;
 
 print("================================================");
 print("    FLINT STATIC GENERATOR v1.0 (flint test)    ");
@@ -15,12 +15,12 @@ print("1. Connecting with servers...");
 
 const req = http.fetch("https://dummyjson.com/quotes/random") catch |e| {
     print(e);
-    os.exit(1);
+    process.exit(1);
 };
-const data = json.parse(strings.to_str(req));
+const data = json.parse(str.to_str(req));
 
-const quote = strings.to_str(data["quote"]);
-const author = strings.to_str(data["author"]);
+const quote = str.to_str(data["quote"]);
+const author = str.to_str(data["author"]);
 
 print("2. Compiling HTML artifact in RAM...");
 
@@ -34,7 +34,7 @@ var html = $`<!DOCTYPE html><html><body style='font-family: system-ui; padding: 
 `;
 
 print("3. Writing to hard drive...");
-io.write_file(html, "philosophy.html");
+fs.write_file(html, "philosophy.html");
 print("\nAbsolute success!");
 
-os.rm("philosophy.html")~> os.assert("Erro is not possible to clean philosophy.html");
+fs.rm("philosophy.html")~> process.assert("Erro is not possible to clean philosophy.html");

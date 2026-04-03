@@ -1,12 +1,12 @@
 import io;
-import strings;
+import str;
 import json;
 import os;
 
 const payload_box = io.read_file("bench_data.json") catch |err| { print(err); os.exit(1); };
-const payload = strings.to_str(payload_box);
+const payload = str.to_str(payload_box);
 const db = json.parse(payload);
 
 const status = db["user_key_499999"]; 
 
-print(strings.to_str(status));
+print(str.to_str(status));

@@ -1,0 +1,8 @@
+# std/term.fl
+
+extern fn flint_clear() void;
+
+# public API
+fn clear() void {
+    return flint_clear();
+}

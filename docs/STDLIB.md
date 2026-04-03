@@ -32,15 +32,15 @@ Functions for raw disk reading and writing.
 
 ---
 
-## 3. `strings` (Zero-Copy Manipulation)
+## 3. `str` (Zero-Copy Manipulation)
 Text processing functions. They return fat pointers (slices) to the original Arena allocation.
 
-* **`strings.split(text: string, delimiter: string) arr`**: Splits a string into an array of string slices.
-* **`strings.join(parts: arr, sep: string) string`**: Allocates a new string combining all elements of an array.
-* **`strings.trim(text: string) string`**: Removes whitespace from both ends.
-* **`strings.count_matches(text: string, pattern: string) int`**: Returns the number of times a pattern appears.
-* **`strings.starts_with(s: string, p: string) bool`**: Returns if a string `s` starts with `p`.
-* **`strings.ends_with(s: string, p: string) bool`**: Returns if a string `s` ends with `p`.
+* **`str.split(text: string, delimiter: string) arr`**: Splits a string into an array of string slices.
+* **`str.join(parts: arr, sep: string) string`**: Allocates a new string combining all elements of an array.
+* **`str.trim(text: string) string`**: Removes whitespace from both ends.
+* **`str.count_matches(text: string, pattern: string) int`**: Returns the number of times a pattern appears.
+* **`str.starts_with(s: string, p: string) bool`**: Returns if a string `s` starts with `p`.
+* **`str.ends_with(s: string, p: string) bool`**: Returns if a string `s` ends with `p`.
 
 ---
 
@@ -61,7 +61,7 @@ These functions are natively injected by the Flint compiler. They are globally a
 ### 6.1. Text & Stream Processing
 * **`lines(text: string) arr`**: O(1) Shorthand for splitting text by `\n`.
 * **`chars(text: string) arr`**: Zero-copy iterator over a string. Returns an array of 1-byte string slices without allocating new memory.
-* **`grep(lines: arr, pattern: string) arr`**: Fast-filters an array of strings, returning only those containing the pattern.
+* **`grep(lines: arr, pattern: string) arr`**: Fast-filters an array of str, returning only those containing the pattern.
 
 ### 6.2. Pipeline Safety (Railway-Oriented)
 * **`if_fail(val: any, err_msg: string) val`**: Halts the pipeline if `val` is an error. Prints stack trace and exits.

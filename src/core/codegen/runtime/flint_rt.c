@@ -967,7 +967,7 @@ bool flint_os_command_exists(flint_str bin)
 }
 
 /* =========================
-   STRINGS
+   str
    ========================= */
 
 bool flint_str_eql(flint_str a, flint_str b)
@@ -1288,7 +1288,7 @@ flint_str_array flint_chars(flint_str text)
 
 bool flint_starts_with(flint_str s, flint_str p)
 {
-    // all strings starts with a empty prefix :)
+    // all str starts with a empty prefix :)
     if (p.len == 0)
     {
         return true;
@@ -1304,7 +1304,7 @@ bool flint_starts_with(flint_str s, flint_str p)
 
 bool flint_ends_with(flint_str s, flint_str p)
 {
-    // all strings also ends with a empty prefix :)
+    // all str also ends with a empty prefix :)
     if (p.len == 0)
     {
         return true;

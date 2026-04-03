@@ -1,22 +1,7 @@
 # std/os.fl
 
-import strings;
+import str;
 
-extern fn flint_file_exists(path: string) bool;
-extern fn flint_mkdir(path: string) val;
-extern fn flint_rm(path: string) val;
-extern fn flint_rm_dir(path: string) val;
-extern fn flint_touch(path: string) val;
-extern fn flint_ls(path: string) val;
-extern fn flint_is_dir(path: string) bool;
-extern fn flint_is_file(path: string) bool;
-extern fn flint_file_size(path: string) val;
-extern fn flint_mv(old_path: string, new_path: string) val;
-extern fn flint_copy(src: string, dest: string) val;
-extern fn flint_exec(cmd: string) string;
-extern fn flint_spawn(cmd: string, echo: bool) val;
-extern fn flint_env(name: string) string;
-extern fn flint_exit(code: int) void;
 extern fn flint_args() arr;
 extern fn flint_is_tty() bool;
 extern fn flint_is_root() bool;
@@ -24,86 +9,8 @@ extern fn flint_require_root(plus_args: arr) val;
 extern fn flint_os_command_exists(bin: string) bool;
 
 # public API
-fn file_exists(path: string) bool {
-    return flint_file_exists(path); 
-}
-
-fn mkdir(path: string) val {
-    return flint_mkdir(path); 
-}
-
-fn rm(path: string) val {
-    return flint_rm(path); 
-}
-
-fn rm_dir(path: string) val {
-    return flint_rm_dir(path); 
-}
-
-fn touch(path: string) val {
-    return flint_touch(path); 
-}
-
-fn ls(path: string) val {
-    return flint_ls(path); 
-}
-
-fn is_dir(path: string) bool {
-    return flint_is_dir(path); 
-}
-
-fn is_file(path: string) bool {
-    return flint_is_file(path); 
-}
-
-fn file_size(path: string) val {
-    return flint_file_size(path); 
-}
-
-fn mv(old_path: string, new_path: string) val {
-    return flint_mv(old_path, new_path); 
-}
-
-fn copy(src: string, dest: string) val {
-    return flint_copy(src, dest); 
-}
-
-fn exec(cmd: string) string {
-    return flint_exec(cmd); 
-}
-
-fn spawn(cmd: string, echo: bool) val {
-    return flint_spawn(cmd, echo); 
-}
-
-fn env(name: string) string {
-    return flint_env(name); 
-}
-
-fn exit(code: int) void {
-    flint_exit(code); 
-}
-
 fn args() arr {
     return flint_args(); 
-}
-
-fn assert(proc: val, error_msg: string) val {
-    const code = strings.to_int(proc["exit_code"]);
-    
-    if (code != 0) {
-        print("[FLINT] FATAL PROCESS ASSERTION FAILED ");
-        print($"Message: {error_msg}");
-        
-        const code_str = strings.int_to_str(code);
-        print($"Exit Code: {code_str}");
-        
-        print("STDERR:");
-        print(strings.to_str(proc["stderr"]));
-        exit(code);
-    }
-    
-    return proc;
 }
 
 fn is_tty() bool {

@@ -37,7 +37,6 @@ fn runCompilerPipeline(alloc: std.mem.Allocator, tree: *AstTree, pool: *StringPo
     }
 
     const source = try std.fs.cwd().readFileAlloc(alloc, file_path, 1024 * 1024);
-    errdefer alloc.free(source);
 
     var lex = Lexer{
         .alloc = alloc,
@@ -54,10 +53,10 @@ fn runCompilerPipeline(alloc: std.mem.Allocator, tree: *AstTree, pool: *StringPo
     var parser = Parser.init(alloc, tree, pool, tokens, source, file_path, io);
     const root_idx = try parser.parse();
 
-    var t_checker = try TypeChecker.init(alloc, tree, pool, file_path, source, io);
-    try t_checker.check(root_idx);
+    // var t_checker = try TypeChecker.init(alloc, tree, pool, file_path, source, io);
+    // try t_checker.check(root_idx);
 
-    if (t_checker.had_error) {
+    if (parser.had_error) {
         parser.deinit();
         return error.SemanticCheckFailed;
     }
@@ -269,7 +268,11 @@ const Linker = struct {
 
                         const new_id = try self.pool.intern(self.allocator, new_name);
                         const node_ptr = &parser.tree.nodes.items[idx];
-                        node_ptr.* = .{ .identifier = .{ ._type = .{ ._type = .identifier_token, .value = new_name, .line = 0, .column = 0 }, .name_id = new_id } };
+
+                        const original_line = p.line;
+                        const original_col = obj_node.identifier._type.column;
+
+                        node_ptr.* = .{ .identifier = .{ ._type = .{ ._type = .identifier_token, .value = new_name, .line = original_line, .column = original_col }, .name_id = new_id } };
                     }
                 }
             },
@@ -447,7 +450,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
     defer linker.deinit();
 
     linker.linkFile(file_path, null) catch {};
-    if (linker.has_error) return;
+    if (linker.has_error) return error.LinkerFailed;
 
     const merged_root_idx = try global_tree.addNode(alloc, .{ .program = .{ .statements = linker.statements.items } });
 
@@ -459,7 +462,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
 
     if (final_checker.had_error) {
         try io.stderr.print("Linkage/Semantic error across files.\n", .{});
-        return;
+        return error.err;
     }
 
     const exe_name = std.fs.path.stem(file_path);

@@ -1,5 +1,5 @@
 import io;
-import strings;
+import str;
 
 struct Config {
     target_id: int,
@@ -8,5 +8,5 @@ struct Config {
 }
 
 const payload = io.read_file("typed_data.json");
-const cfg = parse_json_as(Config, strings.to_str(payload));
+const cfg = parse_json_as(Config, str.to_str(payload));
 print(cfg.target_name);

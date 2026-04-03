@@ -29,5 +29,5 @@ pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(gpa.allocator());
     defer arena.deinit();
 
-    try flint.runCli(arena.allocator(), io);
+    flint.runCli(arena.allocator(), io) catch std.process.exit(1);
 }

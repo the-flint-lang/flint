@@ -14,7 +14,7 @@ Flint enforces strict typing at the boundary, but allows dynamic payloads via th
 | :--- | :--- | :--- |
 | `int` | `long long` | 64-bit signed integer. |
 | `bool` | `bool` | Boolean value (`true` or `false`). |
-| `string` | `flint_str` | Fat pointer slice. Strings are immutable and zero-copy. |
+| `string` | `flint_str` | Fat pointer slice. str are immutable and zero-copy. |
 | `val` | `FlintValue` | A tagged union (Box) that can hold any type. Used for dynamic data from OS/Network. Dictionaries require `string` keys. |
 | `arr` | `flint_array` | Dynamic array. **Must be homogeneous** (all elements must share the same type). Cannot contain `void`. |
 | `void` | `void` | Used strictly for function returns. Cannot be assigned to variables or stored in arrays. |

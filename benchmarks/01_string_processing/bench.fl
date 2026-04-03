@@ -1,8 +1,8 @@
 import io;
-import strings;
+import str;
 import os;
 
 (io.read_file("bench_data.log") catch |err| { print(err); os.exit(1); }) 
-    ~> strings.to_str()
-    ~> strings.count_matches("ERROR")
+    ~> str.to_str()
+    ~> str.count_matches("ERROR")
     ~> print();

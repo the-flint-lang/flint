@@ -1,28 +1,29 @@
 import io;
-import os;
+import fs;
+import process;
 
-_ = os.touch("test_file") catch |err| {
+_ = fs.touch("test_file") catch |err| {
     print(err);
-    os.exit(1);
+    process.exit(1);
 };
 
-_ = os.mkdir("test_dir") catch |err| {
+_ = fs.mkdir("test_dir") catch |err| {
     print(err);
-    os.exit(1);
+    process.exit(1);
 };
 
-_ = os.mv("test_file", "test_dir/test_file") catch |err| {
+_ = fs.mv("test_file", "test_dir/test_file") catch |err| {
     print(err);
-    os.exit(1);
+    process.exit(1);
 };
 
-_ = os.rm("test_dir/test_file") catch |err| {
+_ = fs.rm("test_dir/test_file") catch |err| {
     print(err);
-    os.exit(1);
+    process.exit(1);
 };
 
-_ = os.rm_dir("test_dir") catch |err| {
+_ = fs.rm_dir("test_dir") catch |err| {
     print(err);
-    os.exit(1);
+    process.exit(1);
 };
 

@@ -42,9 +42,6 @@ pub const Lexer = struct {
             c = self.consume();
 
             if (c == '\n') {
-                self.line += 1;
-                self.column = 0;
-
                 continue;
             }
 
@@ -489,7 +486,10 @@ pub const Lexer = struct {
         const c = self.source[self.position];
         self.position += 1;
 
-        if (c < 0x80 or c >= 0xC0) {
+        if (c == '\n') {
+            self.line += 1;
+            self.column = 0;
+        } else if (c < 0x80 or c >= 0xC0) {
             self.column += 1;
         }
     }

@@ -1,8 +1,8 @@
 import http;
 import json;
-import strings;
+import str;
 import os;
 
 const payload = http.fetch("https://dummyjson.com/products/1") catch |e| { os.exit(1); };
-const data = json.parse(strings.to_str(payload));
-print(strings.to_str(get(data, "title")));
+const data = json.parse(str.to_str(payload));
+print(str.to_str(get(data, "title")));

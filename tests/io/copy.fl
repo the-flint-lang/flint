@@ -1,12 +1,13 @@
 import io;
-import os;
+import fs;
+import process;
 
-_ = os.copy("tests/io/copy.fl", "tests/io/copy_temp.out") catch |err| {
+_ = fs.copy("tests/io/copy.fl", "tests/io/copy_temp.out") catch |err| {
     print(err);
-    os.exit(1);
+    process.exit(1);
 };
 
-_ = os.rm("tests/io/copy_temp.out") catch |err| {
+_ = fs.rm("tests/io/copy_temp.out") catch |err| {
     print(err);
-    os.exit(1);
+    process.exit(1);
 };

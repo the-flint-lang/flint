@@ -1,12 +1,12 @@
-import strings;
-import os;
+import str;
+import fs;
 
-for file in os.ls(".") ~> lines() {
-    if (strings.ends_with(to_str(file), ".fl")){
+for file in fs.ls(".") ~> lines() {
+    if (str.ends_with(to_str(file), ".fl")){
         print($"{file} is a flint source code.");
     }
     
-    if (strings.ends_with(to_str(file), ".c")){
+    if (str.ends_with(to_str(file), ".c")){
         print($"{file} is a c source code.");
     }
 }
