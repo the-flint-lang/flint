@@ -29,3 +29,5 @@ echo "2. Building the native installer (Dogfooding)..."
 
 echo "3. Running native installer..."
 ./install
+
+rm install

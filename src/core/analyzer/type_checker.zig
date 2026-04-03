@@ -51,8 +51,8 @@ pub const TypeChecker = struct {
         try defineBuiltin(global, allocator, pool, "parse_json_as", .t_val, &[_]FlintType{ .t_any, .t_string });
         try defineBuiltin(global, allocator, pool, "parse_json", .t_val, &[_]FlintType{.t_string});
         try defineBuiltin(global, allocator, pool, "ensure", .t_val, &[_]FlintType{ .t_val, .t_bool, .t_string });
-        try defineBuiltin(global, allocator, pool, "lines", .t_str_arr, &[_]FlintType{.t_any});
-        try defineBuiltin(global, allocator, pool, "grep", .t_str_arr, &[_]FlintType{ .t_any, .t_string });
+        try defineBuiltin(global, allocator, pool, "lines", .t_val, &[_]FlintType{.t_any});
+        try defineBuiltin(global, allocator, pool, "grep", .t_val, &[_]FlintType{ .t_any, .t_string });
         try defineBuiltin(global, allocator, pool, "build_str", .t_string, null);
         try defineBuiltin(global, allocator, pool, "chars", .t_str_arr, &[_]FlintType{.t_string});
         try defineBuiltin(global, allocator, pool, "strings_split", .t_str_arr, &[_]FlintType{ .t_string, .t_string });
@@ -413,6 +413,7 @@ pub const TypeChecker = struct {
             .integer_literal_token => .t_int,
             .string_literal_token, .multile_string_literal_token, .char_literal_token => .t_string,
             .true_literal_token, .false_literal_token => .t_bool,
+            .float_literal_token => .t_float,
             else => .t_unknown,
         };
     }
@@ -478,16 +479,67 @@ pub const TypeChecker = struct {
         const right_type = try self.checkNodeIndex(node.binary_expr.right);
 
         switch (op._type) {
-            .plus_token, .minus_token, .star_token, .slash_token, .remainder_token => {
+            .plus_token, .minus_token, .star_token, .slash_token => {
+                if (left_type == .t_float or right_type == .t_float) {
+                    if ((left_type != .t_int and left_type != .t_float) or (right_type != .t_int and right_type != .t_float)) {
+                        self.had_error = true;
+                        var diag = DiagnosticBuilder.init(self.allocator, "SEMANTIC ERROR", "E0308", "Invalid operand types for math operator", self.source, self.file_path);
+                        defer diag.deinit();
+
+                        const l_str = self.flintTypeToStr(left_type);
+                        const r_str = self.flintTypeToStr(right_type);
+                        const msg = try std.fmt.allocPrint(self.allocator, "cannot apply operator `{s}` to types `{s}` and `{s}`", .{ op.value, l_str, r_str });
+
+                        try diag.addLabel(op.line, op.column, @intCast(op.value.len), msg, true);
+                        diag.note("mathematical operators require numeric operands (`int` or `float`)");
+                        try diag.emit(self.io);
+
+                        self.allocator.free(msg);
+                        return .t_error;
+                    }
+                    return .t_float;
+                } else if (left_type == .t_int and right_type == .t_int) {
+                    return .t_int;
+                } else {
+                    self.had_error = true;
+                    var diag = DiagnosticBuilder.init(self.allocator, "SEMANTIC ERROR", "E0308", "Invalid operand types for math operator", self.source, self.file_path);
+                    defer diag.deinit();
+
+                    const l_str = self.flintTypeToStr(left_type);
+                    const r_str = self.flintTypeToStr(right_type);
+                    const msg = try std.fmt.allocPrint(self.allocator, "cannot apply operator `{s}` to types `{s}` and `{s}`", .{ op.value, l_str, r_str });
+
+                    try diag.addLabel(op.line, op.column, @intCast(op.value.len), msg, true);
+                    diag.note("mathematical operators require numeric operands (`int` or `float`)");
+                    try diag.emit(self.io);
+
+                    self.allocator.free(msg);
+                    return .t_error;
+                }
+            },
+
+            .remainder_token => {
                 if (left_type != .t_int or right_type != .t_int) {
-                    try self.reportErrorContext(op.line, op.column, 1, "Mathematical operators only work with integers.");
+                    self.had_error = true;
+                    var diag = DiagnosticBuilder.init(self.allocator, "SEMANTIC ERROR", "E0308", "Invalid operands for remainder operator", self.source, self.file_path);
+                    defer diag.deinit();
+
+                    const msg = try std.fmt.allocPrint(self.allocator, "operator `%` requires `int` on both sides, found `{s}` and `{s}`", .{ self.flintTypeToStr(left_type), self.flintTypeToStr(right_type) });
+
+                    try diag.addLabel(op.line, op.column, @intCast(op.value.len), msg, true);
+                    diag.note("modulo with floating point numbers is currently not supported");
+                    try diag.emit(self.io);
+
+                    self.allocator.free(msg);
                     return .t_error;
                 }
                 return .t_int;
             },
+
             .equal_token, .bang_equal_token, .greater_token, .less_token, .greater_equal_token, .less_equal_token => {
                 return .t_bool;
             },
+
             else => return .t_unknown,
         }
     }
@@ -499,8 +551,8 @@ pub const TypeChecker = struct {
 
         switch (op._type) {
             .minus_token => {
-                if (right_type != .t_int and right_type != .t_any and right_type != .t_unknown and right_type != .t_error) {
-                    try self.reportErrorContext(op.line, op.column, 1, "Unary '-' operator can only be applied to integers.");
+                if (right_type != .t_int and right_type != .t_float and right_type != .t_any and right_type != .t_unknown and right_type != .t_error) {
+                    try self.reportErrorContext(op.line, op.column, 1, "Unary '-' operator can only be applied to integers and floats.");
                     return .t_error;
                 }
                 return .t_int;
@@ -1260,6 +1312,7 @@ pub const TypeChecker = struct {
         _ = self;
         return switch (f_type) {
             .t_int => "int",
+            .t_float => "float",
             .t_string => "string",
             .t_bool => "bool",
             .t_val => "val",

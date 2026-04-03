@@ -73,10 +73,11 @@ pub const Lexer = struct {
             }
 
             if (std.ascii.isDigit(c)) {
-                const number = try self.readNumber();
+                var has_dot = false;
+                const number = try self.readNumber(&has_dot);
 
                 try self.tokens.append(self.alloc, Token{
-                    ._type = .integer_literal_token,
+                    ._type = if (has_dot) .float_literal_token else .integer_literal_token,
                     .value = number,
                     .column = self.column,
                     .line = self.line,
@@ -226,7 +227,19 @@ pub const Lexer = struct {
                 },
 
                 '.' => {
-                    _type = .dot_token;
+                    if (std.ascii.isDigit(self.peek(0))) {
+                        var a = true;
+                        const number = try self.readNumber(&a);
+                        try self.tokens.append(self.alloc, Token{
+                            ._type = .float_literal_token,
+                            .value = number,
+                            .column = self.column,
+                            .line = self.line,
+                        });
+                        continue;
+                    } else {
+                        _type = .dot_token;
+                    }
                 },
 
                 '|' => {
@@ -409,27 +422,29 @@ pub const Lexer = struct {
         return self.source[init .. self.position - 1];
     }
 
-    fn readNumber(self: *Lexer) ![]const u8 {
-        const init = self.position - 1;
-        const start_col = self.column - 1;
-        var dots: u8 = 0;
+    fn readNumber(self: *Lexer, already_has_dot: *bool) ![]const u8 {
+        const init = if (already_has_dot.*) self.position - 2 else self.position - 1;
+        const start_col = if (already_has_dot.*) self.column - 2 else self.column - 1;
+        var has_dot: bool = already_has_dot.*;
 
         while (!self.isAtEnd()) {
             const char = self.source[self.position];
 
-            if (std.ascii.isDigit(char)) {
+            if (std.ascii.isDigit(char) or char == '_') {
                 self.advance();
             } else if (char == '.') {
-                dots += 1;
-                if (dots > 1) {
-                    self.advance();
-                    while (!self.isAtEnd() and std.ascii.isDigit(self.source[self.position])) {
-                        self.advance();
-                    }
+                if (has_dot) {
                     const visual_len = self.column - start_col;
-                    try self.reportError("E0003", "Invalid numeric literal", self.line, start_col, visual_len, "invalid number format (multiple decimals)");
+                    try self.reportError("E0003", "Invalid numeric literal", self.line, start_col, visual_len, "multiple decimal points in number");
                     break;
                 }
+
+                if (std.ascii.isAlphabetic(self.peek(1))) {
+                    break;
+                }
+
+                has_dot = true;
+                if (!already_has_dot.* and has_dot) already_has_dot.* = true;
                 self.advance();
             } else if (std.ascii.isAlphabetic(char)) {
                 self.advance();
@@ -437,7 +452,7 @@ pub const Lexer = struct {
                     self.advance();
                 }
                 const visual_len = self.column - start_col;
-                try self.reportError("E0003", "Invalid numeric literal", self.line, start_col, visual_len, "invalid number format (letters are not allowed)");
+                try self.reportError("E0003", "Invalid numeric literal", self.line, start_col, visual_len, "numbers cannot contain letters");
                 break;
             } else {
                 break;

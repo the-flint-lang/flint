@@ -36,6 +36,7 @@ typedef enum
 {
     FLINT_VAL_NULL,
     FLINT_VAL_INT,
+    FLINT_VAL_FLOAT,
     FLINT_VAL_BOOL,
     FLINT_VAL_STR,
     FLINT_VAL_DICT,
@@ -48,16 +49,15 @@ typedef enum
 typedef struct
 {
     FlintValType type;
-
     union
     {
         long long i;
+        uint64_t f;
         bool b;
         flint_str s;
         FlintDict *d;
         flint_stream stream;
     } as;
-
 } FlintValue;
 
 /* =========================
@@ -174,6 +174,7 @@ VALUE CONSTRUCTORS
 ========================= */
 
 FlintValue flint_make_int(long long v);
+FlintValue flint_make_float(double v);
 FlintValue flint_make_bool(bool v);
 FlintValue flint_make_str(flint_str v);
 FlintValue flint_make_error(flint_str msg);
@@ -193,6 +194,7 @@ static inline FlintValue flint_identity(FlintValue v) { return v; }
 
 #define FLINT_BOX(X) _Generic((X), \
     int: flint_make_int,           \
+    uint64_t: flint_make_float,    \
     long: flint_make_int,          \
     long long: flint_make_int,     \
     bool: flint_make_bool,         \
@@ -216,6 +218,7 @@ static inline void flint_dict_set_from_val(FlintValue v, flint_str key, FlintVal
 
 void flint_print_str(flint_str text);
 void flint_print_int(long long num);
+void flint_print_float(double v);
 void flint_print_val(FlintValue val);
 void flint_print_bool(bool b);
 void flint_print_dict(FlintDict *dict);
@@ -224,12 +227,15 @@ void flint_print_dict(FlintDict *dict);
     int: flint_print_int,            \
     long: flint_print_int,           \
     long long: flint_print_int,      \
+    float: flint_print_float,        \
+    double: flint_print_float,       \
     bool: flint_print_bool,          \
     FlintValue: flint_print_val,     \
     FlintDict *: flint_print_dict,   \
     default: flint_print_str)(X)
 
 void flint_printerr_str(flint_str text);
+void flint_printerr_float(double v);
 void flint_printerr_int(long long num);
 void flint_printerr_val(FlintValue val);
 void flint_printerr_bool(bool b);
@@ -239,6 +245,8 @@ void flint_printerr_dict(FlintDict *dict);
     int: flint_printerr_int,            \
     long: flint_printerr_int,           \
     long long: flint_printerr_int,      \
+    float: flint_printerr_float,        \
+    double: flint_printerr_float,       \
     bool: flint_printerr_bool,          \
     FlintValue: flint_printerr_val,     \
     FlintDict *: flint_printerr_dict,   \
@@ -389,11 +397,21 @@ static inline FlintValue flint_box_val_safe(FlintValue v)
     return v;
 }
 
+static inline FlintValue flint_box_float_safe(double f)
+{
+    FlintValue v;
+    v.type = FLINT_VAL_FLOAT;
+    memcpy(&v.as.f, &f, sizeof(double));
+    return v;
+}
+
 #undef FLINT_BOX
 #define FLINT_BOX(...) _Generic((__VA_ARGS__), \
     int: flint_box_int_safe,                   \
     long: flint_box_int_safe,                  \
     long long: flint_box_int_safe,             \
+    float: flint_box_float_safe,               \
+    double: flint_box_float_safe,              \
     bool: flint_box_bool_safe,                 \
     flint_str: flint_box_str_safe,             \
     FlintValue: flint_box_val_safe)(__VA_ARGS__)

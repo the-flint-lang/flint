@@ -708,7 +708,6 @@ const ClangCompiler = struct {
             try args.append(alloc, "-flto");
             try args.append(alloc, "-march=native");
             try args.append(alloc, "-mtune=native");
-            try args.append(alloc, "-ffast-math");
             try args.append(alloc, "-finline-functions");
             try args.append(alloc, "-ffunction-sections");
             try args.append(alloc, "-fdata-sections");
@@ -765,7 +764,6 @@ const GccCompiler = struct {
             try args.append(alloc, "-flto");
             try args.append(alloc, "-march=native");
             try args.append(alloc, "-mtune=native");
-            try args.append(alloc, "-ffast-math");
             try args.append(alloc, "-finline-functions");
             try args.append(alloc, "-ffunction-sections");
             try args.append(alloc, "-fdata-sections");

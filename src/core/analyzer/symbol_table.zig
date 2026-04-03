@@ -5,6 +5,7 @@ const StringId = ast.StringId;
 
 pub const FlintType = enum {
     t_int,
+    t_float,
     t_string,
     t_bool,
     t_val,

@@ -324,7 +324,7 @@ pub const Parser = struct {
             return try self.parseInterpolatedString(self.previous());
         }
 
-        if (self.match(&.{ .false_literal_token, .true_literal_token, .integer_literal_token, .string_literal_token, .char_literal_token, .multile_string_literal_token })) {
+        if (self.match(&.{ .false_literal_token, .true_literal_token, .integer_literal_token, .float_literal_token, .string_literal_token, .char_literal_token, .multile_string_literal_token })) {
             return try self.tree.addNode(self.allocator, .{ .literal = .{ .token = self.previous() } });
         }
 

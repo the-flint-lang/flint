@@ -7,11 +7,13 @@ pub const TokenType = enum {
     identifier_token,
 
     integer_type_token,
+    float_type_token,
     string_type_token,
     char_type_token,
     boolean_type_token,
 
     integer_literal_token,
+    float_literal_token,
     string_literal_token,
     char_literal_token,
     multile_string_literal_token,

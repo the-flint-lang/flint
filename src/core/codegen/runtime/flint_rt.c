@@ -45,6 +45,7 @@ static size_t arena_offset = 0;
 
 void flint_init(int argc, char **argv)
 {
+
     global_argc = argc;
     global_argv = argv;
 
@@ -109,10 +110,17 @@ void flint_exit(int code)
 }
 
 /* =========================
-   CONSTRUTORES (BOXING)
+   BUILDERS (BOXING)
    ========================= */
 
 FlintValue flint_make_int(long long v) { return (FlintValue){FLINT_VAL_INT, .as.i = v}; }
+FlintValue flint_make_float(double v)
+{
+    FlintValue val;
+    val.type = FLINT_VAL_FLOAT;
+    memcpy(&val.as.f, &v, sizeof(double));
+    return val;
+}
 FlintValue flint_make_bool(bool v) { return (FlintValue){FLINT_VAL_BOOL, .as.b = v}; }
 FlintValue flint_make_str(flint_str v) { return (FlintValue){FLINT_VAL_STR, .as.s = v}; }
 
@@ -142,6 +150,7 @@ void flint_print_str(flint_str text)
     fflush(stdout);
 }
 void flint_print_int(long long v) { printf("%lld\n", v); }
+void flint_print_float(double v) { printf("%g\n", v); }
 void flint_print_dict(FlintDict *d) { printf("[Flint Dictionary: %zu keys]\n", d ? d->count : 0); }
 
 void flint_print_val(FlintValue v)
@@ -154,6 +163,13 @@ void flint_print_val(FlintValue v)
     case FLINT_VAL_INT:
         printf("%lld\n", v.as.i);
         break;
+    case FLINT_VAL_FLOAT:
+    {
+        double real_f;
+        memcpy(&real_f, &v.as.f, sizeof(double));
+        printf("%g\n", real_f);
+        break;
+    }
     case FLINT_VAL_BOOL:
         printf("%s\n", v.as.b ? "true" : "false");
         break;
@@ -189,7 +205,9 @@ void flint_printerr_str(flint_str text)
     fprintf(stderr, "%.*s\n", (int)text.len, text.ptr);
     fflush(stderr);
 }
+
 void flint_printerr_int(long long v) { fprintf(stderr, "%lld\n", v); }
+void flint_printerr_float(double v) { fprintf(stderr, "%g\n", v); }
 void flint_printerr_dict(FlintDict *d) { fprintf(stderr, "[Flint Dictionary: %zu keys]\n", d ? d->count : 0); }
 
 void flint_printerr_val(FlintValue v)
@@ -202,6 +220,13 @@ void flint_printerr_val(FlintValue v)
     case FLINT_VAL_INT:
         fprintf(stderr, "%lld\n", v.as.i);
         break;
+    case FLINT_VAL_FLOAT:
+    {
+        double real_f;
+        memcpy(&real_f, &v.as.f, sizeof(double));
+        fprintf(stderr, "%g\n", real_f);
+        break;
+    }
     case FLINT_VAL_BOOL:
         fprintf(stderr, "%s\n", v.as.b ? "true" : "false");
         break;
@@ -1198,6 +1223,19 @@ flint_str flint_int_to_str(long long num)
     return FLINT_SLICE(buf, len);
 }
 
+flint_str flint_float_to_str(double num)
+{
+    char temp[64];
+    int len = snprintf(temp, sizeof(temp), "%g", num);
+    if (len <= 0)
+        return FLINT_STR("0");
+
+    char *buf = flint_alloc_raw(len + 1);
+    memcpy(buf, temp, len + 1);
+
+    return FLINT_SLICE(buf, len);
+}
+
 flint_str flint_to_str_func(FlintValue v)
 {
     switch (v.type)
@@ -1206,6 +1244,12 @@ flint_str flint_to_str_func(FlintValue v)
         return v.as.s;
     case FLINT_VAL_INT:
         return flint_int_to_str(v.as.i);
+    case FLINT_VAL_FLOAT:
+    {
+        double real_f;
+        memcpy(&real_f, &v.as.f, sizeof(double));
+        return flint_float_to_str(real_f);
+    }
     case FLINT_VAL_BOOL:
         return v.as.b ? FLINT_STR("true") : FLINT_STR("false");
     case FLINT_VAL_NULL:

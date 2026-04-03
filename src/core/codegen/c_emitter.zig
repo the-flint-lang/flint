@@ -247,6 +247,7 @@ pub const CEmitter = struct {
         return switch (token._type) {
             .string_type_token => "flint_str",
             .integer_type_token => "long long",
+            .float_type_token => "double",
             .boolean_type_token => "bool",
             .value_type_token => "FlintValue",
             .array_type_token => "flint_str_array",
@@ -551,6 +552,13 @@ pub const CEmitter = struct {
                 }
             }
             try writer.writeAll("\")");
+        } else if (tok._type == .integer_literal_token or tok._type == .float_literal_token) {
+            for (tok.value) |char| {
+                if (char != '_') {
+                    const str = [_]u8{char};
+                    try writer.writeAll(&str);
+                }
+            }
         } else {
             try writer.writeAll(tok.value);
         }
@@ -726,6 +734,10 @@ pub const CEmitter = struct {
                 try writer.writeAll("flint_make_bool(");
                 try self.visitNodeIndex(index, writer);
                 try writer.writeAll(")");
+            } else if (tok._type == .float_literal_token) {
+                try writer.writeAll("flint_make_float(");
+                try self.visitNodeIndex(index, writer);
+                try writer.writeAll(")");
             } else {
                 try writer.writeAll("flint_make_int(");
                 try self.visitNodeIndex(index, writer);
@@ -857,6 +869,7 @@ pub const CEmitter = struct {
             .t_bool_arr => "flint_bool_array",
             .t_void => "void",
             .t_val => "FlintValue",
+            .t_float => "double",
             else => "FlintValue",
         };
     }

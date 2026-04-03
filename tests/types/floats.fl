@@ -1,0 +1,43 @@
+# literals, inference and underscores
+const pi = 3.141_592;
+const half = .5;
+const five = 5.;
+const one_million = 1_000_000;
+const one_million_float = 1_000_000.0;
+
+print("--- 1. Literals ---");
+print(pi);
+print(half);
+print(five);
+print(one_million);
+print(one_million_float);
+
+# mixed mathematics (int + float = float)
+const int_val = 10;
+const float_val = 2.5;
+
+const sum = int_val + float_val;   
+const sub = float_val - 1.0;        
+const mult = half * int_val;        
+const div = five / 2;
+
+print("--- 2. MIXED MATHEMATICS ---");
+print(sum);
+print(sub);
+print(mult);
+print(div);
+
+# unary operator (negatives)
+const negative = -pi;
+print("--- 3. UNARY ---");
+print(negative);
+
+# auto-boxing e conversão de string 
+const text = to_str(pi + half);
+print("--- 4. TO_STR CONVERSION ---");
+print(text);
+
+# string interpolation (internal pipeline)
+const msg = $"The value of the radius is {half} and the area depends on {pi}";
+print("--- 5. INTRPOLATION ---");
+print(msg);
