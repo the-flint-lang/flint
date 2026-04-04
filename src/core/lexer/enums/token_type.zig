@@ -72,4 +72,5 @@ pub const TokenType = enum {
     comma_token,
     semicolon_token,
     dot_token,
+    dot_dot_token,
 };

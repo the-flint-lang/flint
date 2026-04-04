@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <limits.h>
 
 // ==========================================
 // STRING SLICES
@@ -135,6 +136,17 @@ static inline long long _flint_get_inta_len(flint_int_array a) { return (long lo
     flint_str_array: _flint_get_stra_len, \
     flint_int_array: _flint_get_inta_len, \
     default: _flint_get_str_len)(X)
+
+flint_str flint_slice_str(flint_str s, long long start, long long end);
+flint_int_array flint_slice_int_array(flint_int_array a, long long start, long long end);
+flint_str_array flint_slice_str_array(flint_str_array a, long long start, long long end);
+flint_bool_array flint_slice_bool_array(flint_bool_array a, long long start, long long end);
+
+#define FLINT_SLICE_EXPR(obj, start, end) _Generic((obj), \
+    flint_str: flint_slice_str,                           \
+    flint_int_array: flint_slice_int_array,               \
+    flint_str_array: flint_slice_str_array,               \
+    flint_bool_array: flint_slice_bool_array)((obj), (start), (end))
 
 /* =========================
    DICTIONARY

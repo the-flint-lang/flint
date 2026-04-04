@@ -91,8 +91,13 @@ pub const AstNode = union(enum) {
     },
 
     logical_and: LogicalExpr,
-
     logical_or: LogicalExpr,
+
+    slice_expr: struct {
+        left: NodeIndex,
+        start: ?NodeIndex,
+        end: ?NodeIndex,
+    },
 
     unary_expr: struct {
         operator: Token,

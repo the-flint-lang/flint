@@ -298,10 +298,26 @@ pub const Parser = struct {
                     },
                 });
             } else if (self.match(&.{.lbracket_token})) {
-                const index_expr_idx = try self.parseExpression();
-                _ = try self.consumeDelimiter(.rbracket_token, "Expected ']' after index.");
+                var start_idx: ?NodeIndex = null;
 
-                expr_idx = try self.tree.addNode(self.allocator, .{ .index_expr = .{ .left = expr_idx, .index = index_expr_idx } });
+                if (!self.check(.rbracket_token) and !self.check(.dot_dot_token)) {
+                    start_idx = try self.parseExpression();
+                }
+
+                if (self.match(&.{.dot_dot_token})) {
+                    var end_idx: ?NodeIndex = null;
+                    if (!self.check(.rbracket_token)) {
+                        end_idx = try self.parseExpression();
+                    }
+                    _ = try self.consumeDelimiter(.rbracket_token, "Expected ']' after slice.");
+                    expr_idx = try self.tree.addNode(self.allocator, .{ .slice_expr = .{ .left = expr_idx, .start = start_idx, .end = end_idx } });
+                } else {
+                    if (start_idx == null) {
+                        return self.reportError(self.previous(), "Expected expression or '..' inside '[]'.");
+                    }
+                    _ = try self.consumeDelimiter(.rbracket_token, "Expected ']' after index.");
+                    expr_idx = try self.tree.addNode(self.allocator, .{ .index_expr = .{ .left = expr_idx, .index = start_idx.? } });
+                }
             } else if (self.match(&.{.dot_token})) {
                 const property_token = try self.consume(.identifier_token, "Expected property name after '.'.");
                 const prop_id = try self.pool.intern(self.allocator, property_token.value);

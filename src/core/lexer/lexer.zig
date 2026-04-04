@@ -234,6 +234,8 @@ pub const Lexer = struct {
                             .line = self.line,
                         });
                         continue;
+                    } else if (self.match('.')) {
+                        _type = .dot_dot_token;
                     } else {
                         _type = .dot_token;
                     }
@@ -430,6 +432,10 @@ pub const Lexer = struct {
             if (std.ascii.isDigit(char) or char == '_') {
                 self.advance();
             } else if (char == '.') {
+                if (self.peek(1) == '.') {
+                    break;
+                }
+
                 if (has_dot) {
                     const visual_len = self.column - start_col;
                     try self.reportError("E0003", "Invalid numeric literal", self.line, start_col, visual_len, "multiple decimal points in number");

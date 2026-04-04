@@ -208,6 +208,7 @@ pub const CEmitter = struct {
             .identifier => try self.visitIdentifier(node, writer),
             .if_stmt => try self.visitIfStmt(node, writer),
             .for_stmt => try self.visitForStmt(node, writer),
+            .slice_expr => try self.visitSliceExpr(node, writer),
             .index_expr => try self.visitIndexExpr(node, writer),
             .array_expr => try self.visitArrayExpr(node, writer),
             .dict_expr => try self.visitDictExpr(node, writer),
@@ -545,6 +546,28 @@ pub const CEmitter = struct {
         const op_str = if (un.operator._type == .not_token) "!(" else "-(";
         try writer.writeAll(op_str);
         try self.visitNodeIndex(un.right, writer);
+        try writer.writeAll(")");
+    }
+
+    fn visitSliceExpr(self: *CEmitter, node: AstNode, writer: anytype) !void {
+        const slice = node.slice_expr;
+
+        try writer.writeAll("FLINT_SLICE_EXPR(");
+        try self.visitNodeIndex(slice.left, writer);
+        try writer.writeAll(", ");
+
+        if (slice.start) |s| {
+            try self.visitNodeIndex(s, writer);
+        } else {
+            try writer.writeAll("0");
+        }
+        try writer.writeAll(", ");
+
+        if (slice.end) |e| {
+            try self.visitNodeIndex(e, writer);
+        } else {
+            try writer.writeAll("LLONG_MAX");
+        }
         try writer.writeAll(")");
     }
 

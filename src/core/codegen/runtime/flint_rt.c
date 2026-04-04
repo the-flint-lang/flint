@@ -468,12 +468,6 @@ FlintValue flint_ls(flint_str path)
     return flint_make_str(FLINT_SLICE(final_buf, total_len));
 }
 
-// terminal
-void flint_clear()
-{
-    fprintf(stdout, "\033[H\033[2J");
-}
-
 void flint_write(flint_str way, flint_str msg)
 {
     if (msg.len > 0)
@@ -539,6 +533,51 @@ FlintValue flint_require_root(flint_str_array plus_args)
     // if execvp works, it never gets here
     return flint_make_error(FLINT_STR("Falha ao elevar privilégios. O 'sudo' está disponível?"));
 }
+
+/* =========================
+   SLICES
+   ========================= */
+
+flint_str flint_slice_str(flint_str s, long long start, long long end)
+{
+    if (s.len == 0 || s.ptr == NULL)
+        return FLINT_STR("");
+
+    if (start < 0)
+        start = 0;
+    if (end == LLONG_MAX || end > (long long)s.len)
+        end = (long long)s.len;
+    if (start >= end || start >= (long long)s.len)
+        return FLINT_STR("");
+
+    return FLINT_SLICE(s.ptr + start, (size_t)(end - start));
+}
+
+// macro to instantiate array slices with zero-copy
+#define IMPLEMENT_SLICE_ARRAY(FuncName, ArrayType)                        \
+    ArrayType FuncName(ArrayType a, long long start, long long end)       \
+    {                                                                     \
+        if (a.count == 0 || a.items == NULL)                              \
+        {                                                                 \
+            return (ArrayType){.items = NULL, .count = 0, .capacity = 0}; \
+        }                                                                 \
+        if (start < 0)                                                    \
+            start = 0;                                                    \
+        if (end == LLONG_MAX || end > (long long)a.count)                 \
+            end = (long long)a.count;                                     \
+        if (start >= end || start >= (long long)a.count)                  \
+        {                                                                 \
+            return (ArrayType){.items = NULL, .count = 0, .capacity = 0}; \
+        }                                                                 \
+        return (ArrayType){                                               \
+            .items = a.items + start,                                     \
+            .count = (size_t)(end - start),                               \
+            .capacity = (size_t)(end - start)};                           \
+    }
+
+IMPLEMENT_SLICE_ARRAY(flint_slice_int_array, flint_int_array)
+IMPLEMENT_SLICE_ARRAY(flint_slice_str_array, flint_str_array)
+IMPLEMENT_SLICE_ARRAY(flint_slice_bool_array, flint_bool_array)
 
 /* =========================
    ENV & PROCESS

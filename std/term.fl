@@ -1,8 +1,33 @@
 # std/term.fl
 
-extern fn flint_clear() void;
+import io;
 
 # public API
+
+const RESET = "\033[0m";
+
+# colors
+const RED = "\033[31m";
+const GREEN = "\033[32m";
+const BLUE = "\033[34m";
+
+# style
+const BOLD = "\033[1m";
+const ITALIC = "\033[3m";
+const UNDERLINED = "\033[4m";
+
 fn clear() void {
-    return flint_clear();
+    io.write("stdout", "\033[H\033[2J");
 }
+
+fn clear_all() void {
+    io.write("stdout", "\033[H\033[2J\033[3J");
+}
+
+fn hide_cursor() void {
+    io.write("stdout", "\033[?25l");
+}
+
+fn show_cursor() void {
+    io.write("stdout", "\033[?25h");
+} 

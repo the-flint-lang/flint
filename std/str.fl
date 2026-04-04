@@ -48,11 +48,37 @@ fn to_int(v: val) int {
 }
 
 fn ends_with(s: string, p: string) bool {
-    return flint_ends_with(s, p);
+    if len(p) > len(s) {
+        return false;
+    }
+
+    const p_chars = chars(p);
+    const s_chars = chars(s);
+
+    for i in range(len(p), 0) {
+        if s_chars[i] != p_chars[i] {
+            return false;
+        }
+    }
+    
+    return true;
 }
 
 fn starts_with(s: string, p: string) bool {
-    return flint_starts_with(s, p);
+    if len(p) > len(s) {
+        return false;
+    }
+
+    const p_chars = chars(p);
+    const s_chars = chars(s);
+
+    for i in range(0, len(p)) {
+        if s_chars[i] != p_chars[i] {
+            return false;
+        }
+    }
+    
+    return true;
 }
 
 fn repeat(s: string, x: int) string {

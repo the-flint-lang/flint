@@ -103,7 +103,11 @@ pub const DiagnosticBuilder = struct {
 
         for (left_to_right.items) |lbl| {
             while (cursor < lbl.col) : (cursor += 1) {
-                try io.stderr.print(" ", .{});
+                if (cursor < target_line_text.len and target_line_text[cursor] == '\t') {
+                    try io.stderr.print("\t", .{});
+                } else {
+                    try io.stderr.print(" ", .{});
+                }
             }
             const color = if (lbl.is_primary) red else blue;
             try io.stderr.print("{s}^{s}", .{ color, reset });

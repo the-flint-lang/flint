@@ -166,6 +166,7 @@ pub const TypeChecker = struct {
             .return_stmt => try self.checkReturnStmt(node),
             .property_access_expr => try self.checkPropertyAccessExpr(index, node),
             .import_stmt => try self.checkImportStmt(node),
+            .slice_expr => try self.checkSliceExpr(index, node),
             .array_expr => try self.checkArrayExpr(index, node),
             .dict_expr => try self.checkDictExpr(index, node),
             .index_expr => try self.checkIndexExpr(index, node),
@@ -196,6 +197,84 @@ pub const TypeChecker = struct {
 
         try self.node_types.put(index, resolved);
         return resolved;
+    }
+
+    fn checkSliceExpr(self: *TypeChecker, _: NodeIndex, node: AstNode) !FlintType {
+        const slice = node.slice_expr;
+        const left_type = try self.checkNodeIndex(slice.left);
+
+        if (left_type != .t_string and left_type != .t_str_arr and left_type != .t_int_arr and left_type != .t_bool_arr and left_type != .t_any and left_type != .t_error) {
+            self.had_error = true;
+            var err_line: u32 = 0;
+            var err_col: u32 = 0;
+            var err_len: u32 = 1;
+            self.extractCoords(slice.left, &err_line, &err_col, &err_len);
+
+            var diag = DiagnosticBuilder.init(self.allocator, "SEMANTIC ERROR", "E0608", "Cannot slice a value of this type", self.source, self.file_path);
+            defer diag.deinit();
+
+            const t_str = self.flintTypeToStr(left_type);
+            const msg = try std.fmt.allocPrint(self.allocator, "type `{s}` cannot be sliced", .{t_str});
+            try diag.addLabel(err_line, err_col, err_len, msg, true);
+            diag.note("only strings and arrays support slice `[start..end]` notation");
+            try diag.emit(self.io);
+            self.allocator.free(msg);
+
+            return .t_error;
+        }
+
+        if (slice.start) |s| {
+            const st = try self.checkNodeIndex(s);
+
+            if (st != .t_int and st != .t_any and st != .t_error) {
+                self.had_error = true;
+
+                var s_line: u32 = 0;
+                var s_col: u32 = 0;
+                var s_len: u32 = 1;
+
+                self.extractCoords(s, &s_line, &s_col, &s_len);
+
+                var diag = DiagnosticBuilder.init(self.allocator, "TYPE ERROR", "E0308", "Slice index must be an integer", self.source, self.file_path);
+                defer diag.deinit();
+
+                const found_str = self.flintTypeToStr(st);
+                const msg = try std.fmt.allocPrint(self.allocator, "expected `int`, found `{s}`", .{found_str});
+
+                try diag.addLabel(s_line, s_col, s_len, msg, true);
+                diag.note("slice start index must be of type `int`");
+                try diag.emit(self.io);
+
+                self.allocator.free(msg);
+            }
+        }
+
+        if (slice.end) |e| {
+            const et = try self.checkNodeIndex(e);
+            if (et != .t_int and et != .t_any and et != .t_error) {
+                self.had_error = true;
+
+                var e_line: u32 = 0;
+                var e_col: u32 = 0;
+                var e_len: u32 = 1;
+
+                self.extractCoords(e, &e_line, &e_col, &e_len);
+
+                var diag = DiagnosticBuilder.init(self.allocator, "TYPE ERROR", "E0308", "Slice index must be an integer", self.source, self.file_path);
+                defer diag.deinit();
+
+                const found_str = self.flintTypeToStr(et);
+                const msg = try std.fmt.allocPrint(self.allocator, "expected `int`, found `{s}`", .{found_str});
+
+                try diag.addLabel(e_line, e_col, e_len, msg, true);
+                diag.note("slice end index must be of type `int`");
+                try diag.emit(self.io);
+
+                self.allocator.free(msg);
+            }
+        }
+
+        return left_type;
     }
 
     fn checkStructDecl(self: *TypeChecker, index: NodeIndex, node: AstNode) !FlintType {
@@ -1107,7 +1186,7 @@ pub const TypeChecker = struct {
                                 self.extractCoords(prop_access.object, &err_line, &err_col, &err_len);
 
                                 const prop_len: u32 = @intCast(prop_name_str.len);
-                                const final_col = err_col + 1 + prop_len;
+                                const final_col = err_col + err_len + 1 + prop_len;
 
                                 var diag = DiagnosticBuilder.init(self.allocator, "SEMANTIC ERROR", "E0609", "Property does not exist", self.source, self.file_path);
                                 defer diag.deinit();
@@ -1399,7 +1478,7 @@ pub const TypeChecker = struct {
                 const prop_len: u32 = @intCast(self.pool.get(node.property_access_expr.property_name_id).len);
 
                 if (obj_line == line.*) {
-                    col.* = obj_col + 1 + prop_len;
+                    col.* = obj_col + obj_len + 1;
                 } else {
                     col.* = prop_len;
                 }
