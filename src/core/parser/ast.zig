@@ -132,6 +132,7 @@ pub const AstNode = union(enum) {
         iterator_name_id: StringId,
         iterable: NodeIndex,
         body: []const NodeIndex,
+        is_stream: bool,
     },
 
     catch_expr: CatchExpr,

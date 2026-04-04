@@ -120,7 +120,7 @@
             "patterns": [
                 {
                     "name": "keyword.control.flint",
-                    "match": "\\b(if|else|for|in|return|catch)\\b"
+                    "match": "\\b(if|else|for|stream|in|return|catch)\\b"
                 },
                 {
                     "name": "keyword.other.flint",
@@ -190,7 +190,7 @@
                 },
                 {
                     "name": "keyword.operator.flint",
-                    "match": "(!=|==|<=|>=|\\+|-|\\*|/|%|<|>|=|!|\\|)"
+                    "match": "(:|!=|==|<=|>=|\\+|-|\\*|/|%|<|>|=|!|\\|)"
                 }
             ]
         },

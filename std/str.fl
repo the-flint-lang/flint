@@ -10,8 +10,6 @@ extern fn flint_int_to_str(num: int) string;
 extern fn flint_concat(a: string, b: string) string;
 extern fn flint_to_int(v: val) int;
 extern fn flint_str_eql(a: string, b: string) bool; 
-extern fn flint_starts_with(s: string, p: string) bool;
-extern fn flint_ends_with(s: string, p: string) bool;
 extern fn flint_repeat(s: string, c: int) string ;
 
 # public API 
@@ -52,13 +50,8 @@ fn ends_with(s: string, p: string) bool {
         return false;
     }
 
-    const p_chars = chars(p);
-    const s_chars = chars(s);
-
-    for i in range(len(p), 0) {
-        if s_chars[i] != p_chars[i] {
-            return false;
-        }
+    if (s[(len(s) - len(p))..] != p) {
+        return false;
     }
     
     return true;
@@ -69,18 +62,19 @@ fn starts_with(s: string, p: string) bool {
         return false;
     }
 
-    const p_chars = chars(p);
-    const s_chars = chars(s);
-
-    for i in range(0, len(p)) {
-        if s_chars[i] != p_chars[i] {
-            return false;
-        }
+    if (s[..len(p)] != p) {
+        return false;
     }
     
     return true;
 }
 
 fn repeat(s: string, x: int) string {
-    return flint_repeat(s, x);
+    var parts = str_array();
+
+    for i in range(0, x) {
+        push(parts, s);
+    }
+
+    return join(parts, "");
 }

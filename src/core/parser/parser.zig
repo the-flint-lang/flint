@@ -408,7 +408,7 @@ pub const Parser = struct {
 
     fn parseStatement(self: *Parser) anyerror!NodeIndex {
         if (self.match(&.{.if_token})) return self.parseIfStatement();
-        if (self.match(&.{.for_token})) return self.parseForStatement();
+        if (self.match(&.{ .for_token, .stream_token })) return self.parseForStatement();
         if (self.match(&.{.return_token})) return self.parseReturnStatement();
 
         return self.parseExpressionStatement();
@@ -427,22 +427,27 @@ pub const Parser = struct {
     }
 
     fn parseForStatement(self: *Parser) anyerror!NodeIndex {
-        const iterator_token = try self.consume(.identifier_token, "Expected iterator variable name after 'for'.");
+        const is_stream = self.previous()._type == .stream_token;
+
+        const iterator_token = try self.consume(.identifier_token, "Expected iterator variable name after 'for' or 'stream'.");
         const iter_id = try self.pool.intern(self.allocator, iterator_token.value);
 
         _ = try self.consume(.in_token, "Expected 'in' after iterator variable.");
 
         const iterable_expr_idx = try self.parseExpression();
 
-        _ = try self.consume(.lbrace_token, "Expected '{' before for block.");
+        _ = try self.consume(.lbrace_token, "Expected '{' before block.");
         const body_indices = try self.parseBody();
-        _ = try self.consumeDelimiter(.rbrace_token, "Expected '}' to close for block.");
+        _ = try self.consumeDelimiter(.rbrace_token, "Expected '}' to close block.");
 
-        return try self.tree.addNode(self.allocator, .{ .for_stmt = .{
-            .iterator_name_id = iter_id,
-            .iterable = iterable_expr_idx,
-            .body = body_indices,
-        } });
+        return try self.tree.addNode(self.allocator, .{
+            .for_stmt = .{
+                .iterator_name_id = iter_id,
+                .iterable = iterable_expr_idx,
+                .body = body_indices,
+                .is_stream = is_stream,
+            },
+        });
     }
 
     fn parseVarDecl(self: *Parser) anyerror!NodeIndex {

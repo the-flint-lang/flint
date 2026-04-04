@@ -453,7 +453,13 @@ pub const CEmitter = struct {
 
         if (std.mem.eql(u8, inferred_type, "flint_str_array") or std.mem.eql(u8, inferred_type, "flint_int_array")) {
             try writer.print("        {s}* _arr_{d} = ({s}*)(void*)&_iter_{d};\n", .{ inferred_type, iter_name, inferred_type, iter_name });
-            try writer.print("        for (size_t _i_{d} = 0, _mark_{d} = flint_arena_mark(); _i_{d} < _arr_{d}->count; flint_arena_release(_mark_{d}), _mark_{d} = flint_arena_mark(), _i_{d}++) {{\n", .{ iter_name, iter_name, iter_name, iter_name, iter_name, iter_name, iter_name });
+
+            if (for_node.is_stream) {
+                try writer.print("        for (size_t _i_{d} = 0, _mark_{d} = flint_arena_mark(); _i_{d} < _arr_{d}->count; flint_arena_release(_mark_{d}), _mark_{d} = flint_arena_mark(), _i_{d}++) {{\n", .{ iter_name, iter_name, iter_name, iter_name, iter_name, iter_name, iter_name });
+            } else {
+                try writer.print("        for (size_t _i_{d} = 0; _i_{d} < _arr_{d}->count; _i_{d}++) {{\n", .{ iter_name, iter_name, iter_name, iter_name });
+            }
+
             try writer.print("            typeof(_arr_{d}->items[_i_{d}]) {s} = _arr_{d}->items[_i_{d}];\n", .{ iter_name, iter_name, target_iter_name, iter_name, iter_name });
 
             for (for_node.body) |stmt_idx| {
@@ -466,7 +472,13 @@ pub const CEmitter = struct {
             try writer.print("        FlintValue* _val_{d} = (FlintValue*)(void*)&_iter_{d};\n", .{ iter_name, iter_name });
             try writer.print("        if (_val_{d}->type == FLINT_VAL_STREAM) {{\n", .{iter_name});
             try writer.print("            flint_stream* _stream_{d} = &_val_{d}->as.stream;\n", .{ iter_name, iter_name });
-            try writer.print("            for (size_t _mark_{d} = flint_arena_mark(); _stream_{d}->has_next; flint_arena_release(_mark_{d}), _mark_{d} = flint_arena_mark()) {{\n", .{ iter_name, iter_name, iter_name, iter_name });
+
+            if (for_node.is_stream) {
+                try writer.print("            for (size_t _mark_{d} = flint_arena_mark(); _stream_{d}->has_next; flint_arena_release(_mark_{d}), _mark_{d} = flint_arena_mark()) {{\n", .{ iter_name, iter_name, iter_name, iter_name });
+            } else {
+                try writer.print("            for (; _stream_{d}->has_next; ) {{\n", .{iter_name});
+            }
+
             try writer.print("                typeof(flint_stream_next(_stream_{d})) {s} = flint_stream_next(_stream_{d});\n", .{ iter_name, target_iter_name, iter_name });
 
             for (for_node.body) |stmt_idx| {

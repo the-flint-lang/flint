@@ -1325,38 +1325,6 @@ flint_str_array flint_chars(flint_str text)
     return arr;
 }
 
-bool flint_starts_with(flint_str s, flint_str p)
-{
-    // all str starts with a empty prefix :)
-    if (p.len == 0)
-    {
-        return true;
-    }
-
-    if (p.len > s.len)
-    {
-        return false;
-    }
-
-    return memcmp(s.ptr, p.ptr, p.len) == 0;
-}
-
-bool flint_ends_with(flint_str s, flint_str p)
-{
-    // all str also ends with a empty prefix :)
-    if (p.len == 0)
-    {
-        return true;
-    }
-
-    if (p.len > s.len)
-    {
-        return false;
-    }
-
-    return memcmp(s.ptr + (s.len - p.len), p.ptr, p.len) == 0;
-}
-
 flint_str flint_repeat(flint_str s, long long x)
 {
     if (x <= 0 || s.len == 0)

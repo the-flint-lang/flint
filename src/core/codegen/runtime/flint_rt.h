@@ -363,8 +363,6 @@ static inline long long flint_to_int_func(FlintValue v)
 #define flint_to_int(X) flint_to_int_func(FLINT_BOX(X))
 #define flint_to_str(X) flint_to_str_func(FLINT_BOX(X))
 
-bool flint_starts_with(flint_str s, flint_str p);
-bool flint_ends_with(flint_str s, flint_str p);
 flint_str flint_repeat(flint_str s, long long x);
 
 /* =========================
