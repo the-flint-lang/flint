@@ -12,6 +12,7 @@ pub const FlintType = enum {
     t_int_arr,
     t_str_arr,
     t_bool_arr,
+    t_struct,
     t_void,
     t_any,
     t_error,

@@ -9,7 +9,7 @@ extern fn flint_require_root(plus_args: arr) val;
 extern fn flint_os_command_exists(bin: string) bool;
 
 # public API
-fn args() arr {
+fn args() arr<string> {
     return flint_args(); 
 }
 
@@ -21,7 +21,7 @@ fn is_root() bool {
     return flint_is_root(); 
 }
 
-fn require_root(plus_args: arr) val {
+fn require_root(plus_args: arr<string>) val {
     return flint_require_root(plus_args);
 }
 

@@ -270,9 +270,9 @@ const Linker = struct {
                         const node_ptr = &parser.tree.nodes.items[idx];
 
                         const original_line = p.line;
-                        const original_col = obj_node.identifier._type.column;
+                        const original_col = obj_node.identifier.token.column;
 
-                        node_ptr.* = .{ .identifier = .{ ._type = .{ ._type = .identifier_token, .value = new_name, .line = original_line, .column = original_col }, .name_id = new_id } };
+                        node_ptr.* = .{ .identifier = .{ .token = .{ ._type = .identifier_token, .value = new_name, .line = original_line, .column = original_col }, .name_id = new_id } };
                     }
                 }
             },

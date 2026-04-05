@@ -1162,47 +1162,6 @@ long long flint_count_matches(flint_str text, flint_str pattern)
     return count;
 }
 
-flint_str flint_replace(flint_str text, flint_str target, flint_str repl)
-{
-    if (text.len == 0 || !text.ptr)
-        return FLINT_STR("");
-    if (target.len == 0 || !target.ptr)
-        return text;
-
-    long long count = flint_count_matches(text, target);
-    if (count == 0)
-        return text;
-
-    size_t final_len = text.len - (count * target.len) + (count * repl.len);
-    char *buf = flint_alloc_raw(final_len + 1);
-    char *dest = buf;
-
-    const char *curr = text.ptr;
-    const char *end = text.ptr + text.len;
-
-    while (curr < end)
-    {
-        const char *match = memmem(curr, end - curr, target.ptr, target.len);
-        if (!match)
-        {
-            memcpy(dest, curr, end - curr);
-            dest += (end - curr);
-            break;
-        }
-        size_t prefix_len = match - curr;
-        memcpy(dest, curr, prefix_len);
-        dest += prefix_len;
-
-        memcpy(dest, repl.ptr, repl.len);
-        dest += repl.len;
-
-        curr = match + target.len;
-    }
-
-    *dest = '\0';
-    return FLINT_SLICE(buf, final_len);
-}
-
 flint_str flint_join(flint_str_array arr, flint_str sep)
 {
     if (arr.count == 0)
@@ -1323,25 +1282,6 @@ flint_str_array flint_chars(flint_str text)
     }
 
     return arr;
-}
-
-flint_str flint_repeat(flint_str s, long long x)
-{
-    if (x <= 0 || s.len == 0)
-    {
-        return FLINT_STR("");
-    }
-
-    size_t total_len = (size_t)x * s.len;
-
-    char *buf = flint_alloc_raw(total_len + 1);
-    for (size_t i = 0; i < (size_t)x; i++)
-    {
-        memcpy(buf + i * s.len, s.ptr, s.len);
-    }
-    buf[total_len] = '\0';
-
-    return (flint_str){.ptr = buf, .len = total_len};
 }
 
 /* =========================

@@ -1,7 +1,7 @@
 # std/str.fl
 
-extern fn flint_split(text: string, delim: string) arr;
-extern fn flint_join(a: arr, sep: string) string;
+extern fn flint_split(text: string, delim: string) arr<string>;
+extern fn flint_join(a: arr<string>, sep: string) string;
 extern fn flint_trim(text: string) string;
 extern fn flint_count_matches(text: string, pattern: string) int;
 extern fn flint_replace(text: string, target: string, repl: string) string;
@@ -9,15 +9,13 @@ extern fn flint_to_str(v: val) string;
 extern fn flint_int_to_str(num: int) string;
 extern fn flint_concat(a: string, b: string) string;
 extern fn flint_to_int(v: val) int;
-extern fn flint_str_eql(a: string, b: string) bool; 
-extern fn flint_repeat(s: string, c: int) string ;
 
 # public API 
-fn split(text: string, delim: string) arr {
+fn split(text: string, delim: string) arr<string> {
     return flint_split(text, delim);
 }
 
-fn join(a: arr, sep: string) string {
+fn join(a: arr<string>, sep: string) string {
     return flint_join(a, sep);
 }
 
@@ -30,7 +28,25 @@ fn count_matches(text: string, pattern: string) int {
 }
 
 fn replace(text: string, target: string, repl: string) string {
-    return flint_replace(text, target, repl);
+    if len(text) == 0 {
+        return "";
+    }
+
+    if len(target) == 0 {
+        return "";
+    }
+
+    var parts_new_text = str_array();
+
+    for c in text ~> chars() {
+        if c == target {
+            push(parts_new_text, repl);
+        } else {
+            push(parts_new_text, c);
+        }
+    }
+
+    return join(parts_new_text, "");
 }
 
 fn to_str(v: val) string {
@@ -70,6 +86,14 @@ fn starts_with(s: string, p: string) bool {
 }
 
 fn repeat(s: string, x: int) string {
+    if len(s) == 0 {
+        return "";
+    }
+
+    if x == 0 {
+        return s;
+    }
+
     var parts = str_array();
 
     for i in range(0, x) {

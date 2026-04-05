@@ -20,6 +20,7 @@ pub const CEmitter = struct {
 
     node_types: std.AutoHashMap(NodeIndex, FlintType),
     current_placeholder_name: ?[]const u8 = null,
+    current_function_struct_name: ?[]const u8 = null,
 
     pub fn init(allocator: std.mem.Allocator, tree: *const AstTree, pool: *StringPool, node_types: std.AutoHashMap(NodeIndex, FlintType), source_file: []const u8, is_run: bool) CEmitter {
         return .{
@@ -146,13 +147,21 @@ pub const CEmitter = struct {
         const func = node.function_decl;
         if (func.is_extern) return;
 
-        const ret_type = switch (func.return_type._type) {
-            .void_token => "void",
-            .integer_type_token => "long long",
-            .value_type_token => "FlintValue",
-            .array_type_token => "flint_str_array",
-            .boolean_type_token => "bool",
-            else => "flint_str",
+        const flint_ret_type: FlintType = if (func.return_type) |rt_idx|
+            self.node_types.get(rt_idx) orelse .t_void
+        else
+            .t_void;
+
+        const ret_type = switch (flint_ret_type) {
+            .t_int => "long long",
+            .t_string => "flint_str",
+            .t_bool => "bool",
+            .t_void => "void",
+            .t_int_arr => "flint_int_array",
+            .t_str_arr => "flint_str_array",
+            .t_bool_arr => "flint_bool_array",
+            .t_struct => if (self.current_function_struct_name) |name| name else "void*",
+            else => "FlintValue",
         };
 
         if (self.shouldInline(func.body)) {
@@ -166,23 +175,16 @@ pub const CEmitter = struct {
 
         for (func.arguments, 0..) |arg_idx, i| {
             const arg_node = self.tree.getNode(arg_idx);
-            const arg_type_tok = arg_node.identifier._type._type;
 
-            const c_type = switch (arg_type_tok) {
-                .integer_type_token => "long long",
-                .boolean_type_token => "bool",
-                .value_type_token => "FlintValue",
-                .array_type_token => "flint_str_array",
-                else => "flint_str",
-            };
+            const param = arg_node.param_decl;
+            const arg_flint_type = self.node_types.get(param.type_node) orelse .t_string;
+            const c_type = self.flintTypeToC(arg_flint_type);
 
             try writer.writeAll(c_type);
             try writer.writeAll(" ");
-            try emitSafeName(writer, self.pool.get(arg_node.identifier.name_id));
+            try emitSafeName(writer, self.pool.get(self.pool.intern(self.allocator, param.name_token.value) catch unreachable));
 
-            if (i < func.arguments.len - 1) {
-                try writer.writeAll(", ");
-            }
+            if (i < func.arguments.len - 1) try writer.writeAll(", ");
         }
 
         try writer.writeAll(") {\n");
@@ -911,6 +913,20 @@ pub const CEmitter = struct {
             h = (h ^ @as(u64, c)) *% 1099511628211;
         }
         return if (h == 0) 1 else h;
+    }
+
+    fn flintTypeToC(self: *CEmitter, f_type: FlintType) []const u8 {
+        _ = self;
+        return switch (f_type) {
+            .t_int => "long long",
+            .t_string => "flint_str",
+            .t_bool => "bool",
+            .t_int_arr => "flint_int_array",
+            .t_str_arr => "flint_str_array",
+            .t_bool_arr => "flint_bool_array",
+            .t_void => "void",
+            else => "FlintValue",
+        };
     }
 
     fn inferCType(self: *CEmitter, index: NodeIndex) ?[]const u8 {

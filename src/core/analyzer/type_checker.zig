@@ -353,14 +353,19 @@ pub const TypeChecker = struct {
 
         var custom_struct_id: ?StringId = null;
 
-        if (decl._type) |type_token| {
-            const declared_type = self.tokenToFlintType(type_token);
+        if (decl._type) |type_node_idx| {
+            const declared_type = self.nodeToFlintType(type_node_idx);
+
+            try self.node_types.put(type_node_idx, declared_type);
+
+            const type_node = self.tree.getNode(type_node_idx).type_expr;
+            const actual_token = type_node.base_token;
 
             if (declared_type == .t_unknown) {
-                custom_struct_id = try self.pool.intern(self.allocator, type_token.value);
+                custom_struct_id = try self.pool.intern(self.allocator, actual_token.value);
 
                 if (self.global_scope.lookup(custom_struct_id.?) == null) {
-                    try self.reportErrorContext(type_token.line, type_token.column, @intCast(type_token.value.len), "Unknown type. This struct has not been declared.");
+                    try self.reportErrorContext(actual_token.line, actual_token.column, @intCast(actual_token.value.len), "Unknown type. This struct has not been declared.");
                     return .t_error;
                 }
             } else if (declared_type != expr_type and expr_type != .t_any and expr_type != .t_error) {
@@ -368,10 +373,10 @@ pub const TypeChecker = struct {
                 defer diag.deinit();
                 self.had_error = true;
 
-                const expected_lbl = try std.fmt.allocPrint(self.allocator, "expected `{s}`", .{type_token.value});
+                const expected_lbl = try std.fmt.allocPrint(self.allocator, "expected `{s}`", .{actual_token.value});
                 const found_lbl = try std.fmt.allocPrint(self.allocator, "found `{s}`", .{self.flintTypeToStr(expr_type)});
 
-                try diag.addLabel(type_token.line, type_token.column, @intCast(type_token.value.len), expected_lbl, false);
+                try diag.addLabel(actual_token.line, actual_token.column, @intCast(actual_token.value.len), expected_lbl, false);
 
                 var v_line: u32 = 0;
                 var v_col: u32 = 0;
@@ -379,7 +384,7 @@ pub const TypeChecker = struct {
                 self.extractCoords(decl.value, &v_line, &v_col, &v_len);
                 try diag.addLabel(v_line, v_col, v_len, found_lbl, true);
 
-                const note_str = try std.fmt.allocPrint(self.allocator, "`{s}` is declared as type `{s}`", .{ self.pool.get(decl.name_id), type_token.value });
+                const note_str = try std.fmt.allocPrint(self.allocator, "`{s}` is declared as type `{s}`", .{ self.pool.get(decl.name_id), actual_token.value });
                 diag.note(note_str);
 
                 const help_str = try std.fmt.allocPrint(self.allocator, "convert the value or change the variable type to match the assignment", .{});
@@ -465,7 +470,7 @@ pub const TypeChecker = struct {
 
     fn checkIdentifier(self: *TypeChecker, _: NodeIndex, node: AstNode) !FlintType {
         const name_id = node.identifier.name_id;
-        const token = node.identifier._type;
+        const token = node.identifier.token;
 
         if (self.current_scope.lookup(name_id)) |symbol| {
             return symbol.type;
@@ -542,7 +547,7 @@ pub const TypeChecker = struct {
                     }
                     return symbol.type;
                 } else {
-                    const id_node = left_node.identifier._type;
+                    const id_node = left_node.identifier.token;
                     try self.reportErrorContext(id_node.line, id_node.column, @intCast(name_str.len), "Assignment to undefined variable.");
                     return .t_error;
                 }
@@ -926,8 +931,8 @@ pub const TypeChecker = struct {
                         if (has_signature) {
                             var expected_arg_type: FlintType = .t_any;
                             if (is_user_func) {
-                                const a_node = self.tree.getNode(func_decl.function_decl.arguments[0]);
-                                expected_arg_type = self.tokenToFlintType(a_node.identifier._type);
+                                const a_node = self.tree.getNode(func_decl.function_decl.arguments[arg_idx]);
+                                expected_arg_type = self.nodeToFlintType(a_node.param_decl.type_node);
                             } else {
                                 expected_arg_type = symbol.builtin_signature.?[0];
                             }
@@ -962,7 +967,7 @@ pub const TypeChecker = struct {
                             var expected_arg_type: FlintType = .t_any;
                             if (is_user_func) {
                                 const a_node = self.tree.getNode(func_decl.function_decl.arguments[arg_idx]);
-                                expected_arg_type = self.tokenToFlintType(a_node.identifier._type);
+                                expected_arg_type = self.nodeToFlintType(a_node.param_decl.type_node);
                             } else {
                                 expected_arg_type = symbol.builtin_signature.?[arg_idx];
                             }
@@ -1082,9 +1087,19 @@ pub const TypeChecker = struct {
 
     fn checkFunctionDecl(self: *TypeChecker, index: NodeIndex, node: AstNode) !FlintType {
         const decl = node.function_decl;
-        const return_type = self.tokenToFlintType(decl.return_type);
 
-        _ = self.current_scope.define(decl.name_id, return_type, true, decl.return_type.line, 0, index, null);
+        var return_type: FlintType = .t_void;
+        var func_line: u32 = 0;
+
+        if (decl.return_type) |rt_idx| {
+            return_type = self.nodeToFlintType(rt_idx);
+            const type_node = self.tree.getNode(rt_idx).type_expr;
+            func_line = type_node.base_token.line;
+
+            try self.node_types.put(rt_idx, return_type);
+        }
+
+        _ = self.current_scope.define(decl.name_id, return_type, true, func_line, 0, index, null);
 
         if (decl.is_extern) return .t_void;
 
@@ -1097,9 +1112,14 @@ pub const TypeChecker = struct {
 
         for (decl.arguments) |arg_idx| {
             const arg_node = self.tree.getNode(arg_idx);
-            const arg_name_id = arg_node.identifier.name_id;
-            const arg_type = self.tokenToFlintType(arg_node.identifier._type);
-            _ = self.current_scope.define(arg_name_id, arg_type, true, arg_node.identifier._type.line, 0, null, null);
+            const param = arg_node.param_decl;
+
+            const arg_name_id = try self.pool.intern(self.allocator, param.name_token.value);
+            const arg_type = self.nodeToFlintType(param.type_node);
+
+            try self.node_types.put(param.type_node, arg_type);
+
+            _ = self.current_scope.define(arg_name_id, arg_type, true, param.name_token.line, 0, null, null);
         }
 
         for (decl.body) |stmt_idx| {
@@ -1431,7 +1451,19 @@ pub const TypeChecker = struct {
             .t_void => "void",
             .t_any => "any",
             .t_error => "error",
-            .t_unknown => "unknown struct",
+            .t_unknown, .t_struct => "unknown struct",
+        };
+    }
+
+    fn resolveGenericArray(self: *TypeChecker, inner: FlintType) FlintType {
+        _ = self;
+
+        return switch (inner) {
+            .t_int => .t_int_arr,
+            .t_string => .t_str_arr,
+            .t_bool => .t_bool_arr,
+            .t_struct => .t_struct_arr,
+            else => .t_any_arr,
         };
     }
 
@@ -1454,8 +1486,8 @@ pub const TypeChecker = struct {
                 len.* = actual_len;
             },
             .identifier => {
-                line.* = node.identifier._type.line;
-                col.* = node.identifier._type.column;
+                line.* = node.identifier.token.line;
+                col.* = node.identifier.token.column;
                 len.* = @intCast(self.pool.get(node.identifier.name_id).len);
             },
             .binary_expr => {
@@ -1510,14 +1542,48 @@ pub const TypeChecker = struct {
 
     pub fn tokenToFlintType(self: *TypeChecker, token: Token) FlintType {
         _ = self;
-        return switch (token._type) {
-            .integer_type_token => .t_int,
-            .string_type_token, .char_type_token => .t_string,
-            .boolean_type_token => .t_bool,
-            .value_type_token => .t_val,
-            .array_type_token => .t_str_arr,
-            else => .t_unknown,
-        };
+        const val = token.value;
+        if (std.mem.eql(u8, val, "int")) return .t_int;
+        if (std.mem.eql(u8, val, "string")) return .t_string;
+        if (std.mem.eql(u8, val, "bool")) return .t_bool;
+        if (std.mem.eql(u8, val, "val")) return .t_val;
+        if (std.mem.eql(u8, val, "arr")) return .t_str_arr;
+        if (std.mem.eql(u8, val, "void")) return .t_void;
+
+        if (token._type == .identifier_token) return .t_struct;
+        return .t_unknown;
+    }
+
+    pub fn nodeToFlintType(self: *TypeChecker, node_idx: NodeIndex) FlintType {
+        const node = self.tree.getNode(node_idx);
+
+        switch (node) {
+            .type_expr => |t| {
+                const base_val = t.base_token.value;
+
+                if (std.mem.eql(u8, base_val, "int")) return .t_int;
+                if (std.mem.eql(u8, base_val, "string")) return .t_string;
+                if (std.mem.eql(u8, base_val, "bool")) return .t_bool;
+                if (std.mem.eql(u8, base_val, "val")) return .t_val;
+                if (std.mem.eql(u8, base_val, "void")) return .t_void;
+
+                if (std.mem.eql(u8, base_val, "arr")) {
+                    if (t.inner_type) |inner| {
+                        const inner_t = self.nodeToFlintType(inner);
+                        return switch (inner_t) {
+                            .t_int => .t_int_arr,
+                            .t_string => .t_str_arr,
+                            .t_bool => .t_bool_arr,
+                            else => .t_any,
+                        };
+                    }
+                    return .t_any;
+                }
+
+                return .t_struct;
+            },
+            else => return .t_unknown,
+        }
     }
 
     fn reportErrorContext(self: *TypeChecker, line: u32, end_column: u32, len: u32, message: []const u8) !void {

@@ -25,6 +25,7 @@ pub const Parser = struct {
 
     io: IoHelpers,
     had_error: bool = false,
+    disable_range: bool = false,
 
     pub fn init(allocator: std.mem.Allocator, tree: *AstTree, pool: *StringPool, tokens: []const Token, source: []const u8, file_path: []const u8, io: IoHelpers) Parser {
         return .{
@@ -179,7 +180,7 @@ pub const Parser = struct {
         const args = try self.parseArgs();
         _ = try self.consumeDelimiter(.rparen_token, "')' expected after function arguments");
 
-        const return_type = self.advance();
+        const return_type = try self.parseType();
 
         var body: []const NodeIndex = &.{};
 
@@ -222,12 +223,9 @@ pub const Parser = struct {
             while (true) {
                 const name_token = try self.consume(.identifier_token, "argument name expected");
                 _ = try self.consume(.colon_token, "expected ':' after argument name");
-                const type_token = self.advance();
+                const type_idx = try self.parseType();
 
-                const name_id = try self.pool.intern(self.allocator, name_token.value);
-
-                const arg_idx = try self.tree.addNode(self.allocator, .{ .identifier = .{ ._type = type_token, .name_id = name_id } });
-
+                const arg_idx = try self.tree.addNode(self.allocator, .{ .param_decl = .{ .name_token = name_token, .type_node = type_idx } });
                 try args.append(self.allocator, arg_idx);
 
                 if (!self.match(&.{.comma_token})) break;
@@ -300,18 +298,31 @@ pub const Parser = struct {
             } else if (self.match(&.{.lbracket_token})) {
                 var start_idx: ?NodeIndex = null;
 
+                const prev_disable = self.disable_range;
+                self.disable_range = true;
+
                 if (!self.check(.rbracket_token) and !self.check(.dot_dot_token)) {
-                    start_idx = try self.parseExpression();
+                    start_idx = self.parseExpression() catch |err| {
+                        self.disable_range = prev_disable;
+                        return err;
+                    };
                 }
 
                 if (self.match(&.{.dot_dot_token})) {
                     var end_idx: ?NodeIndex = null;
+
                     if (!self.check(.rbracket_token)) {
-                        end_idx = try self.parseExpression();
+                        end_idx = self.parseExpression() catch |err| {
+                            self.disable_range = prev_disable;
+                            return err;
+                        };
                     }
+
+                    self.disable_range = prev_disable;
                     _ = try self.consumeDelimiter(.rbracket_token, "Expected ']' after slice.");
                     expr_idx = try self.tree.addNode(self.allocator, .{ .slice_expr = .{ .left = expr_idx, .start = start_idx, .end = end_idx } });
                 } else {
+                    self.disable_range = prev_disable;
                     if (start_idx == null) {
                         return self.reportError(self.previous(), "Expected expression or '..' inside '[]'.");
                     }
@@ -347,10 +358,12 @@ pub const Parser = struct {
         if (self.match(&.{.identifier_token})) {
             const name_token = self.previous();
             const name_id = try self.pool.intern(self.allocator, name_token.value);
-            return try self.tree.addNode(self.allocator, .{ .identifier = .{
-                ._type = name_token,
-                .name_id = name_id,
-            } });
+            return try self.tree.addNode(self.allocator, .{
+                .identifier = .{
+                    .token = name_token,
+                    .name_id = name_id,
+                },
+            });
         }
 
         if (self.match(&.{.lparen_token})) {
@@ -456,13 +469,10 @@ pub const Parser = struct {
         const name_token = try self.consume(.identifier_token, "Expected variable name.");
         const name_id = try self.pool.intern(self.allocator, name_token.value);
 
-        var type_token: ?Token = null;
+        var type_node_idx: ?NodeIndex = null;
 
         if (self.match(&.{.colon_token})) {
-            if (!self.match(&.{ .integer_type_token, .string_type_token, .char_type_token, .boolean_type_token, .identifier_token, .value_type_token, .array_type_token })) {
-                return self.reportError(self.peek(), "Invalid or unknown type.");
-            }
-            type_token = self.previous();
+            type_node_idx = try self.parseType();
         }
 
         _ = try self.consume(.assign_token, "Expected '=' after variable name.");
@@ -474,7 +484,7 @@ pub const Parser = struct {
         return try self.tree.addNode(self.allocator, .{
             .var_decl = .{
                 .line = name_token.line + 1,
-                ._type = type_token,
+                ._type = type_node_idx,
                 .is_const = is_const,
                 .name_id = name_id,
                 .value = value_expr_idx,
@@ -595,13 +605,65 @@ pub const Parser = struct {
     }
 
     fn parseComparison(self: *Parser) anyerror!NodeIndex {
-        var expr_idx = try self.parseTerm();
+        var expr_idx = try self.parseRange();
 
         while (self.match(&.{ .less_token, .less_equal_token, .greater_token, .greater_equal_token })) {
             const operator = self.previous();
-            const right_idx = try self.parseTerm();
+            const right_idx = try self.parseRange();
 
             expr_idx = try self.tree.addNode(self.allocator, .{ .binary_expr = .{ .left = expr_idx, .operator = operator, .right = right_idx } });
+        }
+
+        return expr_idx;
+    }
+
+    fn parseType(self: *Parser) anyerror!NodeIndex {
+        if (!self.match(&.{ .integer_type_token, .string_type_token, .char_type_token, .boolean_type_token, .value_type_token, .array_type_token, .identifier_token, .void_token })) {
+            return self.reportError(self.peek(), "Expected type name.");
+        }
+
+        const base_token = self.previous();
+        var inner_type_idx: ?NodeIndex = null;
+
+        if (std.mem.eql(u8, base_token.value, "arr")) {
+            if (self.match(&.{.less_token})) {
+                inner_type_idx = try self.parseType();
+                _ = try self.consume(.greater_token, "Expected '>' after generic type.");
+            }
+        }
+
+        return try self.tree.addNode(self.allocator, .{ .type_expr = .{
+            .base_token = base_token,
+            .inner_type = inner_type_idx,
+        } });
+    }
+
+    fn parseRange(self: *Parser) anyerror!NodeIndex {
+        var expr_idx = try self.parseTerm();
+
+        if (!self.disable_range and self.match(&.{.dot_dot_token})) {
+            const line = self.previous().line;
+
+            const right_idx = try self.parseTerm();
+
+            // fake token
+            const range_str_id = try self.pool.intern(self.allocator, "range");
+            const range_callee = try self.tree.addNode(self.allocator, .{ .identifier = .{
+                .token = Token{ ._type = .identifier_token, .value = "range", .line = line, .column = 0 },
+                .name_id = range_str_id,
+            } });
+
+            var args = std.ArrayList(NodeIndex).empty;
+            try args.append(self.allocator, expr_idx);
+            try args.append(self.allocator, right_idx);
+
+            expr_idx = try self.tree.addNode(self.allocator, .{
+                .call_expr = .{
+                    .line = line,
+                    .callee = range_callee,
+                    .arguments = try args.toOwnedSlice(self.allocator),
+                },
+            });
         }
 
         return expr_idx;
@@ -739,7 +801,7 @@ pub const Parser = struct {
 
     fn wrapInToStr(self: *Parser, expr_idx: NodeIndex) !NodeIndex {
         const to_str_id = try self.pool.intern(self.allocator, "to_str");
-        const func_id_idx = try self.tree.addNode(self.allocator, .{ .identifier = .{ ._type = Token{ ._type = .identifier_token, .value = "to_str", .line = 0, .column = 0 }, .name_id = to_str_id } });
+        const func_id_idx = try self.tree.addNode(self.allocator, .{ .identifier = .{ .token = Token{ ._type = .identifier_token, .value = "to_str", .line = 0, .column = 0 }, .name_id = to_str_id } });
 
         var args = try self.allocator.alloc(NodeIndex, 1);
         args[0] = expr_idx;
@@ -843,7 +905,7 @@ pub const Parser = struct {
         const build_str_id = try self.pool.intern(self.allocator, "build_str");
         const func_id_idx = try self.tree.addNode(self.allocator, .{
             .identifier = .{
-                ._type = Token{ ._type = .identifier_token, .value = "build_str", .line = token.line, .column = token.column },
+                .token = Token{ ._type = .identifier_token, .value = "build_str", .line = token.line, .column = token.column },
                 .name_id = build_str_id,
             },
         });

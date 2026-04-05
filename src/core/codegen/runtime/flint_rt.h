@@ -340,7 +340,6 @@ flint_str flint_join(flint_str_array arr, flint_str sep);
 
 flint_str flint_trim(flint_str text);
 long long flint_count_matches(flint_str text, flint_str pattern);
-flint_str flint_replace(flint_str text, flint_str target, flint_str repl);
 
 flint_str flint_to_str_func(FlintValue v);
 flint_str flint_int_to_str(long long num);
@@ -362,8 +361,6 @@ static inline long long flint_to_int_func(FlintValue v)
 
 #define flint_to_int(X) flint_to_int_func(FLINT_BOX(X))
 #define flint_to_str(X) flint_to_str_func(FLINT_BOX(X))
-
-flint_str flint_repeat(flint_str s, long long x);
 
 /* =========================
    UTIL

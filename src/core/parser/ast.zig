@@ -45,14 +45,14 @@ pub const AstNode = union(enum) {
     function_decl: struct {
         is_extern: bool,
         name_id: StringId,
-        return_type: Token,
+        return_type: ?NodeIndex,
         arguments: []const NodeIndex,
         body: []const NodeIndex,
     },
 
     var_decl: struct {
         line: u32,
-        _type: ?Token,
+        _type: ?NodeIndex,
         is_const: bool,
         name_id: StringId,
         value: NodeIndex,
@@ -128,6 +128,11 @@ pub const AstNode = union(enum) {
         right_call: NodeIndex,
     },
 
+    type_expr: struct {
+        base_token: Token,
+        inner_type: ?NodeIndex,
+    },
+
     for_stmt: struct {
         iterator_name_id: StringId,
         iterable: NodeIndex,
@@ -137,8 +142,13 @@ pub const AstNode = union(enum) {
 
     catch_expr: CatchExpr,
 
+    param_decl: struct {
+        name_token: Token,
+        type_node: NodeIndex,
+    },
+
     identifier: struct {
-        _type: Token,
+        token: Token,
         name_id: StringId,
     },
 
