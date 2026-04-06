@@ -355,10 +355,23 @@ flint_str flint_build_str_array(flint_str *parts, size_t count);
 
 #define build_str(...) flint_build_str(__VA_ARGS__)
 
+long long flint_parse_int_from_str(flint_str s);
+
 static inline long long flint_to_int_func(FlintValue v)
 {
     if (v.type == FLINT_VAL_INT)
         return v.as.i;
+
+    if (v.type == FLINT_VAL_STR)
+        return flint_parse_int_from_str(v.as.s);
+
+    if (v.type == FLINT_VAL_FLOAT)
+    {
+        double f;
+        memcpy(&f, &v.as.f, sizeof(double));
+        return (long long)f;
+    }
+
     return 0;
 }
 

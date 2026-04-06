@@ -1678,6 +1678,39 @@ FlintValue flint_ensure(FlintValue val, bool condition, flint_str err_msg)
     return val;
 }
 
+long long flint_parse_int_from_str(flint_str s)
+{
+    if (s.len == 0 || !s.ptr)
+        return 0;
+
+    long long res = 0;
+    int sign = 1;
+    size_t i = 0;
+
+    while (i < s.len && isspace((unsigned char)s.ptr[i]))
+    {
+        i++;
+    }
+
+    if (i < s.len && s.ptr[i] == '-')
+    {
+        sign = -1;
+        i++;
+    }
+    else if (i < s.len && s.ptr[i] == '+')
+    {
+        i++;
+    }
+
+    while (i < s.len && isdigit((unsigned char)s.ptr[i]))
+    {
+        res = res * 10 + (s.ptr[i] - '0');
+        i++;
+    }
+
+    return res * sign;
+}
+
 // ============================================================================
 // FLINT STANDARD LIBRARY ABI BINDINGS
 // ============================================================================
