@@ -1,0 +1,5 @@
+import fs;
+import str;
+    
+const content = fs.read_file("tests/pipeline/basic.fl") ~> if_fail("Failed to read basic.fl");
+print(len(str.to_str(content)));

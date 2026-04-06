@@ -1,0 +1,9 @@
+import process;
+import str;
+
+const result = process.spawn("echo spawn OK", false) catch |err| {
+    print(err);
+    process.exit(1);
+};
+print(str.to_str(result["stdout"]) ~> str.trim());
+print(result["exit_code"]);

@@ -1,19 +1,9 @@
-import io;
 import http;
-import os;
 import process;
-import str;
 
-print("Starting critical network routine (Zig Style)...");
-
-const request = http.fetch("https://fake-url-by-lucas.com") catch |err| {
-    print("A failure occurred, but the OS DID NOT PANIC!");
-    print("Intercepted technical reason: ");
+const body = http.fetch("https://url-que-nao-existe-flint-test.xyz") catch |err| {
+    print("fetch failed as expected");
     print(err);
-    
-    print("\nExecuting contingency and exiting gracefully...");
     process.exit(0);
 };
-
-print("Network success!");
-print(str.to_str(request));
+print(body);

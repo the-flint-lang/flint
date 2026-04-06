@@ -1,0 +1,7 @@
+import fs;
+import process;
+
+_ = fs.mkdir("tests/io/_tmp_dir") catch |err| { print(err); process.exit(1); };
+print(fs.is_dir("tests/io/_tmp_dir"));
+_ = fs.rm_dir("tests/io/_tmp_dir") catch |err| { print(err); process.exit(1); };
+print("mkdir/rmdir OK");

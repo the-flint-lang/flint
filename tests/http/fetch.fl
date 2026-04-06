@@ -1,0 +1,10 @@
+import http;
+import str;
+import process;
+
+const body = http.fetch("https://httpbin.org/get") catch |err| {
+    print($"fetch failed: {err}");
+    process.exit(1);
+};
+print("fetch OK, body length:");
+print(len(str.to_str(body)));

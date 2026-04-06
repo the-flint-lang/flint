@@ -1,0 +1,10 @@
+import json;
+import str;
+
+const obj = json.parse("{}");
+for i in range(0, 1000) {
+    const k = $"key_{i}";
+    obj[k] = i;
+}
+print("1000 keys inserted OK");
+print(obj["key_999"]);

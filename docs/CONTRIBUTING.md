@@ -1,61 +1,73 @@
 # Contributing to Flint
 
-First off, thank you for considering contributing to Flint!
+Thanks for interest in contribute to Flint!
 
-Flint is designed to be a fast, pipeline-oriented language for DevOps and CLI tooling. To maintain its performance and zero-dependency distribution, we have strict architectural rules.
+Flint is a fast, pipeline-oriented language for DevOps and CLI tooling.
+To keep performance and zero-dependency distribution, we have strict architectural rules.
+
+---
 
 ## Architectural Philosophy (Read First)
 
-Flint is a transpiler. It is crucial to understand the boundary between the **Compiler** and the **Runtime**:
+Flint is a transpiler. You need understand the boundary between **Compiler** and **Runtime**:
 
-1. **The Compiler (Zig):** Parses the `.fl` files and generates C99 code. It uses Zig's `std.heap.ArenaAllocator`.
-2. **The Runtime (C99):** The standard library embedded into every compiled Flint script. **It uses a custom 4GB Virtual Arena via `mmap`.**
+1. **Compiler (Zig):** Parse `.fl` files and generate C99 code. Uses Zig `std.heap.ArenaAllocator`.
+2. **Runtime (C99):** Standard library embedded in every compiled Flint script. **Uses a custom 4GB Virtual Arena via `mmap`.**
 
-**Golden Rule for the Runtime (Memory Management):**
-Do NOT use standard `malloc()` or `free()` for final data structures. You must use `flint_alloc_raw()`.
-*However*, if you are reading an incoming stream of unknown size, **you must NOT grow buffers inside the Arena**.
+### Golden Rule for Runtime (Memory Management)
 
-1. Use `malloc/realloc` as a temporary scratchpad.
+Don't use `malloc()` or `free()` for final data structures. Use `flint_alloc_raw()`.
+
+But if you reading a incoming stream of unknown size, **don't grow buffers inside the Arena**.
+
+Do this instead:
+
+1. Use `malloc/realloc` as temporary scratchpad.
 2. Build the full data.
-3. Call `flint_alloc_raw()` exactly once to copy the final data to the Arena.
-4. Call `free()` on the scratchpad. This prevents Arena leaks!
+3. Call `flint_alloc_raw()` once to copy final data to Arena.
+4. Call `free()` on the scratchpad.
+
+> This prevents Arena leaks.
+
+---
 
 ## Development Setup
 
-To build and test Flint locally, you need:
+Requirements:
 
-- **Zig:** Version 0.15.2
-- **Clang:** (to compile the emitted C code).
-- **libcurl:** Development headers.
+* Zig (0.15.2)
+* Clang (to compile emitted C code)
+* libcurl & libtcc (Dev headers)
 
-### Building from Source (Self-Hosting)
-
+### Building from Source
 ```bash
 git clone https://github.com/lucaas-d3v/flint.git
 cd flint
-
-# Trigger bootstrap to build the initial compiler
+chmod +x ignite.sh
 ./ignite.sh
 ```
 
-### Codebase Anatomy
+---
 
-If you want to fix a bug or add a feature, here is where you should look:
+## Codebase Anatomy
 
-- `src/core/lexer/`: Tokenization logic and keyword hashing.
-- `src/core/parser/`: The AST generator. Start here for new syntax.
-- `src/core/analyzer/type_checker.zig`: The semantic analyzer. Enforces types, pipeline arity, and blocks undefined behavior.
-- `src/core/errors/diagnostics.zig`: The visual engine that builds the Rust-style terminal error outputs.
-- `src/root.zig`: The Linker and Canonical Module Resolver.
-- `src/core/codegen/c_emitter.zig`: Translates the Zig AST into C99 code.
-- `src/core/codegen/runtime/`: Contains `flint_rt.h` and `flint_rt.c`. Add new built-in functions here.
+Where to look when fixing a bug or adding a feature:
+
+- [`../src/core/lexer/`](../src/core/lexer/) — Tokenization and keyword hashing.
+- [`../src/core/parser/`](../src/core/parser/) — AST generator. Start here for new syntax.
+- [`../src/core/analyzer/type_checker.zig`](../src/core/analyzer/type_checker.zig) — Semantic analyzer. Enforces types, pipeline arity, blocks UB.
+- [`../src/core/errors/diagnostics.zig`](../src/core/errors/diagnostics.zig) — Visual engine that build the terminal error outputs.
+- [`../src/root.zig`](../src/root.zig) — Linker and Canonical Module Resolver.
+- [`../src/core/codegen/c_emitter.zig`](../src/core/codegen/c_emitter.zig) — Translate Zig AST to C99.
+- [`../src/core/codegen/runtime/`](../src/core/codegen/runtime/) — [`flint_rt.h`](../src/core/codegen/runtime/flint_rt.h) and [`flint_rt.c`](../src/core/codegen/runtime/flint_rt.c). Add new built-in functions here.
+
+---
 
 ## Testing
 
-Flint uses a snapshot/sanity testing approach. All tests are `.fl` files located in the `./tests/` directory.
+Flint uses snapshot/sanity testing. All tests are `.fl` files in [`../tests/`](../tests/).
 
-Before submitting any Pull Request, you must ensure the test battery passes:
-
+Before any Pull Request, make sure the test battery pass:
 ```bash
 flint test
 ```

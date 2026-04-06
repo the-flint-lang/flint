@@ -1,0 +1,4 @@
+const a: int = 42;
+var b = 10;
+b = b + a;
+print(b);

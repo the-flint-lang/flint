@@ -1,0 +1,3 @@
+const user = "lucas";
+const code = 200;
+print($"User: {user} | Status: {code}");

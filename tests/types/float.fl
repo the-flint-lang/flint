@@ -1,0 +1,5 @@
+const pi = 3.141592;
+const half = 0.5;
+const sum = pi + half;
+print(sum);
+print($"pi = {pi}, half = {half}");

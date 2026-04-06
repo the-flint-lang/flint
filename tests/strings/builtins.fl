@@ -1,0 +1,6 @@
+import str;
+
+const s = "  Hello, Flint!  ";
+print(str.trim(s));
+print(str.replace(s, "Flint", "World"));
+print(str.count_matches(s, "l"));

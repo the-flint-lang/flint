@@ -1,0 +1,4 @@
+import "./math.fl" as m;
+
+print(m.double(5));
+print(m.square(4));

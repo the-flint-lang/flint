@@ -1,0 +1,6 @@
+import utils;
+import fs;
+
+const result = fs.read_file("arquivo_que_nao_existe.txt");
+print(utils.is_err(result));
+print(utils.get_err(result));

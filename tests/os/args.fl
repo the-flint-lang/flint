@@ -1,0 +1,7 @@
+import os;
+
+const args = os.args();
+print("Arguments received:");
+for a in args {
+    print(a);
+}

@@ -1,0 +1,7 @@
+const t = true;
+const f = false;
+print(t);
+print(f);
+if t {
+    print("bool true OK");
+}

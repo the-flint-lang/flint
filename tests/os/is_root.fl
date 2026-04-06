@@ -1,0 +1,7 @@
+import os;
+
+if os.is_root() {
+    print("running as root");
+} else {
+    print("not root");
+}

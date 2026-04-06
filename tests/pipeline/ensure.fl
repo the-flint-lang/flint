@@ -1,0 +1,7 @@
+import json;
+import str;
+
+const data = json.parse("{\"status\": 200}");
+const result = data
+    ~> ensure(data["status"] == 200, "status must be 200");
+print("ensure OK");

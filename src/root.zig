@@ -498,77 +498,132 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
 
         var emitter = CEmitter.init(alloc, &global_tree, &pool, final_checker.node_types, file_path, true);
         try emitter.generate(c_code_buffer.writer(alloc), merged_root_idx);
-        try c_code_buffer.append(alloc, 0);
+        try c_code_buffer.append(alloc, 0); // Null terminator para o TCC
+
+        var jit_success = false;
 
         const tcc_state = tcc.tcc_new();
-        if (tcc_state == null) {
-            try io.stderr.print("Fatal: Failed to initialize libtcc.\n", .{});
+        if (tcc_state != null) {
+            tcc.tcc_set_error_func(tcc_state, null, silentErrorCallback);
+            defer tcc.tcc_delete(tcc_state);
+
+            _ = tcc.tcc_set_output_type(tcc_state, tcc.TCC_OUTPUT_MEMORY);
+            _ = tcc.tcc_add_include_path(tcc_state, ".");
+            if (precompiled) _ = tcc.tcc_add_include_path(tcc_state, "/usr/share/flint");
+
+            _ = tcc.tcc_add_library_path(tcc_state, "/usr/lib/x86_64-linux-gnu");
+            _ = tcc.tcc_add_library_path(tcc_state, "/usr/lib");
+            _ = tcc.tcc_add_library_path(tcc_state, "/usr/local/lib");
+
+            if (tcc.tcc_add_library(tcc_state, "curl") == -1) {
+                try io.stderr.print("JIT Warning: Could not explicitly link libcurl.\n", .{});
+            }
+
+            const rt_path_z = try alloc.dupeZ(u8, rt_path);
+            defer alloc.free(rt_path_z);
+
+            if (tcc.tcc_add_file(tcc_state, rt_path_z) != -1 and
+                tcc.tcc_compile_string(tcc_state, c_code_buffer.items.ptr) != -1 and
+                tcc.tcc_relocate(tcc_state, tcc.TCC_RELOCATE_AUTO) >= 0)
+            {
+                const main_sym = tcc.tcc_get_symbol(tcc_state, "main");
+                if (main_sym != null) {
+                    jit_success = true;
+                    const MainFn = *const fn (c_int, [*c][*c]u8) callconv(.c) c_int;
+                    const main_func: MainFn = @ptrCast(@alignCast(main_sym));
+
+                    var run_args = std.ArrayList([*c]u8).empty;
+                    defer run_args.deinit(alloc);
+
+                    const exe_name_z = try alloc.dupeZ(u8, exe_name);
+                    defer alloc.free(exe_name_z);
+                    try run_args.append(alloc, exe_name_z);
+
+                    while (args.next()) |a| try run_args.append(alloc, try alloc.dupeZ(u8, a));
+                    try run_args.append(alloc, null);
+
+                    const ret = main_func(@intCast(run_args.items.len - 1), run_args.items.ptr);
+                    if (ret != 0) std.process.exit(@intCast(ret));
+                    return;
+                }
+            }
+        }
+
+        if (!jit_success) {
+            try io.stderr.print("\x1b[33m[COMPILATION FALLBACK]\x1b[0m TCC limit reached. Deferring to Clang/GCC pipeline...\n", .{});
+            _ = io.stderr.flush() catch {};
+
+            const tmp_exe = try std.fmt.allocPrint(alloc, ".{s}_tmp_run", .{exe_name});
+            defer alloc.free(tmp_exe);
+
+            var compiled = false;
+            const compilers = [_][]const u8{ "clang", "gcc" };
+
+            for (compilers) |comp_name| {
+                if (!isCompilerPresent(alloc, comp_name)) continue;
+
+                var cmd = std.ArrayList([]const u8).empty;
+                defer cmd.deinit(alloc);
+
+                try cmd.append(alloc, comp_name);
+                try cmd.append(alloc, rt_path);
+                try cmd.append(alloc, "-x");
+                try cmd.append(alloc, "c");
+                try cmd.append(alloc, "-");
+                try cmd.append(alloc, "-o");
+                try cmd.append(alloc, tmp_exe);
+                try cmd.append(alloc, "-I.");
+                if (precompiled) try cmd.append(alloc, "-I/usr/share/flint");
+
+                try cmd.append(alloc, "-O0");
+                try cmd.append(alloc, "-lcurl");
+                try cmd.append(alloc, "-Wno-unused-value");
+                var child = std.process.Child.init(cmd.items, alloc);
+                child.stdin_behavior = .Pipe;
+                child.stderr_behavior = .Ignore;
+
+                try child.spawn();
+                try child.stdin.?.writeAll(c_code_buffer.items);
+                child.stdin.?.close();
+                child.stdin = null;
+
+                const term = try child.wait();
+                if (term == .Exited and term.Exited == 0) {
+                    compiled = true;
+                    break;
+                }
+            }
+
+            if (!compiled) {
+                try io.stderr.print("\x1b[1;31m[FATAL ERROR]\x1b[0m All backend compilers (TCC, Clang, GCC) failed. Syntax tree is heavily broken.\n", .{});
+                return error.FallbackCompilationFailed;
+            }
+
+            var run_cmd = std.ArrayList([]const u8).empty;
+            defer run_cmd.deinit(alloc);
+
+            const local_tmp_exe = try std.fmt.allocPrint(alloc, "./{s}", .{tmp_exe});
+            defer alloc.free(local_tmp_exe);
+            try run_cmd.append(alloc, local_tmp_exe);
+            while (args.next()) |a| try run_cmd.append(alloc, a);
+
+            var run_child = std.process.Child.init(run_cmd.items, alloc);
+            const term = try run_child.spawnAndWait();
+
+            std.fs.cwd().deleteFile(tmp_exe) catch {};
+
+            switch (term) {
+                .Exited => |code| {
+                    if (code != 0) std.process.exit(code);
+                },
+                .Signal => |sig| {
+                    try io.stderr.print("\x1b[1;31m[RUNTIME CRASH]\x1b[0m Native binary died with signal {d} (Segfault/Abort).\n", .{sig});
+                    std.process.exit(1);
+                },
+                else => std.process.exit(1),
+            }
             return;
         }
-        defer tcc.tcc_delete(tcc_state);
-
-        _ = tcc.tcc_set_output_type(tcc_state, tcc.TCC_OUTPUT_MEMORY);
-
-        _ = tcc.tcc_add_include_path(tcc_state, ".");
-        if (precompiled) {
-            _ = tcc.tcc_add_include_path(tcc_state, "/usr/share/flint");
-        }
-
-        _ = tcc.tcc_add_library_path(tcc_state, "/usr/lib/x86_64-linux-gnu");
-        _ = tcc.tcc_add_library_path(tcc_state, "/usr/lib");
-        _ = tcc.tcc_add_library_path(tcc_state, "/usr/local/lib");
-
-        if (tcc.tcc_add_library(tcc_state, "curl") == -1) {
-            try io.stderr.print("JIT Warning: Could not explicitly link libcurl. HTTP module might fail.\n", .{});
-        }
-
-        const rt_path_z = try alloc.dupeZ(u8, rt_path);
-        defer alloc.free(rt_path_z);
-        if (tcc.tcc_add_file(tcc_state, rt_path_z) == -1) {
-            try io.stderr.print("Fatal: Could not load flint runtime object.\n", .{});
-            return;
-        }
-
-        if (tcc.tcc_compile_string(tcc_state, c_code_buffer.items.ptr) == -1) {
-            try io.stderr.print("AOT (with tcc) Compilation Failed.\n", .{});
-
-            std.debug.print("\n--- C CODE DUMP ---\n{s}\n", .{c_code_buffer.items});
-
-            return;
-        }
-
-        if (tcc.tcc_relocate(tcc_state, tcc.TCC_RELOCATE_AUTO) < 0) {
-            try io.stderr.print("JIT Relocation Failed.\n", .{});
-            return;
-        }
-
-        const main_sym = tcc.tcc_get_symbol(tcc_state, "main");
-        if (main_sym == null) {
-            try io.stderr.print("JIT Error: main() not found.\n", .{});
-            return;
-        }
-
-        const MainFn = *const fn (c_int, [*c][*c]u8) callconv(.c) c_int;
-        const main_func: MainFn = @ptrCast(@alignCast(main_sym));
-
-        var run_args = std.ArrayList([*c]u8).empty;
-        defer run_args.deinit(alloc);
-
-        const exe_name_z = try alloc.dupeZ(u8, exe_name);
-        defer alloc.free(exe_name_z);
-        try run_args.append(alloc, exe_name_z);
-
-        while (args.next()) |a| {
-            try run_args.append(alloc, try alloc.dupeZ(u8, a));
-        }
-        try run_args.append(alloc, null);
-
-        const ret = main_func(@intCast(run_args.items.len - 1), run_args.items.ptr);
-
-        if (ret != 0) {
-            std.process.exit(@intCast(ret));
-        }
-        return;
     }
 
     try io.stdout.print("\x1b[38;5;208m[FLINT]\x1b[0m Transpiling and compiling native binary...\n", .{});
@@ -605,6 +660,11 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
 
     try io.stdout.print("\x1b[1;32m[SUCCESS]\x1b[0m Executable '{s}' generated.\n", .{exe_name});
     _ = io.stdout.flush() catch {};
+}
+
+fn silentErrorCallback(user_data: ?*anyopaque, msg: [*c]const u8) callconv(.c) void {
+    _ = user_data;
+    _ = msg;
 }
 
 const TestResult = struct {

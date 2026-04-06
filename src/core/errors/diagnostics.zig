@@ -84,22 +84,14 @@ pub const DiagnosticBuilder = struct {
         try io.stderr.print("   {s}|{s}\n", .{ cyan, reset });
         try io.stderr.print("{d:2} {s}|{s} {s}\n", .{ target_line + 1, cyan, reset, target_line_text });
 
-        std.mem.sort(DiagnosticLabel, self.labels.items, {}, struct {
-            fn lessThan(_: void, a: DiagnosticLabel, b: DiagnosticLabel) bool {
-                return a.col > b.col;
-            }
-        }.lessThan);
+        std.mem.sort(DiagnosticLabel, self.labels.items, {}, sortDescending);
 
         try io.stderr.print("   {s}|{s} ", .{ cyan, reset });
         var cursor: u32 = 0;
 
         var left_to_right = try self.labels.clone(self.allocator);
         defer left_to_right.deinit(self.allocator);
-        std.mem.sort(DiagnosticLabel, left_to_right.items, {}, struct {
-            fn lessThan(_: void, a: DiagnosticLabel, b: DiagnosticLabel) bool {
-                return a.col < b.col;
-            }
-        }.lessThan);
+        std.mem.sort(DiagnosticLabel, left_to_right.items, {}, sortAscending);
 
         for (left_to_right.items) |lbl| {
             while (cursor < lbl.col) : (cursor += 1) {
@@ -180,5 +172,13 @@ pub const DiagnosticBuilder = struct {
 
         try io.stderr.print("\n", .{});
         _ = try io.stderr.flush();
+    }
+
+    fn sortDescending(_: void, a: DiagnosticLabel, b: DiagnosticLabel) bool {
+        return a.col > b.col;
+    }
+
+    fn sortAscending(_: void, a: DiagnosticLabel, b: DiagnosticLabel) bool {
+        return a.col < b.col;
     }
 };

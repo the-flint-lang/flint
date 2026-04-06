@@ -1,0 +1,9 @@
+import fs;
+import process;
+
+_ = fs.touch("tests/io/_tmp_touch.txt") catch |err| { print(err); process.exit(1); };
+_ = fs.copy("tests/io/_tmp_touch.txt", "tests/io/_tmp_copy.txt") catch |err| { print(err); process.exit(1); };
+_ = fs.mv("tests/io/_tmp_copy.txt", "tests/io/_tmp_moved.txt") catch |err| { print(err); process.exit(1); };
+_ = fs.rm("tests/io/_tmp_touch.txt") catch |err| { print(err); process.exit(1); };
+_ = fs.rm("tests/io/_tmp_moved.txt") catch |err| { print(err); process.exit(1); };
+print("copy/mv/rm OK");

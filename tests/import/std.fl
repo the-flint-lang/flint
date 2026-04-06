@@ -1,3 +1,0 @@
-import io;
-
-print("The flint FFi is alive!");

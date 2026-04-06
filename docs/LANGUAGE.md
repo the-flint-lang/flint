@@ -1,64 +1,113 @@
-# Flint Language Specification (v1.9.0)
+# Flint Language Reference (v1.9.0)
 
-This document defines the formal syntax, semantics, and data types of the Flint programming language. It serves as the single source of truth for the compiler implementation.
+This is how Flint works. Types, syntax, operators, everything.
+
+---
 
 ## 1. Core Philosophy
 
-Flint is a statically-typed, ahead-of-time (AOT) compiled language that prioritizes zero-copy memory manipulation and linear data flow. It uses C99 as its intermediate representation (IR) and relies on a 4GB Virtual Arena allocator.
+Flint is static typed, compiled ahead-of-time (AOT). 
+It prioritizes zero-copy memory and linear data flow.
+Compiles to C99 and uses a 4GB Virtual Arena allocator.
+
+---
 
 ## 2. Primitive Types
 
-Flint enforces strict typing at the boundary, but allows dynamic payloads via the `val` boxed type for I/O and JSON.
+Flint is strict with types. But allow dynamic payloads with `val`
+for I/O and JSON.
 
 | Type | C Representation | Description |
 | :--- | :--- | :--- |
 | `int` | `long long` | 64-bit signed integer. |
-| `bool` | `bool` | Boolean value (`true` or `false`). |
-| `string` | `flint_str` | Fat pointer slice. str are immutable and zero-copy. |
-| `val` | `FlintValue` | A tagged union (Box) that can hold any type. Used for dynamic data from OS/Network. Dictionaries require `string` keys. |
-| `arr` | `flint_array` | Dynamic array. **Must be homogeneous** (all elements must share the same type). Cannot contain `void`. |
-| `void` | `void` | Used strictly for function returns. Cannot be assigned to variables or stored in arrays. |
+| `float` | `uint64_t` | 64-bit signed float. |
+| `bool` | `bool` | Boolean (`true` or `false`). |
+| `string` | `flint_str` | Fat pointer slice. Immutable and zero-copy. |
+| `val` | `FlintValue` | Tagged union (Box) that hold any type. Used for dynamic data from OS/Network. Dict require `string` keys. |
+| `arr` | `flint_array` | Dynamic array. **Must be homogeneous** (all elements same type). |
+| `void` | `void` | Only for function returns. Can't assign to variable or store in array. |
+
+> The arr type is generic, it he has some representations like (`arr<string>`, `arr<int>`, `arr<bool>`, `arr<float>`, etc.)
 
 ### 2.1. String Interpolation
 
-Flint supports robust string interpolation using the `$` prefix, with full UTF-8 offset tracking for flawless error diagnostics. Under the hood, Flint uses a variadic O(1) builder (`build_str`) to assemble the string directly in the Arena without expensive temporary concatenations.
+Use `$` prefix. Full UTF-8 offset tracking for correct error diagnostics.
+Under the hood, Flint uses a variadic O(1) builder (`build_str`) that
+assemble the string direct in the Arena, without expensive temp concatenations.
 
 ```flint
 const code = 200;
 const log = $"API returned status {code} with acénts!";
 ```
 
+---
+
 ## 3. Variables & Mutability
 
-Flint enforces explicit immutability by default.
+Immutable by default.
 
 ```flint
-const x: int = 10;   # Immutable variable
-var y = "Hello";     # Mutable variable (Type inferred)
+import fs;
 
-# The discard identifier ignores the return value
-_ = os.rm("file.txt");
+const X: int = 10;   # Immutable
+var y = "Hello";     # Mutable (type inferred)
+
+# Discard identifier, ignore return value
+_ = fs.rm("file.txt");
 ```
+
+---
 
 ## 4. Control Flow & Error Interception
 
 ### 4.1. If / Else
 
-Standard conditional branching. Parentheses around the condition are mandatory.
+The parentheses around the condition are not mandatory.
 
 ```flint
 if (code == 0) {
     print("Success");
 }
+
+# or
+
+if code == 0 {
+    print("Success, but without parentheses.");
+}
 ```
 
-### 4.2. For Loops (Auto-Arena GC)
+### 4.2. Stream Statement (Auto-Arena GC)
 
-Every `for` loop iteration automatically acts as a memory boundary. Memory allocated inside the loop body is instantly released when the iteration finishes.
+
+Each iteration is a memory boundary — arena resets automatic when iteration finish.
+Made for process large data without blow up memory.
+
+Example:
+
+```flint
+import fs;
+import str;
+
+stream file in fs.ls(FILES_DIRECTORY_HERE) ~> lines() {
+    file ~> fs.read_file()
+        ~> lines()
+        ~> grep("ERROR")
+        ~> str.join("\n")
+        ~> fs.write_file("error_log.txt");
+}
+```
+
+> Process gigabytes of text without blowing up memory
+
+- auto arena reset per iteration
+- optimized for large data process
+- pipeline ideal
 
 ### 4.3. Error Catching (`catch`)
 
-Flint handles native errors (like missing files) as `val` payloads. The `catch` block intercepts an error strictly for side-effects (like logging or exiting) without breaking the type flow.
+Flint handle native errors (like missing files) as `val` payloads.
+`catch` block intercept the error for side-effects (log, exit) without
+break the type flow.
 
 ```flint
 const file = io.read_file("data.json") catch |err| {
@@ -67,31 +116,75 @@ const file = io.read_file("data.json") catch |err| {
 };
 ```
 
-## 5. The Pipeline Operator (`~>`)
+You can also use the built-in `if_fail`, which basically checks if the first parameter resulted in an error. If so, it stops the script execution and prints the message; otherwise, it propagates the value.
 
-The pipeline operator is the syntactic core of Flint. It passes the evaluated expression on its **left** side as the **first argument** to the function call on its **right** side. The Type Checker strictly validates injected argument types and arity.
+Example:
 
 ```flint
-# Flint Pipeline (Linear Data Flow)
-os.exec("ps aux")
+import fs;
+
+const file = fs.read_file("data.json") ~> if_fail("Failed to read data.json");
+```
+
+> This shows the error automatically.
+
+Like:
+
+```
+ERROR: Pipeline Expectation Failed
+  --> ~> if_fail()
+   |
+   | Message: Failed to read data.json
+   | System : No such file or directory
+   |
+```
+
+---
+
+## 5. The Pipeline Operator (`~>`)
+
+This is the core of Flint.
+Pass the left expression as the **first argument** to the right function.
+Type Checker strictly validates injected argument types and arity.
+
+```flint
+import process;
+import fs;
+import str;
+
+process.exec("ps aux")
     ~> lines()
     ~> grep("root")
-    ~> io.write_file(_, "out.log");
+    ~> str.join("\n")
+    ~> fs.write_file("out.log");
 ```
+
+---
 
 ## 6. Operator Precedence
 
 | Level | Operator(s) | Description | Associativity |
 | :--- | :--- | :--- | :--- |
 | 1 | `()` `[]` `.` | Function call, Indexing, Property access | Left-to-Right |
-| 2 | `!` `-` | Unary logical NOT, Unary minus | Right-to-Left |
-| 3 | `*` `/` `%` | Multiplication, Division, Module | Left-to-Right |
+| 2 | `!` `-` | Unary NOT, Unary minus | Right-to-Left |
+| 3 | `*` `/` `%` | Multiplication, Division, Modulo | Left-to-Right |
 | 4 | `+` `-` | Addition, Subtraction | Left-to-Right |
-| 5 | `<` `>` `<=` `>=` | Relational comparisons | Left-to-Right |
+| 5 | `<` `>` `<=` `>=` | Relational | Left-to-Right |
 | 6 | `==` `!=` | Equality | Left-to-Right |
-| 7 | `~>` | **Pipeline Operator** | Left-to-Right |
+| 7 | `~>` | **Pipeline** | Left-to-Right |
 | 8 | `=` `catch` | Assignment, Error Interception | Right-to-Left |
 
 ### 6.1 Universal Indexing
 
-Flint uses a universal bracket notation `[]` to access `arr`, `struct`, and dynamic JSON `val` types. Attempting to index a primitive like `int` or `bool` is blocked at compile-time by the Type Checker to prevent C-level undefined behavior.
+`[]` works for `arr`, `struct`, `string` and dynamic JSON `val`.
+Index a primitive like `int` or `bool` is blocked at compile-time.
+
+```flint
+const item = my_arr[0];
+const name = json_data["user"]["name"];
+
+# slices
+my_string[0..];
+my_string[..5];
+my_string[3..];
+```

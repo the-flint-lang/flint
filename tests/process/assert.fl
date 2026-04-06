@@ -1,0 +1,8 @@
+import process;
+
+const result = process.spawn("echo assert OK", false) catch |err| {
+    print(err);
+    process.exit(1);
+};
+_ = process.assert(result, "should not fail");
+print("assert OK");

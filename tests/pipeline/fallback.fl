@@ -1,0 +1,4 @@
+import env;
+
+const v = env.get("VARIAVEL_QUE_NAO_EXISTE") ~> fallback("default_value");
+print(v);

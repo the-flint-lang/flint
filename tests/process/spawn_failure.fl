@@ -1,0 +1,12 @@
+import process;
+import str;
+
+const result = process.spawn("cat /nao_existe_mesmo", true) catch |err| {
+    print(err);
+    process.exit(1);
+};
+
+if str.to_int(result["exit_code"]) != 0 {
+    print("process failed as expected");
+    print(str.to_str(result["stderr"]) ~> str.trim());
+}

@@ -307,7 +307,10 @@ FlintValue flint_spawn(flint_str cmd, bool echo);
    ENV
    ========================= */
 
-flint_str flint_env(flint_str name);
+flint_str flint_env_get(flint_str name);
+void flint_env_set(flint_str name, flint_str value);
+bool flint_env_exists(flint_str name);
+
 flint_str_array flint_args();
 bool flint_os_command_exists(flint_str bin);
 
@@ -423,8 +426,8 @@ static inline FlintValue flint_box_float_safe(double f)
     flint_str: flint_box_str_safe,             \
     FlintValue: flint_box_val_safe)(__VA_ARGS__)
 
-#define flint_if_fail(v, ...) flint_expect_inner((v), (__VA_ARGS__))
-#define flint_fallback(v, ...) flint_fallback_inner((v), FLINT_BOX(__VA_ARGS__))
+#define flint_if_fail(v, ...) flint_expect_inner(FLINT_BOX(v), (__VA_ARGS__))
+#define flint_fallback(v, ...) flint_fallback_inner(FLINT_BOX(v), FLINT_BOX(__VA_ARGS__))
 
 static inline FlintValue flint_expect_inner(FlintValue v, flint_str msg)
 {

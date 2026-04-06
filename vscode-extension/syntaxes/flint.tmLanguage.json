@@ -1,6 +1,36 @@
 {
     "$schema": "../schemas/tmlanguage.json",
     "name": "Flint",
+    "scopeName": "source.flint",
+    "patterns": [
+        {
+            "include": "#comments"
+        },
+        {
+            "include": "#str"
+        },
+        {
+            "include": "#keywords"
+        },
+        {
+            "include": "#types"
+        },
+        {
+            "include": "#builtins"
+        },
+        {
+            "include": "#numbers"
+        },
+        {
+            "include": "#operators"
+        },
+        {
+            "include": "#namespaces"
+        },
+        {
+            "include": "#function-calls"
+        }
+    ],
     "repository": {
         "comments": {
             "patterns": [
@@ -136,7 +166,7 @@
             "patterns": [
                 {
                     "name": "storage.type.flint",
-                    "match": "\\b(int|string|bool|void|val|arr)\\b"
+                    "match": "\\b(int|float|string|bool|void|val|arr)\\b"
                 }
             ]
         },
@@ -144,11 +174,11 @@
             "patterns": [
                 {
                     "name": "support.function.builtin.flint",
-                    "match": "\\b(print|len|push|range|parse_json|parse_json_as|if_fail|fallback|ensure|to_str|to_int|lines|grep|concat)\\b"
+                    "match": "\\b(print|printerr|len|push|range|if_fail|fallback|ensure|to_int|lines|chars|grep)\\b"
                 },
                 {
                     "name": "variable.language.placeholder.flint",
-                    "match": "\\b_\\b"
+                    "match": "(?<![a-zA-Z0-9_])_(?![a-zA-Z0-9_])"
                 }
             ]
         },
@@ -191,6 +221,10 @@
                 {
                     "name": "keyword.operator.flint",
                     "match": "(:|!=|==|<=|>=|\\+|-|\\*|/|%|<|>|=|!|\\|)"
+                },
+                {
+                    "name": "keyword.operator.range.flint",
+                    "match": "\\.\\."
                 }
             ]
         },
@@ -202,6 +236,5 @@
                 }
             ]
         }
-    },
-    "scopeName": "source.flint"
+    }
 }

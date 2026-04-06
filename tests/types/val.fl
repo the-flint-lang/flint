@@ -1,0 +1,6 @@
+import json;
+import str;
+
+const data = json.parse("{\"key\": 42}");
+const v: val = data["key"];
+print(v);

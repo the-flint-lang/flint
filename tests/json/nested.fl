@@ -1,0 +1,5 @@
+import json;
+import str;
+
+const data = json.parse("{\"user\": {\"login\": \"lucas\", \"id\": 1}}");
+print(str.to_str(data["user"]["login"]));

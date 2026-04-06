@@ -1,9 +1,0 @@
-import "./math.fl" as m; 
-import io;
-import str;
-
-fn sum(a: int, b: int) int {
-    return 0; 
-}
-
-print(to_str(m.double(5)));

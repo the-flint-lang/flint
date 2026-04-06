@@ -1,7 +1,0 @@
-var numbers = [10, 20, 30, 40];
-print("Before mutation:");
-print(numbers[2]);
-
-numbers[2] = 99;
-print("After mutation:");
-print(numbers[2]);

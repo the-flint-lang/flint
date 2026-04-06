@@ -1,0 +1,4 @@
+import str;
+
+const line = str.repeat("-", 40);
+print(line);

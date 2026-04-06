@@ -1,0 +1,8 @@
+import str;
+
+const csv = "one,two,three,four";
+const parts = str.split(csv, ",");
+for p in parts {
+    print(p);
+}
+print(str.join(parts, " | "));

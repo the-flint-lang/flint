@@ -1,0 +1,6 @@
+import json;
+import str;
+
+const data = json.parse("{\"name\": \"flint\", \"version\": 19}");
+print(str.to_str(data["name"]));
+print(data["version"]);

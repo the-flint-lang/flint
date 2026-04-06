@@ -1,0 +1,6 @@
+import str;
+
+const data = "line1\nline2\nline3\nline4\nline5";
+stream line in data ~> lines() {
+    print(line);
+}

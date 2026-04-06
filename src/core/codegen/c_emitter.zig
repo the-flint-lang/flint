@@ -46,6 +46,17 @@ pub const CEmitter = struct {
         if (program == .program) {
             for (program.program.statements) |stmt_idx| {
                 const stmt = self.tree.getNode(stmt_idx);
+                if (stmt == .function_decl) {
+                    try self.visitFunctionPrototype(stmt, writer);
+                    try writer.writeAll(";\n");
+                }
+            }
+            try writer.writeAll("\n");
+        }
+
+        if (program == .program) {
+            for (program.program.statements) |stmt_idx| {
+                const stmt = self.tree.getNode(stmt_idx);
                 if (stmt == .var_decl) {
                     const val_node = self.tree.getNode(stmt.var_decl.value);
                     if (val_node == .literal) {
@@ -90,6 +101,55 @@ pub const CEmitter = struct {
 
         try writer.writeAll("\n    flint_deinit();\n");
         try writer.writeAll("    return 0;\n}\n");
+    }
+
+    fn visitFunctionPrototype(self: *CEmitter, node: AstNode, writer: anytype) !void {
+        const func = node.function_decl;
+        if (func.is_extern) return;
+
+        if (self.shouldInline(func.body)) {
+            try writer.writeAll("static inline ");
+        }
+
+        const flint_ret_type: FlintType = if (func.return_type) |rt_idx|
+            self.node_types.get(rt_idx) orelse .t_void
+        else
+            .t_void;
+
+        const c_ret_type = switch (flint_ret_type) {
+            .t_int => "long long",
+            .t_string => "flint_str",
+            .t_bool => "bool",
+            .t_void => "void",
+            .t_int_arr => "flint_int_array",
+            .t_str_arr => "flint_str_array",
+            .t_bool_arr => "flint_bool_array",
+            .t_struct => if (self.current_function_struct_name) |name| name else "void*",
+            else => "FlintValue",
+        };
+
+        try writer.writeAll(c_ret_type);
+        try writer.writeAll(" ");
+        try emitSafeName(writer, self.pool.get(func.name_id));
+        try writer.writeAll("(");
+
+        for (func.arguments, 0..) |arg_idx, i| {
+            const arg_node = self.tree.getNode(arg_idx);
+            const param = arg_node.param_decl;
+            const arg_flint_type = self.node_types.get(param.type_node) orelse .t_string;
+            const c_type = self.flintTypeToC(arg_flint_type);
+
+            try writer.writeAll(c_type);
+            try writer.writeAll(" ");
+
+            try emitSafeName(writer, self.pool.get(self.pool.intern(self.allocator, param.name_token.value) catch unreachable));
+
+            if (i < func.arguments.len - 1) {
+                try writer.writeAll(", ");
+            }
+        }
+
+        try writer.writeAll(");");
     }
 
     fn containsPlaceholder(self: *CEmitter, index: NodeIndex) bool {

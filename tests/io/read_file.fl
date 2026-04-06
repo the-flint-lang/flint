@@ -1,0 +1,11 @@
+import fs;
+import process;
+
+_ = fs.write_file("read test content", "tests/io/_out_read.txt") catch |err| {
+    print(err);
+    process.exit(1);
+};
+
+const content = fs.read_file("tests/io/_out_read.txt") ~> if_fail("Failed to read file");
+print(content);
+_ = fs.rm("tests/io/_out_read.txt");

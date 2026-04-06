@@ -1,4 +1,3 @@
-import io;
 import fs;
 import process;
 
@@ -6,5 +5,4 @@ const size = fs.file_size("tests/io/file_size.fl") catch |err| {
     print(err);
     process.exit(1);
 };
-
-print(size);
+print($"file_size: {size} bytes");

@@ -583,13 +583,26 @@ IMPLEMENT_SLICE_ARRAY(flint_slice_bool_array, flint_bool_array)
    ENV & PROCESS
    ========================= */
 
-flint_str flint_env(flint_str name)
+flint_str flint_env_get(flint_str name)
 {
     FLINT_C_PATH(c_name, name);
     char *v = getenv(c_name);
     if (!v)
         return FLINT_STR("");
     return FLINT_SLICE(v, strlen(v));
+}
+
+void flint_env_set(flint_str name, flint_str value)
+{
+    FLINT_C_PATH(c_name, name);
+    FLINT_C_PATH(c_value, value);
+    setenv(c_name, c_value, 1);
+}
+
+bool flint_env_exists(flint_str name)
+{
+    FLINT_C_PATH(c_name, name);
+    return getenv(c_name) != NULL;
 }
 
 flint_str_array flint_args()
@@ -1665,3 +1678,68 @@ FlintValue flint_ensure(FlintValue val, bool condition, flint_str err_msg)
     }
     return val;
 }
+
+// ============================================================================
+// FLINT STANDARD LIBRARY ABI BINDINGS
+// ============================================================================
+
+#define str_to_int(v) flint_to_int(v)
+#define str_int_to_str(n) flint_int_to_str(n)
+#define str_to_str(v) flint_to_str(v)
+#define str_join(a, sep) flint_join(a, sep)
+#define str_trim(text) flint_trim(text)
+#define str_split(t, d) flint_split(t, d)
+#define str_count_matches(t, p) flint_count_matches(t, p)
+#define str_replace(t, tg, r) flint_replace(t, tg, r)
+#define str_concat(a, b) flint_concat(a, b)
+
+#define process_exec(cmd) flint_exec(cmd)
+#define process_spawn(cmd, echo) flint_spawn(cmd, echo)
+#define process_exit(code) flint_exit(code)
+
+#define fs_is_dir(path) flint_is_dir(path)
+#define fs_is_file(path) flint_is_file(path)
+#define fs_read_file(path) flint_read_file(path)
+#define fs_write_file(t, p) flint_write_file(t, p)
+#define fs_rm(path) flint_rm(path)
+#define fs_mkdir(path) flint_mkdir(path)
+#define fs_rm_dir(path) flint_rm_dir(path)
+#define fs_file_size(path) flint_file_size(path)
+#define fs_ls(path) flint_ls(path)
+#define fs_copy(s, d) flint_copy(s, d)
+#define fs_mv(o, n) flint_mv(o, n)
+#define fs_touch(p) flint_touch(p)
+
+#define os_exec(cmd) flint_exec(cmd)
+#define os_spawn(cmd, echo) flint_spawn(cmd, echo)
+#define os_exit(code) flint_exit(code)
+#define os_env(name) flint_env(name)
+#define os_is_root() flint_is_root()
+#define os_is_tty() flint_is_tty()
+#define os_command_exists(bin) flint_os_command_exists(bin)
+#define os_rm(p) flint_rm(p)
+#define os_ls(p) flint_ls(p)
+#define os_is_file(p) flint_is_file(p)
+#define os_file_size(p) flint_file_size(p)
+#define os_args() flint_args()
+
+#define io_read_file(path) flint_read_file(path)
+#define io_write_file(t, p) flint_write_file(t, p)
+
+#define env_get(name) flint_env_get(name)
+#define env_set(name, val) flint_env_set(name, val)
+#define env_exists(name) flint_env_exists(name)
+
+#define http_fetch(url) flint_fetch(url)
+
+#define json_parse(t) flint_parse_json(t)
+
+#define utils_is_err(v) flint_is_err(FLINT_BOX(v))
+#define utils_get_err(v) flint_get_err(FLINT_BOX(v))
+
+#define term_clear()            \
+    do                          \
+    {                           \
+        printf("\033[H\033[J"); \
+        fflush(stdout);         \
+    } while (0)

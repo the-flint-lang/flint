@@ -1,0 +1,4 @@
+const servers = ["aws", "gcp", "azure"];
+for s in servers {
+    print(s);
+}

@@ -1,0 +1,6 @@
+const version = "1.9.0";
+const msg = $`
+Flint v{version}
+AOT compiled, zero-copy.
+`;
+print(msg);

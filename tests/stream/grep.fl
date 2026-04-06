@@ -1,0 +1,6 @@
+import str;
+
+const log = "INFO boot\nERROR disk full\nINFO ready\nERROR timeout";
+stream line in log ~> lines() ~> grep("ERROR") {
+    print(line);
+}

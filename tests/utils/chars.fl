@@ -1,0 +1,4 @@
+const word = "flint";
+for c in chars(word) {
+    print(c);
+}

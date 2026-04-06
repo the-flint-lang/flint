@@ -1,0 +1,9 @@
+import fs;
+import process;
+
+_ = fs.write_file("Hello from Flint!\n", "tests/io/_out_write.txt") catch |err| {
+    print(err);
+    process.exit(1);
+};
+print("write_file OK");
+_ = fs.rm("tests/io/_out_write.txt");

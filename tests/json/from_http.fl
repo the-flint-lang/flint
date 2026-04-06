@@ -1,0 +1,12 @@
+import http;
+import json;
+import str;
+import process;
+
+const raw = http.fetch("https://api.github.com/users/lucaas-d3v") catch |err| {
+    print(err);
+    process.exit(1);
+};
+const profile = json.parse(str.to_str(raw));
+print(str.to_str(profile["login"]));
+print(profile["id"]);

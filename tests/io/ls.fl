@@ -1,10 +1,9 @@
 import fs;
 import str;
 
-const f = fs.ls(".") ~> if_fail("Unable to read current directory");
-
+const files = fs.ls(".") ~> if_fail("Failed to ls");
 var i = 0;
-for line in str.to_str(f) ~> lines() {
+for line in str.to_str(files) ~> lines() {
     print($"{i}. {line}");
     i = i + 1;
 }

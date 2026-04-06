@@ -1,0 +1,5 @@
+import process;
+import str;
+
+const out = process.exec("echo hello from exec") ~> str.trim();
+print(out);

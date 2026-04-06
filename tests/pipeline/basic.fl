@@ -1,0 +1,6 @@
+import str;
+
+const result = "  hello, flint!  "
+    ~> str.trim()
+    ~> str.replace("flint", "world");
+print(result);

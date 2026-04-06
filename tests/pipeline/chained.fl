@@ -1,0 +1,5 @@
+import process;
+
+for line in process.exec("ps aux") ~> lines() ~> grep("root") {
+    print(line);
+}

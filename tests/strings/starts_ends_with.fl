@@ -1,0 +1,6 @@
+import str;
+
+const file = "deploy.fl";
+print(str.starts_with(file, "deploy"));
+print(str.ends_with(file, ".fl"));
+print(str.ends_with(file, ".zig"));

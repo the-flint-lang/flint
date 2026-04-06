@@ -1,0 +1,4 @@
+import os;
+
+print(os.command_exists("cat"));
+print(os.command_exists("definitely_not_a_real_binary_xyz"));

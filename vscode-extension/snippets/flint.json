@@ -3,61 +3,127 @@
         "prefix": "struct",
         "body": [
             "struct ${1:Name} {",
-            "    ${2:field}: ${3|string,int,bool,val|}",
+            "    ${2:field}: ${3|string,int,float,bool,val|}",
             "}"
         ],
-        "description": "Declare a strongly typed custom Struct"
+        "description": "Declares a strongly typed Struct"
     },
-    "Fetch API Pipeline": {
-        "prefix": "fetch",
+    "Import Module": {
+        "prefix": "import",
         "body": [
-            "const ${1:data} = http.fetch(\"${2:https://api.example.com}\")",
-            "    ~> parse_json(_)",
-            "    ~> ensure(_[\"status\"] == 200, \"API Error\")",
-            "    ~> if_fail(\"Network Failure\");$0"
+            "import ${1|os,fs,io,process,str,http,json,term,utils|};"
         ],
-        "description": "Modern Fetch pipeline with JSON parsing and safety"
+        "description": "Imports a Flint stdlib module"
     },
     "String Interpolation": {
         "prefix": "interp",
         "body": [
-            "const ${1:msg} = $\"Value is: {${2:expression}}\";$0"
+            "const ${1:msg} = $\"${2:text} {${3:expression}}\";$0"
         ],
-        "description": "Create an interpolated string"
+        "description": "Creates an interpolated string with $\""
     },
-    "Multiline Interpolation": {
-        "prefix": "html",
+    "Multiline Template String": {
+        "prefix": "tmpl",
         "body": [
             "const ${1:template} = $`",
-            "<div>",
-            "    <h1>{${2:title}}</h1>",
-            "</div>",
+            "${2:content {${3:variable}}}",
             "`;$0"
         ],
-        "description": "Create a multiline interpolated template"
+        "description": "Creates a multiline template string with $`"
     },
-    "Iterate Directory Modern": {
+    "Fetch + JSON Pipeline": {
+        "prefix": "fetch",
+        "body": [
+            "const ${1:data} = http.fetch(\"${2:https://api.example.com}\")",
+            "    ~> json.parse()",
+            "    ~> ensure(_[\"${3:status}\"] == 200, \"API Error\")",
+            "    ~> if_fail(\"Network Failure\");$0"
+        ],
+        "description": "HTTP fetch pipeline with JSON parsing and validation"
+    },
+    "Safe File Read (catch)": {
+        "prefix": "read_catch",
+        "body": [
+            "const ${1:content} = fs.read_file(\"${2:data.txt}\") catch |${3:err}| {",
+            "    print($\"Failed to read file: {${3:err}}\");",
+            "    process.exit(1);",
+            "};$0"
+        ],
+        "description": "Reads a file with error handling via catch"
+    },
+    "Safe File Read (if_fail)": {
+        "prefix": "read_fail",
+        "body": [
+            "const ${1:content} = fs.read_file(\"${2:data.txt}\") ~> if_fail(\"${3:Failed to read file}\");$0"
+        ],
+        "description": "Reads a file and stops the pipeline on error"
+    },
+    "Stream Directory Files": {
+        "prefix": "stream",
+        "body": [
+            "stream ${1:file} in fs.ls(\"${2:.}\") ~> lines() {",
+            "    ${1:file} ~> $0",
+            "}"
+        ],
+        "description": "Iterates over directory files using stream (auto-arena GC)"
+    },
+    "Process Spawn + Assert": {
+        "prefix": "spawn",
+        "body": [
+            "const ${1:result} = process.spawn(\"${2:command}\", true)",
+            "    ~> process.assert(\"${3:Command failed}\");$0"
+        ],
+        "description": "Spawns a subprocess and validates the result"
+    },
+    "Pipeline with Fallback": {
+        "prefix": "fallback",
+        "body": [
+            "const ${1:value} = ${2:expr}",
+            "    ~> fallback(${3:\"default_value\"});$0"
+        ],
+        "description": "Pipeline with fallback value in case of failure"
+    },
+    "JSON Parse Pipeline": {
+        "prefix": "json",
+        "body": [
+            "const ${1:data} = fs.read_file(\"${2:data.json}\")",
+            "    ~> if_fail(\"Failed to read ${2:data.json}\")",
+            "    ~> json.parse();$0"
+        ],
+        "description": "Safely reads and parses a JSON file"
+    },
+    "List Directory": {
         "prefix": "ls",
         "body": [
-            "const ${1:files} = os.ls(\"${2:.}\") ~> if_fail(\"Failed to list directory.\");",
+            "const ${1:files} = fs.ls(\"${2:.}\") ~> if_fail(\"Failed to list directory.\");",
             "",
-            "for f in to_str(${1:files}) ~> lines() {",
-            "    if (os.is_file(f)) {",
-            "        print($\"File: {f} | Size: {os.file_size(f)}\");",
+            "for ${3:f} in str.to_str(${1:files}) ~> lines() {",
+            "    if fs.is_file(${3:f}) {",
+            "        print($\"File: {${3:f}}\");",
             "        $0",
             "    }",
             "}"
         ],
-        "description": "List directory using interpolation and modern indexing"
+        "description": "Lists a directory and iterates over files"
     },
-    "Safe File Read (Catch)": {
-        "prefix": "read_catch",
+    "Function Declaration": {
+        "prefix": "fn",
         "body": [
-            "const ${1:content} = io.read_file(\"${2:data.txt}\") catch |${3:err}| {",
-            "    print($\"Failed to read file: {${3:err}}\");",
-            "    os.exit(1);",
-            "};$0"
+            "fn ${1:name}(${2:param}: ${3|string,int,float,bool,val,arr|}) ${4|string,int,float,bool,val,void|} {",
+            "    $0",
+            "}"
         ],
-        "description": "Read a file safely and catch native errors"
+        "description": "Declares a typed function"
+    },
+    "If / Else": {
+        "prefix": "if",
+        "body": [
+            "if ${1:condition} {",
+            "    $0",
+            "} else {",
+            "    ",
+            "}"
+        ],
+        "description": "If/else block (optional parentheses in Flint)"
     }
 }
