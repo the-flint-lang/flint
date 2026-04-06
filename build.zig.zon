@@ -1,7 +1,7 @@
 .{
     .name = .flint,
 
-    .version = "1.9.0",
+    .version = "1.9.1",
 
     .fingerprint = 0x4ab03ee8763c8f8f,
 

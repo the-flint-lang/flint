@@ -1403,7 +1403,6 @@ FlintValue flint_dict_get(FlintDict *d, flint_str key)
     return (FlintValue){FLINT_VAL_NULL};
 }
 
-// new gen 1.9.0
 FlintValue flint_dict_get_hashed(FlintDict *d, flint_str key, uint64_t h)
 {
     if (h == 0)
@@ -1489,7 +1488,7 @@ FlintValue flint_fetch(flint_str url)
 }
 
 /* =========================
-   JSON PARSER (v1.9.0)
+
    ========================= */
 
 static long long fast_atoll(const char **p)

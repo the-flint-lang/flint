@@ -1,6 +1,6 @@
 # Flint Language Support for VS Code
 
-Official syntax highlighting, snippets, and language support for the **Flint** programming language (v1.9.0).
+Official syntax highlighting, snippets, and language support for the **Flint** programming language (v1.9.1).
 
 Flint is a high-performance, AOT-compiled language for DevOps, CLI tooling, and infrastructure automation — with zero-copy memory architecture and a pipeline-oriented syntax. This extension provides the essential Developer Experience (DX) to write Flint code efficiently in VS Code.
 
@@ -35,10 +35,10 @@ Flint is a high-performance, AOT-compiled language for DevOps, CLI tooling, and 
 
 ### Option 1: Command Line (Recommended)
 
-1. Download the latest `flint-lang-1.9.0.vsix` from the [Releases page](https://github.com/lucaas-d3v/flint/releases).
+1. Download the latest `flint-lang-1.9.1.vsix` from the [Releases page](https://github.com/lucaas-d3v/flint/releases).
 2. Run:
    ```bash
-   code --install-extension flint-lang-1.9.0.vsix
+   code --install-extension flint-lang-1.9.1.vsix
    ```
 
 ### Option 2: VS Code GUI
