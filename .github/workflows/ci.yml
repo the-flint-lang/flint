@@ -44,21 +44,24 @@ jobs:
     - name: Build Flint
       run: zig build -Doptimize=ReleaseFast -Dcpu=baseline
 
+    - name: Mock System Installation (Fixes Race Condition in Tests)
+      run: |
+        sudo mkdir -p /usr/share/flint/std
+        sudo cp src/core/codegen/runtime/flint_rt.* /usr/share/flint/
+        sudo cp -r std/* /usr/share/flint/std/
+
     - name: Run Test Battery
       run: ./zig-out/bin/flint test
 
     - name: Package Release Tarball
       if: startsWith(github.ref, 'refs/tags/')
       run: |
-        # Cria a estrutura do pacote
         mkdir -p flint-package/bin
         mkdir -p flint-package/std
         
-        # Copia o binário e a Standard Library
         cp ./zig-out/bin/flint flint-package/bin/
         cp -r ./std/* flint-package/std/
         
-        # Zipa tudo no formato que o install.sh espera
         tar -czvf flint-linux-x86_64.tar.gz -C flint-package .
 
     - name: Upload to GitHub Releases
