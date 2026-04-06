@@ -342,6 +342,7 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper) !void {
 
     var command: ?[]const u8 = null;
     var is_less_mode = false;
+    var is_test = false;
 
     while (args.next()) |arg| {
         if (checker.cliArgsEquals(arg, &.{ "-h", "--help" })) {
@@ -355,6 +356,11 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper) !void {
 
         if (checker.cliArgsEquals(arg, &.{ "-s", "--small" })) {
             is_less_mode = true;
+            continue;
+        }
+
+        if (checker.cliArgsEquals(arg, &.{ "-t", "--test" })) {
+            is_test = true;
             continue;
         }
 
@@ -420,12 +426,12 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper) !void {
 
     if (checker.strEquals(cmd, "run")) {
         const file = try getFlFile(&args, io);
-        try runner(alloc, &args, file, io, true, is_less_mode);
+        try runner(alloc, &args, file, io, true, is_less_mode, is_test);
         return;
     }
     if (checker.strEquals(cmd, "build")) {
         const file = try getFlFile(&args, io);
-        try runner(alloc, &args, file, io, false, is_less_mode);
+        try runner(alloc, &args, file, io, false, is_less_mode, is_test);
         return;
     }
     try help(io);
@@ -439,7 +445,7 @@ fn getFlFile(args: *std.process.ArgIterator, io: anytype) ![]const u8 {
     return file_path;
 }
 
-fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: []const u8, io: anytype, is_run: bool, is_less_mode: bool) !void {
+fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: []const u8, io: anytype, is_run: bool, is_less_mode: bool, is_test: bool) !void {
     var global_tree = AstTree.init();
     defer global_tree.deinit(alloc);
 
@@ -465,16 +471,21 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
         return error.err;
     }
 
-    const exe_name = std.fs.path.stem(file_path);
-    const system_rt_o = "/usr/share/flint/flint_rt.o";
+    var exe_name_buf: [128]u8 = undefined;
+    const exe_name = if (is_test) blk: {
+        const hash = std.hash.Fnv1a_64.hash(file_path);
+        break :blk std.fmt.bufPrint(&exe_name_buf, ".test_bin_{x}", .{hash}) catch "test_bin";
+    } else std.fs.path.stem(file_path);
+
+    const system_rt_c = "/usr/share/flint/flint_rt.c";
     const system_rt_h = "/usr/share/flint/flint_rt.h";
 
     const precompiled = blk: {
-        std.fs.cwd().access(system_rt_o, .{}) catch break :blk false;
+        std.fs.cwd().access(system_rt_c, .{}) catch break :blk false;
         std.fs.cwd().access(system_rt_h, .{}) catch break :blk false;
         break :blk true;
     };
-    const rt_path: []const u8 = if (precompiled) system_rt_o else "flint_rt.c";
+    const rt_path: []const u8 = if (precompiled) system_rt_c else "flint_rt.c";
 
     if (!precompiled) {
         var h_f = try std.fs.cwd().createFile("flint_rt.h", .{});
@@ -490,6 +501,9 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
             std.fs.cwd().deleteFile("flint_rt.h") catch {};
             std.fs.cwd().deleteFile("flint_rt.c") catch {};
         }
+        if (is_test) {
+            std.fs.cwd().deleteFile(exe_name) catch {};
+        }
     }
 
     if (is_run) {
@@ -498,8 +512,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
 
         var emitter = CEmitter.init(alloc, &global_tree, &pool, final_checker.node_types, file_path, true);
         try emitter.generate(c_code_buffer.writer(alloc), merged_root_idx);
-        try c_code_buffer.append(alloc, 0); // Null terminator para o TCC
-
+        try c_code_buffer.append(alloc, 0);
         var jit_success = false;
 
         const tcc_state = tcc.tcc_new();
@@ -550,7 +563,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
         }
 
         if (!jit_success) {
-            try io.stderr.print("\x1b[33m[COMPILATION FALLBACK]\x1b[0m TCC limit reached. Deferring to Clang/GCC pipeline...\n", .{});
+            try io.stderr.print("\x1b[33m[COMPILATION FALLBACK]\x1b[0m TCC limit reached. Deferring to Clang/GCC pipeline...\n\n", .{});
             _ = io.stderr.flush() catch {};
 
             const tmp_exe = try std.fmt.allocPrint(alloc, ".{s}_tmp_run", .{exe_name});
@@ -713,7 +726,7 @@ pub fn runTests(alloc: std.mem.Allocator, io: IoHelper) !void {
     while (file_index < total_tests or active_jobs.items.len > 0) {
         while (active_jobs.items.len < cpu_count and file_index < total_tests) {
             const current_file = test_files.items[file_index];
-            const argv = &[_][]const u8{ flint_exe, "run", current_file };
+            const argv = &[_][]const u8{ flint_exe, "run", current_file, "-t" };
 
             var child = std.process.Child.init(argv, alloc);
             child.stdout_behavior = .Ignore;
