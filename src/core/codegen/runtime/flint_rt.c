@@ -322,19 +322,38 @@ FlintValue flint_read_file(flint_str path)
         return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
     }
 
-    if (sb.st_size == 0)
+    if (sb.st_size > 0 && S_ISREG(sb.st_mode))
     {
+        char *mapped = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
         close(fd);
-        return flint_make_str(FLINT_STR(""));
+
+        if (mapped == MAP_FAILED)
+            return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
+
+        return flint_make_str(FLINT_SLICE(mapped, sb.st_size));
     }
+    else
+    {
+        size_t cap = 4096;
+        size_t len = 0;
+        char *buf = flint_alloc_raw(cap);
+        ssize_t bytes_read;
 
-    char *mapped = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
-    close(fd);
+        while ((bytes_read = read(fd, buf + len, cap - len)) > 0)
+        {
+            len += bytes_read;
+            if (len == cap)
+            {
+                cap *= 2;
+                char *new_buf = flint_alloc_raw(cap);
+                memcpy(new_buf, buf, len);
+                buf = new_buf;
+            }
+        }
+        close(fd);
 
-    if (mapped == MAP_FAILED)
-        return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
-
-    return flint_make_str(FLINT_SLICE(mapped, sb.st_size));
+        return flint_make_str(FLINT_SLICE(buf, len));
+    }
 }
 
 FlintValue flint_write_file(flint_str text, flint_str filepath)
