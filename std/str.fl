@@ -9,6 +9,7 @@ extern fn flint_to_str(v: val) string;
 extern fn flint_int_to_str(num: int) string;
 extern fn flint_concat(a: string, b: string) string;
 extern fn flint_to_int(v: val) int;
+extern fn flint_str_replace_all(s: string, a: arr<string>, b: arr<string>) string;
 
 # public API 
 fn split(text: string, delim: string) arr<string> {
@@ -204,3 +205,8 @@ fn index_of(s: string, c: string) int {
     
     return -1;
 }
+
+fn replace_all(s: string, a: arr<string>, b: arr<string>) string {
+    return flint_str_replace_all(s, a, b);
+}
+

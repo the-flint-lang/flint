@@ -1321,6 +1321,63 @@ flint_str_array flint_chars(flint_str text)
     return arr;
 }
 
+flint_str flint_str_replace_all(flint_str s, flint_str_array targets, flint_str_array replacements)
+{
+    if (s.len == 0 || targets.count == 0 || targets.count != replacements.count)
+        return s;
+
+    size_t new_len = 0;
+    size_t i = 0;
+    while (i < s.len)
+    {
+        bool matched = false;
+        for (size_t j = 0; j < targets.count; j++)
+        {
+            flint_str t = targets.items[j];
+            if (t.len > 0 && i + t.len <= s.len && memcmp(s.ptr + i, t.ptr, t.len) == 0)
+            {
+                new_len += replacements.items[j].len;
+                i += t.len;
+                matched = true;
+                break;
+            }
+        }
+        if (!matched)
+        {
+            new_len++;
+            i++;
+        }
+    }
+
+    char *buf = flint_alloc_raw(new_len + 1);
+
+    size_t write_idx = 0;
+    i = 0;
+    while (i < s.len)
+    {
+        bool matched = false;
+        for (size_t j = 0; j < targets.count; j++)
+        {
+            flint_str t = targets.items[j];
+            if (t.len > 0 && i + t.len <= s.len && memcmp(s.ptr + i, t.ptr, t.len) == 0)
+            {
+                flint_str r = replacements.items[j];
+                memcpy(buf + write_idx, r.ptr, r.len);
+                write_idx += r.len;
+                i += t.len;
+                matched = true;
+                break;
+            }
+        }
+        if (!matched)
+        {
+            buf[write_idx++] = s.ptr[i++];
+        }
+    }
+    buf[new_len] = '\0';
+    return FLINT_SLICE(buf, new_len);
+}
+
 /* =========================
    UTIL E HASHMAP
    ========================= */
@@ -1827,6 +1884,149 @@ flint_str flint_sys_local_ip(void)
     return FLINT_SLICE(buf, len);
 }
 
+FlintValue flint_sys_packages_dpkg(void)
+{
+    FILE *f = fopen("/var/lib/dpkg/status", "r");
+    if (!f)
+        return flint_make_error(FLINT_STR("No dpkg found"));
+
+    long long count = 0;
+    char line[256];
+
+    while (fgets(line, sizeof(line), f))
+    {
+        if (strncmp(line, "Status: install ok installed", 28) == 0)
+        {
+            count++;
+        }
+    }
+    fclose(f);
+
+    return flint_make_int(count);
+}
+
+FlintValue flint_sys_display_res(void)
+{
+    DIR *d = opendir("/sys/class/drm");
+    if (!d)
+        return flint_make_str(FLINT_STR("Unknown Display"));
+
+    struct dirent *dir;
+    char path[256];
+    char res[64] = {0};
+
+    while ((dir = readdir(d)) != NULL)
+    {
+        if (strncmp(dir->d_name, "card", 4) == 0 && strchr(dir->d_name, '-') != NULL)
+        {
+            snprintf(path, sizeof(path), "/sys/class/drm/%s/modes", dir->d_name);
+            FILE *f = fopen(path, "r");
+            if (f)
+            {
+                if (fgets(res, sizeof(res), f) && strlen(res) > 1)
+                {
+                    fclose(f);
+                    break;
+                }
+                fclose(f);
+            }
+        }
+    }
+    closedir(d);
+
+    if (res[0] != '\0')
+    {
+        size_t l = strlen(res);
+        if (res[l - 1] == '\n')
+            res[l - 1] = '\0';
+        size_t new_l = strlen(res);
+        char *buf = flint_alloc_raw(new_l + 1);
+
+        memcpy(buf, res, new_l + 1);
+        return flint_make_str(FLINT_SLICE(buf, new_l));
+    }
+
+    return flint_make_str(FLINT_STR("Unknown Display"));
+}
+
+FlintValue flint_sys_gpu_name(void)
+{
+    FILE *fv = fopen("/sys/class/drm/card0/device/vendor", "r");
+    FILE *fd = fopen("/sys/class/drm/card0/device/device", "r");
+    if (!fv || !fd)
+    {
+        if (fv)
+            fclose(fv);
+        if (fd)
+            fclose(fd);
+        return flint_make_str(FLINT_STR("Unknown GPU"));
+    }
+
+    char v_hex[16] = {0}, d_hex[16] = {0};
+    fgets(v_hex, sizeof(v_hex), fv);
+    fgets(d_hex, sizeof(d_hex), fd);
+    fclose(fv);
+    fclose(fd);
+
+    char *v_id = v_hex;
+    if (strncmp(v_id, "0x", 2) == 0)
+        v_id += 2;
+    v_id[strcspn(v_id, "\n")] = 0;
+    char *d_id = d_hex;
+    if (strncmp(d_id, "0x", 2) == 0)
+        d_id += 2;
+    d_id[strcspn(d_id, "\n")] = 0;
+
+    const char *pci_paths[] = {"/usr/share/hwdata/pci.ids", "/usr/share/misc/pci.ids", NULL};
+    FILE *fpci = NULL;
+    for (int i = 0; pci_paths[i]; i++)
+    {
+        fpci = fopen(pci_paths[i], "r");
+        if (fpci)
+            break;
+    }
+
+    if (!fpci)
+        return flint_make_str(FLINT_STR("Unknown GPU (no pci.ids)"));
+
+    char line[256];
+    bool in_vendor = false;
+    char gpu_name[256] = "Unknown GPU";
+
+    while (fgets(line, sizeof(line), fpci))
+    {
+        if (line[0] == '#' || line[0] == '\n')
+            continue;
+
+        if (line[0] != '\t')
+        {
+            if (strncasecmp(line, v_id, 4) == 0)
+                in_vendor = true;
+            else if (in_vendor)
+                break;
+        }
+
+        else if (in_vendor && line[1] != '\t')
+        {
+            if (strncasecmp(line + 1, d_id, 4) == 0)
+            {
+                char *name_start = line + 5;
+                while (*name_start == ' ')
+                    name_start++;
+                name_start[strcspn(name_start, "\n")] = 0;
+                strncpy(gpu_name, name_start, sizeof(gpu_name) - 1);
+                break;
+            }
+        }
+    }
+    fclose(fpci);
+
+    size_t l = strlen(gpu_name);
+    char *buf = flint_alloc_raw(l + 1);
+    memcpy(buf, gpu_name, l + 1);
+    return flint_make_str(FLINT_SLICE(buf, l));
+}
+
 // ============================================================================
 // FLINT STANDARD LIBRARY ABI BINDINGS
 // ============================================================================
@@ -1896,3 +2096,6 @@ flint_str flint_sys_local_ip(void)
 
 #define sys_ram_usage() flint_sys_ram_usage()
 #define sys_local_ip() flint_sys_local_ip()
+#define sys_packages_dpkg() flint_sys_packages_dpkg()
+#define sys_display_res() flint_sys_display_res()
+#define sys_gpu_name() flint_sys_gpu_name()
