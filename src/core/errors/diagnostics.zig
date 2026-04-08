@@ -68,6 +68,12 @@ pub const DiagnosticBuilder = struct {
 
         if (self.labels.items.len == 0) return;
         const target_line = self.labels.items[0].line;
+        const line_number = target_line + 1;
+
+        var gutter_width: usize = 0;
+        var temp = line_number;
+        while (temp > 0) : (temp /= 10) gutter_width += 1;
+        if (gutter_width < 2) gutter_width = 2;
 
         var lines = std.mem.splitScalar(u8, self.source, '\n');
         var current_line: u32 = 0;
@@ -79,15 +85,18 @@ pub const DiagnosticBuilder = struct {
             }
         }
 
-        try io.stderr.print("{s}~~>{s} {s}:{d}\n", .{ cyan, reset, self.file_path, target_line + 1 });
-        try io.stderr.print("   {s}|{s}\n", .{ cyan, reset });
-        try io.stderr.print("{d:2} {s}|{s} {s}\n", .{ target_line + 1, cyan, reset, target_line_text });
+        try io.stderr.print("  {s}~~>{s} {s}:{d}\n", .{ cyan, reset, self.file_path, line_number });
 
+        for (0..gutter_width + 1) |_| try io.stderr.print(" ", .{});
+        try io.stderr.print("{s}|{s}\n", .{ cyan, reset });
+
+        try io.stderr.print("{d: >[4]} {s}|{s} {s}\n", .{ line_number, cyan, reset, target_line_text, gutter_width });
         std.mem.sort(DiagnosticLabel, self.labels.items, {}, sortDescending);
 
-        try io.stderr.print("   {s}|{s} ", .{ cyan, reset });
-        var cursor: u32 = 0;
+        for (0..gutter_width + 1) |_| try io.stderr.print(" ", .{});
+        try io.stderr.print("{s}|{s} ", .{ cyan, reset });
 
+        var cursor: u32 = 0;
         var left_to_right = try self.labels.clone(self.allocator);
         defer left_to_right.deinit(self.allocator);
         std.mem.sort(DiagnosticLabel, left_to_right.items, {}, sortAscending);
@@ -112,9 +121,10 @@ pub const DiagnosticBuilder = struct {
         try io.stderr.print("\n", .{});
 
         for (self.labels.items, 0..) |current_lbl, idx| {
-            try io.stderr.print("   {s}|{s} ", .{ cyan, reset });
-            cursor = 0;
+            for (0..gutter_width + 1) |_| try io.stderr.print(" ", .{});
+            try io.stderr.print("{s}|{s} ", .{ cyan, reset });
 
+            cursor = 0;
             const labels_to_left = self.labels.items[idx + 1 ..];
             var j: usize = labels_to_left.len;
             while (j > 0) {
@@ -134,7 +144,9 @@ pub const DiagnosticBuilder = struct {
             const cur_color = if (current_lbl.is_primary) red else blue;
             try io.stderr.print("{s}|{s}\n", .{ cur_color, reset });
 
-            try io.stderr.print("   {s}|{s} ", .{ cyan, reset });
+            for (0..gutter_width + 1) |_| try io.stderr.print(" ", .{});
+            try io.stderr.print("{s}|{s} ", .{ cyan, reset });
+
             cursor = 0;
             j = labels_to_left.len;
             while (j > 0) {
@@ -153,14 +165,13 @@ pub const DiagnosticBuilder = struct {
             try io.stderr.print("{s}{s}{s}\n", .{ cur_color, current_lbl.text, reset });
         }
 
-        try io.stderr.print("   {s}|{s}\n", .{ cyan, reset });
+        for (0..gutter_width + 1) |_| try io.stderr.print(" ", .{});
+        try io.stderr.print("{s}|{s}\n", .{ cyan, reset });
 
         if (self.note_msg) |n| {
             try io.stderr.print("\n{s}note{s}: {s}", .{ cyan, reset, n });
 
-            if (self.help_msg) |_| {
-                //
-            } else {
+            if (self.help_msg != null) {
                 try io.stderr.print("\n", .{});
             }
         }
@@ -170,6 +181,7 @@ pub const DiagnosticBuilder = struct {
         }
 
         try io.stderr.print("\n", .{});
+
         _ = try io.stderr.flush();
     }
 

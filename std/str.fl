@@ -109,3 +109,98 @@ fn repeat(s: string, x: int) string {
 
     return join(parts, "");
 }
+
+fn upper(s: string) string { 
+    var new_str_temp = str_array(); 
+    const little_ones = {
+        "a": "A",
+        "b": "B",
+        "c": "C",
+        "d": "D",
+        "e": "E",
+        "f": "F",
+        "g": "G",
+        "h": "H",
+        "i": "I",
+        "j": "J",
+        "k": "K",
+        "l": "L",
+        "m": "M",
+        "n": "N",
+        "o": "O",
+        "p": "P",
+        "q": "Q",
+        "r": "R",
+        "s": "S",
+        "t": "T",
+        "u": "U",
+        "v": "V",
+        "w": "W",
+        "x": "X",
+        "y": "Y",
+        "z": "Z"
+    }; 
+
+    for c in s ~> chars() { 
+        const c_n = to_str(little_ones[c] ~> fallback(c)); 
+        push(new_str_temp, c_n); 
+    } 
+    
+    return new_str_temp ~> join("");
+}
+
+fn lower(s: string) string { 
+    var new_str_temp = str_array(); 
+    const little_ones = {
+        "A": "a",
+        "B": "b",
+        "C": "c",
+        "D": "d",
+        "E": "e",
+        "F": "f",
+        "G": "g",
+        "H": "h",
+        "I": "i",
+        "J": "j",
+        "K": "k",
+        "L": "l",
+        "M": "m",
+        "N": "n",
+        "O": "o",
+        "P": "p",
+        "Q": "q",
+        "R": "r",
+        "S": "s",
+        "T": "t",
+        "U": "u",
+        "V": "v",
+        "W": "w",
+        "X": "x",
+        "Y": "y",
+        "Z": "z"
+    }; 
+
+    for c in s ~> chars() { 
+        const c_n = to_str(little_ones[c] ~> fallback(c)); 
+        push(new_str_temp, c_n); 
+    } 
+    
+    return new_str_temp ~> join("");
+}
+
+fn index_of(s: string, c: string) int {
+    const s_len = len(s);
+    const c_len = len(c);
+
+    if c_len == 0 or c_len > s_len {
+        return -1;
+    }
+
+    for i in range(0, (s_len - c_len + 1)) {
+        if s[i .. i + c_len] == c {
+            return i;
+        }
+    }
+    
+    return -1;
+}
