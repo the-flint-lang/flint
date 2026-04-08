@@ -57,6 +57,7 @@ pub const TypeChecker = struct {
         try defineBuiltin(global, allocator, pool, "chars", .t_str_arr, &[_]FlintType{.t_string});
         try defineBuiltin(global, allocator, pool, "len", .t_int, &[_]FlintType{.t_any});
         try defineBuiltin(global, allocator, pool, "push", .t_void, null);
+        try defineBuiltin(global, allocator, pool, "embed_file", .t_string, &[_]FlintType{.t_string});
 
         // empty constructors
         try defineBuiltin(global, allocator, pool, "int_array", .t_int_arr, &[_]FlintType{});
@@ -1047,6 +1048,10 @@ pub const TypeChecker = struct {
         } else if (std.mem.eql(u8, module_name, "utils")) {
             try defineBuiltin(s, a, p, "utils_is_err", .t_bool, &[_]FlintType{.t_val});
             try defineBuiltin(s, a, p, "utils_get_err", .t_string, &[_]FlintType{.t_val});
+        } else if (std.mem.eql(u8, module_name, "sys")) {
+            try defineBuiltin(s, a, p, "sys_disk_usage", .t_val, &[_]FlintType{.t_string});
+            try defineBuiltin(s, a, p, "sys_ram_usage", .t_val, &[_]FlintType{});
+            try defineBuiltin(s, a, p, "sys_local_ip", .t_string, &[_]FlintType{});
         }
     }
 

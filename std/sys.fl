@@ -1,0 +1,18 @@
+# std/env.jl
+
+extern fn flint_sys_disk_usage(path: string) val;
+extern fn flint_sys_ram_usage() val;
+extern fn flint_sys_local_ip() string;
+
+# public API
+fn disk_usage(path: string) val { 
+    return flint_sys_disk_usage(path); 
+}
+
+fn ram_usage() val { 
+    return flint_sys_ram_usage(); 
+}
+
+fn local_ip() string { 
+    return flint_sys_local_ip(); 
+}

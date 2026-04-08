@@ -25,6 +25,11 @@
 #include <unistd.h>
 #include <poll.h>
 #include <limits.h>
+#include <sys/statvfs.h>
+#include <sys/sysinfo.h>
+#include <ifaddrs.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #include <spawn.h>
 #include <limits.h>
@@ -1730,6 +1735,98 @@ long long flint_parse_int_from_str(flint_str s)
     return res * sign;
 }
 
+/* =========================
+    SYS (System / Kernel)
+========================= */
+
+FlintValue flint_sys_disk_usage(flint_str path)
+{
+    FLINT_C_PATH(c_path, path);
+    struct statvfs stat;
+
+    if (statvfs(c_path, &stat) != 0)
+    {
+        return flint_make_error(FLINT_SLICE(strerror(errno), strlen(strerror(errno))));
+    }
+
+    unsigned long long total = (unsigned long long)stat.f_blocks * stat.f_frsize;
+    unsigned long long free = (unsigned long long)stat.f_bfree * stat.f_frsize;
+    unsigned long long used = total - free;
+
+    FlintDict *dict = flint_dict_new(4);
+    flint_dict_set(dict, FLINT_STR("total"), flint_make_int((long long)total));
+    flint_dict_set(dict, FLINT_STR("used"), flint_make_int((long long)used));
+    flint_dict_set(dict, FLINT_STR("free"), flint_make_int((long long)free));
+
+    return (FlintValue){FLINT_VAL_DICT, .as.d = dict};
+}
+
+FlintValue flint_sys_ram_usage(void)
+{
+    FILE *f = fopen("/proc/meminfo", "r");
+    if (!f)
+        return flint_make_error(FLINT_STR("Failed to read meminfo"));
+
+    char line[128];
+    long long total_kb = 0;
+    long long available_kb = 0;
+
+    while (fgets(line, sizeof(line), f))
+    {
+        if (strncmp(line, "MemTotal:", 9) == 0)
+        {
+            sscanf(line, "MemTotal: %lld", &total_kb);
+        }
+        else if (strncmp(line, "MemAvailable:", 13) == 0)
+        {
+            sscanf(line, "MemAvailable: %lld", &available_kb);
+            break;
+        }
+    }
+    fclose(f);
+
+    FlintDict *dict = flint_dict_new(2);
+    flint_dict_set(dict, FLINT_STR("total"), flint_make_int(total_kb));
+    flint_dict_set(dict, FLINT_STR("available"), flint_make_int(available_kb));
+
+    return (FlintValue){FLINT_VAL_DICT, .as.d = dict};
+}
+
+flint_str flint_sys_local_ip(void)
+{
+    struct ifaddrs *ifaddr, *ifa;
+    char ip_str[INET_ADDRSTRLEN] = "127.0.0.1";
+
+    if (getifaddrs(&ifaddr) == -1)
+    {
+        return FLINT_STR("127.0.0.1 (Offline)");
+    }
+
+    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next)
+    {
+        if (ifa->ifa_addr == NULL)
+            continue;
+
+        if (ifa->ifa_addr->sa_family == AF_INET)
+        {
+            if (strcmp(ifa->ifa_name, "lo") != 0)
+            {
+                struct sockaddr_in *pAddr = (struct sockaddr_in *)ifa->ifa_addr;
+                inet_ntop(AF_INET, &pAddr->sin_addr, ip_str, INET_ADDRSTRLEN);
+                break;
+            }
+        }
+    }
+    freeifaddrs(ifaddr);
+
+    size_t len = strlen(ip_str);
+    char *buf = flint_alloc_raw(len + 1);
+    memcpy(buf, ip_str, len);
+    buf[len] = '\0';
+
+    return FLINT_SLICE(buf, len);
+}
+
 // ============================================================================
 // FLINT STANDARD LIBRARY ABI BINDINGS
 // ============================================================================
@@ -1794,3 +1891,8 @@ long long flint_parse_int_from_str(flint_str s)
         printf("\033[H\033[J"); \
         fflush(stdout);         \
     } while (0)
+
+#define sys_disk_usage(p) flint_sys_disk_usage(p)
+
+#define sys_ram_usage() flint_sys_ram_usage()
+#define sys_local_ip() flint_sys_local_ip()

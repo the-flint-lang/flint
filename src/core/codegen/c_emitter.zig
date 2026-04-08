@@ -374,7 +374,7 @@ pub const CEmitter = struct {
             const obj_name = self.pool.get(obj_node.identifier.name_id);
             const prop_name = self.pool.get(prop_access.property_name_id);
 
-            const modules = [_][]const u8{ "os", "io", "http", "str", "json", "process", "fs", "term", "utils", "env" };
+            const modules = [_][]const u8{ "os", "io", "http", "str", "json", "process", "fs", "term", "utils", "env", "sys" };
             var is_module = false;
             for (modules) |m| {
                 if (std.mem.eql(u8, obj_name, m)) {
@@ -688,6 +688,50 @@ pub const CEmitter = struct {
 
         if (callee_node == .identifier) {
             const func_name = self.pool.get(callee_node.identifier.name_id);
+
+            if (std.mem.eql(u8, func_name, "embed_file")) {
+                const arg_node = self.tree.getNode(call.arguments[0]);
+
+                if (arg_node != .literal) {
+                    std.debug.print("[COMPILER PANIC] embed_file requires a pure string literal in the path!\n", .{});
+                    return error.InvalidEmbedArgument;
+                }
+
+                const file_path = arg_node.literal.token.value;
+
+                const file_content = std.fs.cwd().readFileAlloc(self.allocator, file_path, 10 * 1024 * 1024) catch {
+                    std.debug.print("[COMPILER PANIC] Falha ao embedar ficheiro: '{s}'\n", .{file_path});
+                    return error.FileNotFound;
+                };
+
+                try writer.print("(flint_str){{ .ptr = ", .{});
+
+                try writer.print("\"", .{});
+                var chars_in_line: usize = 0;
+
+                for (file_content) |c| {
+                    switch (c) {
+                        '\n' => {
+                            try writer.print("\\n\"\n\"", .{});
+                            chars_in_line = 0;
+                        },
+                        '\r' => try writer.print("\\r", .{}),
+                        '\\' => try writer.print("\\\\", .{}),
+                        '"' => try writer.print("\\\"", .{}),
+                        else => {
+                            try writer.print("{c}", .{c});
+                            chars_in_line += 1;
+                            if (chars_in_line >= 100) {
+                                try writer.print("\"\n\"", .{});
+                                chars_in_line = 0;
+                            }
+                        },
+                    }
+                }
+
+                try writer.print("\", .len = {d} }}", .{file_content.len});
+                return;
+            }
 
             if (std.mem.eql(u8, func_name, "print") and call.arguments.len == 0) {
                 try writer.print("flint_print(FLINT_STR(\"\"))", .{});
