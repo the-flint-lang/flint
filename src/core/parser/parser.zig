@@ -18,6 +18,7 @@ pub const Parser = struct {
     current: usize = 0,
     source: []const u8,
     file_path: []const u8,
+    file_id: u32,
 
     allocator: std.mem.Allocator,
     tree: *AstTree,
@@ -27,11 +28,12 @@ pub const Parser = struct {
     had_error: bool = false,
     disable_range: bool = false,
 
-    pub fn init(allocator: std.mem.Allocator, tree: *AstTree, pool: *StringPool, tokens: []const Token, source: []const u8, file_path: []const u8, io: IoHelpers) Parser {
+    pub fn init(allocator: std.mem.Allocator, tree: *AstTree, pool: *StringPool, tokens: []const Token, source: []const u8, file_path: []const u8, file_id: u32, io: IoHelpers) Parser {
         return .{
             .tokens = tokens,
             .source = source,
             .file_path = file_path,
+            .file_id = file_id,
             .current = 0,
             .allocator = allocator,
             .tree = tree,
@@ -108,10 +110,15 @@ pub const Parser = struct {
 
         _ = try self.consumeDelimiter(.rbrace_token, "Expected '}' to close struct body.");
 
-        return try self.tree.addNode(self.allocator, .{ .struct_decl = .{
-            .name_id = name_id,
-            .fields = try fields.toOwnedSlice(self.allocator),
-        } });
+        return try self.tree.addNode(self.allocator, .{
+            .struct_decl = .{
+                .line = name_token.line,
+                .column = name_token.column,
+                .file_id = name_token.file_id,
+                .name_id = name_id,
+                .fields = try fields.toOwnedSlice(self.allocator),
+            },
+        });
     }
 
     fn parseImportStmt(self: *Parser) !NodeIndex {
@@ -194,6 +201,9 @@ pub const Parser = struct {
 
         return try self.tree.addNode(self.allocator, .{
             .function_decl = .{
+                .line = name_token.line,
+                .column = name_token.column,
+                .file_id = name_token.file_id,
                 .is_extern = is_extern,
                 .name_id = name_id,
                 .arguments = args,
@@ -291,6 +301,7 @@ pub const Parser = struct {
                 expr_idx = try self.tree.addNode(self.allocator, .{
                     .call_expr = .{
                         .line = self.previous().line,
+                        .file_id = self.file_id,
                         .callee = expr_idx,
                         .arguments = try args.toOwnedSlice(self.allocator),
                     },
@@ -335,6 +346,7 @@ pub const Parser = struct {
 
                 expr_idx = try self.tree.addNode(self.allocator, .{ .property_access_expr = .{
                     .line = property_token.line,
+                    .file_id = self.file_id,
                     .object = expr_idx,
                     .property_name_id = prop_id,
                 } });
@@ -485,6 +497,7 @@ pub const Parser = struct {
             .var_decl = .{
                 .line = name_token.line + 1,
                 ._type = type_node_idx,
+                .file_id = self.file_id,
                 .is_const = is_const,
                 .name_id = name_id,
                 .value = value_expr_idx,
@@ -649,7 +662,13 @@ pub const Parser = struct {
             // fake token
             const range_str_id = try self.pool.intern(self.allocator, "range");
             const range_callee = try self.tree.addNode(self.allocator, .{ .identifier = .{
-                .token = Token{ ._type = .identifier_token, .value = "range", .line = line, .column = 0 },
+                .token = Token{
+                    ._type = .identifier_token,
+                    .value = "range",
+                    .line = line,
+                    .file_id = self.file_id,
+                    .column = 0,
+                },
                 .name_id = range_str_id,
             } });
 
@@ -660,6 +679,7 @@ pub const Parser = struct {
             expr_idx = try self.tree.addNode(self.allocator, .{
                 .call_expr = .{
                     .line = line,
+                    .file_id = self.file_id,
                     .callee = range_callee,
                     .arguments = try args.toOwnedSlice(self.allocator),
                 },
@@ -736,11 +756,11 @@ pub const Parser = struct {
         var len: u32 = if (token.value.len > 0) @intCast(token.value.len) else 1;
 
         if (point_after) {
-            col += len - 1;
+            col += len;
             len = 1;
         }
 
-        try diag.addLabel(token.line, col + 1, 1, label_text, true);
+        try diag.addLabel(token.line, col, len, label_text, true);
         try diag.emit(self.io);
 
         return error.ParseError;
@@ -794,6 +814,7 @@ pub const Parser = struct {
         return try self.tree.addNode(self.allocator, .{ .literal = .{ .token = .{
             ._type = .string_literal_token,
             .value = text,
+            .file_id = self.file_id,
             .line = self.previous().line,
             .column = self.previous().column,
         } } });
@@ -801,12 +822,11 @@ pub const Parser = struct {
 
     fn wrapInToStr(self: *Parser, expr_idx: NodeIndex) !NodeIndex {
         const to_str_id = try self.pool.intern(self.allocator, "to_str");
-        const func_id_idx = try self.tree.addNode(self.allocator, .{ .identifier = .{ .token = Token{ ._type = .identifier_token, .value = "to_str", .line = 0, .column = 0 }, .name_id = to_str_id } });
-
+        const func_id_idx = try self.tree.addNode(self.allocator, .{ .identifier = .{ .token = Token{ ._type = .identifier_token, .value = "to_str", .line = 0, .column = 0, .file_id = self.file_id }, .name_id = to_str_id } });
         var args = try self.allocator.alloc(NodeIndex, 1);
         args[0] = expr_idx;
 
-        return try self.tree.addNode(self.allocator, .{ .call_expr = .{ .line = 0, .callee = func_id_idx, .arguments = args } });
+        return try self.tree.addNode(self.allocator, .{ .call_expr = .{ .line = 0, .callee = func_id_idx, .file_id = self.file_id, .arguments = args } });
     }
 
     fn parseInterpolatedString(self: *Parser, token: Token) anyerror!NodeIndex {
@@ -868,6 +888,7 @@ pub const Parser = struct {
                             .position = 0,
                             .column = inner_start_col + prefix_visual_len,
                             .line = token.line,
+                            .file_id = self.file_id,
                             .source = expr_str,
                             .tokens = std.ArrayList(Token).empty,
                         };
@@ -881,6 +902,7 @@ pub const Parser = struct {
                             .current = 0,
                             .tree = self.tree,
                             .pool = self.pool,
+                            .file_id = self.file_id,
                             .io = self.io,
                             .had_error = false,
                         };
@@ -905,13 +927,20 @@ pub const Parser = struct {
         const build_str_id = try self.pool.intern(self.allocator, "build_str");
         const func_id_idx = try self.tree.addNode(self.allocator, .{
             .identifier = .{
-                .token = Token{ ._type = .identifier_token, .value = "build_str", .line = token.line, .column = token.column },
+                .token = Token{
+                    ._type = .identifier_token,
+                    .file_id = self.file_id,
+                    .value = "build_str",
+                    .line = token.line,
+                    .column = token.column,
+                },
                 .name_id = build_str_id,
             },
         });
 
         return try self.tree.addNode(self.allocator, .{ .call_expr = .{
             .line = token.line,
+            .file_id = self.file_id,
             .callee = func_id_idx,
             .arguments = try parts.toOwnedSlice(self.allocator),
         } });

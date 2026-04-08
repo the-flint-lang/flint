@@ -38,8 +38,7 @@ pub const DiagnosticBuilder = struct {
         self.labels.deinit(self.allocator);
     }
 
-    pub fn addLabel(self: *DiagnosticBuilder, line: u32, end_col: u32, len: u32, text: []const u8, is_primary: bool) !void {
-        const start_col = if (end_col >= len) end_col - len else 0;
+    pub fn addLabel(self: *DiagnosticBuilder, line: u32, start_col: u32, len: u32, text: []const u8, is_primary: bool) !void {
         try self.labels.append(self.allocator, .{
             .line = line,
             .col = start_col,

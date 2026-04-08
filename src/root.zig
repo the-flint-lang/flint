@@ -9,6 +9,7 @@ pub const IoHelper = @import("./core/helpers/structs/structs.zig").IoHelpers;
 const Lexer = @import("./core/lexer/lexer.zig").Lexer;
 const Parser = @import("./core/parser/parser.zig").Parser;
 const TypeChecker = @import("./core/analyzer/type_checker.zig").TypeChecker;
+const SourceManager = @import("./core/helpers/utils/source_manager.zig").SourceManager;
 const ast = @import("./core/parser/ast.zig");
 const NodeIndex = ast.NodeIndex;
 const AstTree = ast.AstTree;
@@ -31,17 +32,19 @@ const PipelineResult = struct {
     root_idx: NodeIndex,
 };
 
-fn runCompilerPipeline(alloc: std.mem.Allocator, tree: *AstTree, pool: *StringPool, file_path: []const u8, io: IoHelper) !PipelineResult {
+fn runCompilerPipeline(alloc: std.mem.Allocator, tree: *AstTree, pool: *StringPool, source_mgr: *SourceManager, file_path: []const u8, io: IoHelper) !PipelineResult {
     if (!std.mem.endsWith(u8, file_path, ".fl")) {
         return error.InvalidFileType;
     }
 
     const source = try std.fs.cwd().readFileAlloc(alloc, file_path, 1024 * 1024);
+    const file_id = try source_mgr.addFile(file_path, source);
 
     var lex = Lexer{
         .alloc = alloc,
         .io = io,
         .file_path = file_path,
+        .file_id = file_id,
         .position = 0,
         .column = 0,
         .line = 0,
@@ -50,11 +53,8 @@ fn runCompilerPipeline(alloc: std.mem.Allocator, tree: *AstTree, pool: *StringPo
     };
     const tokens = try lex.tokenize();
 
-    var parser = Parser.init(alloc, tree, pool, tokens, source, file_path, io);
+    var parser = Parser.init(alloc, tree, pool, tokens, source, file_path, file_id, io);
     const root_idx = try parser.parse();
-
-    // var t_checker = try TypeChecker.init(alloc, tree, pool, file_path, source, io);
-    // try t_checker.check(root_idx);
 
     if (parser.had_error) {
         parser.deinit();
@@ -76,14 +76,16 @@ const Linker = struct {
     visited: std.StringHashMap(void),
     statements: std.ArrayList(NodeIndex),
     results: std.ArrayList(*PipelineResult),
+    source_mgr: *SourceManager,
     io: IoHelper,
     has_error: bool = false,
 
-    pub fn init(alloc: std.mem.Allocator, tree: *AstTree, pool: *StringPool, io: IoHelper) Linker {
+    pub fn init(alloc: std.mem.Allocator, tree: *AstTree, pool: *StringPool, source_mgr: *SourceManager, io: IoHelper) Linker {
         return .{
             .allocator = alloc,
             .tree = tree,
             .pool = pool,
+            .source_mgr = source_mgr,
             .visited = std.StringHashMap(void).init(alloc),
             .statements = std.ArrayList(NodeIndex).empty,
             .results = std.ArrayList(*PipelineResult).empty,
@@ -117,7 +119,7 @@ const Linker = struct {
         try self.visited.put(try self.allocator.dupe(u8, abs_path), {});
 
         const result_ptr = try self.allocator.create(PipelineResult);
-        result_ptr.* = runCompilerPipeline(self.allocator, self.tree, self.pool, file_path, self.io) catch {
+        result_ptr.* = runCompilerPipeline(self.allocator, self.tree, self.pool, self.source_mgr, file_path, self.io) catch {
             self.has_error = true;
             return;
         };
@@ -272,7 +274,13 @@ const Linker = struct {
                         const original_line = p.line;
                         const original_col = obj_node.identifier.token.column;
 
-                        node_ptr.* = .{ .identifier = .{ .token = .{ ._type = .identifier_token, .value = new_name, .line = original_line, .column = original_col }, .name_id = new_id } };
+                        node_ptr.* = .{ .identifier = .{ .token = .{
+                            ._type = .identifier_token,
+                            .value = new_name,
+                            .line = original_line,
+                            .column = original_col,
+                            .file_id = obj_node.identifier.token.file_id,
+                        }, .name_id = new_id } };
                     }
                 }
             },
@@ -387,6 +395,7 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper) !void {
             .io = io,
             .file_path = file_path,
             .position = 0,
+            .file_id = 0,
             .column = 0,
             .line = 0,
             .tokens = .empty,
@@ -416,7 +425,11 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper) !void {
         var pool = StringPool.init(alloc);
         defer pool.deinit(alloc);
 
-        var result = runCompilerPipeline(alloc, &global_tree, &pool, file_path, io) catch return;
+        var source_manager = SourceManager.init(alloc);
+        defer source_manager.deinit();
+
+        var result = runCompilerPipeline(alloc, &global_tree, &pool, &source_manager, file_path, io) catch return;
+
         defer alloc.free(result.source);
         defer result.parser.deinit();
         defer alloc.free(result.tokens);
@@ -452,7 +465,10 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
     var pool = StringPool.init(alloc);
     defer pool.deinit(alloc);
 
-    var linker = Linker.init(alloc, &global_tree, &pool, io);
+    var source_manager = SourceManager.init(alloc);
+    defer source_manager.deinit();
+
+    var linker = Linker.init(alloc, &global_tree, &pool, &source_manager, io);
     defer linker.deinit();
 
     linker.linkFile(file_path, null) catch {};
@@ -463,7 +479,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
     const main_source = try std.fs.cwd().readFileAlloc(alloc, file_path, 1024 * 1024);
     defer alloc.free(main_source);
 
-    var final_checker = try TypeChecker.init(alloc, &global_tree, &pool, file_path, main_source, io);
+    var final_checker = try TypeChecker.init(alloc, &global_tree, &pool, &source_manager, io);
     try final_checker.check(merged_root_idx);
 
     if (final_checker.had_error) {

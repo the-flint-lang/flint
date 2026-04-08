@@ -57,7 +57,7 @@ Flint uses "poison types" for smart error recovery, means he shows all errors in
 
 ## Performance Of  Indrustial
 
-Flint v1.9.1 is projected using data oriented design (DoD).
+Flint v1.10.0 is projected using data oriented design (DoD).
 When using arrays of memory continuous and pool of strings
 centered, the compiler frontend operates in cache limits of modern CPUs.
 

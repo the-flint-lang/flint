@@ -1,4 +1,4 @@
-# Flint Standard Library (v1.9.1)
+# Flint Standard Library (v1.10.0)
 
 Parts of the stdlib are written in Flint itself (`std/*.fl`) and bind direct to the C99 runtime (`flint_rt.c`).
 

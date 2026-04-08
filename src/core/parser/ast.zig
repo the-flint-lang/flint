@@ -43,6 +43,9 @@ pub const AstNode = union(enum) {
     },
 
     function_decl: struct {
+        line: u32,
+        column: u32,
+        file_id: u32,
         is_extern: bool,
         name_id: StringId,
         return_type: ?NodeIndex,
@@ -52,6 +55,7 @@ pub const AstNode = union(enum) {
 
     var_decl: struct {
         line: u32,
+        file_id: u32,
         _type: ?NodeIndex,
         is_const: bool,
         name_id: StringId,
@@ -59,6 +63,9 @@ pub const AstNode = union(enum) {
     },
 
     struct_decl: struct {
+        line: u32,
+        file_id: u32,
+        column: u32,
         name_id: StringId,
         fields: []const StructField,
     },
@@ -80,6 +87,7 @@ pub const AstNode = union(enum) {
 
     call_expr: struct {
         line: u32,
+        file_id: u32,
         callee: NodeIndex,
         arguments: []const NodeIndex,
     },
@@ -111,6 +119,7 @@ pub const AstNode = union(enum) {
 
     property_access_expr: struct {
         line: u32,
+        file_id: u32,
         object: NodeIndex,
         property_name_id: StringId,
     },

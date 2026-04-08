@@ -28,25 +28,11 @@ fn count_matches(text: string, pattern: string) int {
 }
 
 fn replace(text: string, target: string, repl: string) string {
-    if len(text) == 0 {
-        return "";
+    if len(text) == 0 or len(target) == 0 {
+        return text;
     }
 
-    if len(target) == 0 {
-        return "";
-    }
-
-    var parts_new_text = str_array();
-
-    for c in text ~> chars() {
-        if c == target {
-            push(parts_new_text, repl);
-        } else {
-            push(parts_new_text, c);
-        }
-    }
-
-    return join(parts_new_text, "");
+    return split(text, target) ~> join(repl);
 }
 
 fn to_str(v: val) string {
@@ -83,6 +69,27 @@ fn starts_with(s: string, p: string) bool {
     }
     
     return true;
+}
+
+fn contains(text: string, target: string) bool {
+    const text_len = len(text);
+    const target_len = len(target);
+
+    if target_len == 0 {
+        return true;
+    }
+
+    if target_len > text_len {
+        return false;
+    }
+
+    for i in range(0, (text_len - target_len + 1)) {
+        if text[i .. i + target_len] == target {
+            return true;
+        }
+    }
+    
+    return false;
 }
 
 fn repeat(s: string, x: int) string {
