@@ -1,2 +1,2 @@
-# Flint APT Repository
-Este branch hospeda os pacotes Debian gerados automaticamente.
+# Flint APT Repository]
+This branch hosts the automatically generated Debian packages.
