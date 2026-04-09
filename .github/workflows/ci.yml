@@ -126,3 +126,25 @@ jobs:
           flint_*.deb
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Publish to APT Repository (gh-pages)
+      if: startsWith(github.ref, 'refs/tags/')
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        
+        sudo apt-get install -y dpkg-dev
+        
+        git clone --branch gh-pages https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git apt-repo
+        
+        mkdir -p apt-repo/pool/main/
+        cp deb-amd64/*.deb apt-repo/pool/main/
+        cp deb-arm64/*.deb apt-repo/pool/main/
+        
+        cd apt-repo
+        dpkg-scanpackages --multiversion pool/ > Packages
+        gzip -k -f Packages
+        
+        git add pool/ Packages Packages.gz
+        git commit -m "chore: release APT packages for ${GITHUB_REF_NAME#v}" || echo "Nenhuma alteração para commitar"
+        git push origin gh-pages
