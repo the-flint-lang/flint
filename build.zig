@@ -33,13 +33,13 @@ pub fn build(b: *std.Build) void {
     exe.linkLibC();
 
     // new improvments to low size binary
-    exe.stack_size = 1 * 1024 * 1024;
-    exe.compress_debug_sections = .zstd;
-    exe.root_module.unwind_tables = .none;
+    // exe.stack_size = 1 * 1024 * 1024;
+    // exe.compress_debug_sections = .zstd;
+    // exe.root_module.unwind_tables = .none;
 
-    exe.root_module.strip = true;
-    exe.link_gc_sections = true;
-    exe.want_lto = true;
+    // exe.root_module.strip = true;
+    // exe.link_gc_sections = true;
+    // exe.want_lto = true;
 
     b.installArtifact(exe);
 

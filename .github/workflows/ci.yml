@@ -54,7 +54,7 @@ jobs:
       run: zig version
 
     - name: Build Flint (x86_64)
-      run: zig build -Dtarget=x86_64-linux-gnu.2.39 -Doptimize=ReleaseSafe -Dcpu=baseline --prefix out-x86_64
+      run: zig build -Dtarget=x86_64-linux-gnu.2.39 -Doptimize=Debug -Dcpu=baseline --prefix out-x86_64
 
     - name: Mock System Installation
       run: |
