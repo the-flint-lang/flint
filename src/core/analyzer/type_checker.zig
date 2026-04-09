@@ -57,6 +57,7 @@ pub const TypeChecker = struct {
         try defineBuiltin(global, allocator, pool, "chars", .t_str_arr, &[_]FlintType{.t_string});
         try defineBuiltin(global, allocator, pool, "len", .t_int, &[_]FlintType{.t_any});
         try defineBuiltin(global, allocator, pool, "push", .t_void, null);
+        try defineBuiltin(global, allocator, pool, "embed_file", .t_string, &[_]FlintType{.t_string});
 
         // empty constructors
         try defineBuiltin(global, allocator, pool, "int_array", .t_int_arr, &[_]FlintType{});
@@ -1006,6 +1007,7 @@ pub const TypeChecker = struct {
             try defineBuiltin(s, a, p, "str_starts_with", .t_bool, &[_]FlintType{ .t_string, .t_string });
             try defineBuiltin(s, a, p, "str_ends_with", .t_bool, &[_]FlintType{ .t_string, .t_string });
             try defineBuiltin(s, a, p, "str_repeat", .t_string, &[_]FlintType{ .t_string, .t_int });
+            try defineBuiltin(s, a, p, "str_replace_all", .t_string, &[_]FlintType{ .t_string, .t_str_arr, .t_str_arr });
         } else if (std.mem.eql(u8, module_name, "process")) {
             try defineBuiltin(s, a, p, "process_exec", .t_string, &[_]FlintType{.t_string});
             try defineBuiltin(s, a, p, "process_assert", .t_val, &[_]FlintType{ .t_val, .t_string });
@@ -1047,6 +1049,13 @@ pub const TypeChecker = struct {
         } else if (std.mem.eql(u8, module_name, "utils")) {
             try defineBuiltin(s, a, p, "utils_is_err", .t_bool, &[_]FlintType{.t_val});
             try defineBuiltin(s, a, p, "utils_get_err", .t_string, &[_]FlintType{.t_val});
+        } else if (std.mem.eql(u8, module_name, "sys")) {
+            try defineBuiltin(s, a, p, "sys_disk_usage", .t_val, &[_]FlintType{.t_string});
+            try defineBuiltin(s, a, p, "sys_ram_usage", .t_val, &[_]FlintType{});
+            try defineBuiltin(s, a, p, "sys_packages_dpkg", .t_int, &[_]FlintType{});
+            try defineBuiltin(s, a, p, "sys_local_ip", .t_string, &[_]FlintType{});
+            try defineBuiltin(s, a, p, "sys_display_res", .t_string, &[_]FlintType{});
+            try defineBuiltin(s, a, p, "sys_gpu_name", .t_string, &[_]FlintType{});
         }
     }
 

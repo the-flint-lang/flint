@@ -578,3 +578,15 @@ static inline void flint_set_idx_val(FlintValue v, FlintValue k, FlintValue val)
     FlintValue: flint_set_idx_val)((obj), FLINT_BOX(idx), FLINT_BOX(val))
 
 #endif
+
+/* =========================
+    SYS (System / Kernel)
+========================= */
+
+FlintValue flint_sys_disk_usage(flint_str path);
+FlintValue flint_sys_ram_usage(void);
+flint_str flint_sys_local_ip(void);
+FlintValue flint_sys_packages_dpkg(void);
+FlintValue flint_sys_gpu_name(void);
+FlintValue flint_sys_display_res(void);
+flint_str flint_str_replace_all(flint_str s, flint_str_array targets, flint_str_array replacements);
