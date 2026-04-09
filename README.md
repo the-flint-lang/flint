@@ -131,6 +131,19 @@ Mass File Stat: ~650x faster than Bash when inspecting 10,000 files.
 
 ## Getting Started
 
+### Installing on Debian/Ubuntu (APT Repository - Recommended)
+
+The easiest and recommended way to install Flint on Debian/Ubuntu-based distributions is through our official APT repository.
+
+```bash
+# 1. Add the Flint repository
+echo "deb [trusted=yes] https://lucaas-d3v.github.io/flint ./" | sudo tee /etc/apt/sources.list.d/flint.list
+
+# 2. Update and install
+sudo apt update
+sudo apt install flint
+```
+
 ### Installing from [`install.sh`](install.sh)
 
 Requeriments:
