@@ -32,8 +32,9 @@ jobs:
         
         sudo dpkg --add-architecture arm64
         sudo apt-get update
-        sudo apt-get install -y clang libcurl4-openssl-dev libcurl4-openssl-dev:arm64 tcc libtcc-dev gcc-aarch64-linux-gnu libc6-dev-arm64-cross
-   
+        sudo apt-get install -y clang tcc libtcc-dev gcc-aarch64-linux-gnu libc6-dev-arm64-cross libcurl4-openssl-dev
+        sudo dpkg -i --force-overwrite /var/cache/apt/archives/libcurl4-openssl-dev_*_arm64.deb || sudo apt-get install -y -o Dpkg::Options::="--force-overwrite" libcurl4-openssl-dev:arm64
+        
     - name: Cache Zig
       uses: actions/cache@v4
       with:
