@@ -32,7 +32,7 @@ jobs:
         
         sudo dpkg --add-architecture arm64
         sudo apt-get update
-        sudo apt-get install -y clang tcc libtcc-dev gcc-aarch64-linux-gnu libc6-dev-arm64-cross libcurl4-openssl-dev
+        sudo apt-get install -y clang tcc libtcc-dev libtcc-dev:arm64 gcc-aarch64-linux-gnu libc6-dev-arm64-cross libcurl4-openssl-dev
         sudo dpkg -i --force-overwrite /var/cache/apt/archives/libcurl4-openssl-dev_*_arm64.deb || sudo apt-get install -y -o Dpkg::Options::="--force-overwrite" libcurl4-openssl-dev:arm64
 
     - name: Cache Zig
@@ -54,7 +54,7 @@ jobs:
       run: zig version
 
     - name: Build Flint (x86_64)
-      run: zig build -Dtarget=x86_64-linux-gnu.2.39 -Doptimize=Debug -Dcpu=baseline --prefix out-x86_64
+      run: zig build -Dtarget=x86_64-linux-gnu.2.39 -Doptimize=ReleaseSmall -Dcpu=baseline --prefix out-x86_64
 
     - name: Mock System Installation
       run: |
@@ -64,7 +64,7 @@ jobs:
 
     - name: Build Flint (aarch64)
       if: startsWith(github.ref, 'refs/tags/')
-      run: zig build -Dtarget=aarch64-linux-gnu.2.39 -Doptimize=ReleaseSafe -Dcpu=baseline --prefix out-aarch64
+      run: zig build -Dtarget=aarch64-linux-gnu.2.39 -Doptimize=ReleaseSmall -Dcpu=baseline --prefix out-aarch64
 
     - name: Package Release Tarballs
       if: startsWith(github.ref, 'refs/tags/')
