@@ -2,14 +2,14 @@ Source: flint
 Section: devel
 Priority: optional
 Maintainer: Lucas Paulino Da Silva <lucas.workps@gmail.com>
-Build-Depends: debhelper-compat (= 13)
+Build-Depends: debhelper-compat (= 13), zig (>= 0.15.0)
 Standards-Version: 4.6.2
 Homepage: https://github.com/lucaas-d3v/flint
 Rules-Requires-Root: no
 
 Package: flint
-Architecture: amd64
-Depends: ${misc:Depends}, libc6, libcurl4 | libcurl3, clang | gcc
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, libc6, libcurl4-openssl-dev, clang | gcc
 Description: Pipeline-oriented systems programming language
  Flint is a statically-typed, pipeline-oriented language that transpiles
  to C99. Designed as a modern, dependency-free replacement for Bash and
@@ -21,5 +21,3 @@ Description: Pipeline-oriented systems programming language
   * Zero-copy string manipulation and mmap-based I/O
   * Universal bracket indexing for Arrays, Structs, and JSON
   * Smart error recovery and explicit intercept blocks (catch)
- .
- Homepage: https://github.com/lucaas-d3v/flint

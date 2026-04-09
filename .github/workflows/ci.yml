@@ -20,8 +20,9 @@ jobs:
 
     - name: Install Target Dependencies (Clang, libcurl & tcc)
       run: |
+        sudo dpkg --add-architecture arm64
         sudo apt-get update
-        sudo apt-get install -y clang libcurl4-openssl-dev tcc libtcc-dev 
+        sudo apt-get install -y clang libcurl4-openssl-dev libcurl4-openssl-dev:arm64 tcc libtcc-dev gcc-aarch64-linux-gnu libc6-dev-arm64-cross
     
     - name: Cache Zig
       uses: actions/cache@v4
@@ -41,33 +42,87 @@ jobs:
     - name: Verify Zig
       run: zig version
 
-    - name: Build Flint
-      run: zig build -Doptimize=ReleaseFast -Dcpu=baseline
+    - name: Build Flint (x86_64)
+      run: zig build -Dtarget=x86_64-linux -Doptimize=ReleaseFast -Dcpu=baseline --prefix out-x86_64
 
-    - name: Mock System Installation (Fixes Race Condition in Tests)
+    - name: Mock System Installation
       run: |
         sudo mkdir -p /usr/share/flint/std
         sudo cp src/core/codegen/runtime/flint_rt.* /usr/share/flint/
         sudo cp -r std/* /usr/share/flint/std/
 
     - name: Run Test Battery
-      run: ./zig-out/bin/flint test
+      run: ./out-x86_64/bin/flint test
 
-    - name: Package Release Tarball
+    - name: Build Flint (aarch64)
+      if: startsWith(github.ref, 'refs/tags/')
+      run: zig build -Dtarget=aarch64-linux -Doptimize=ReleaseFast -Dcpu=baseline --prefix out-aarch64
+
+    - name: Package Release Tarballs
       if: startsWith(github.ref, 'refs/tags/')
       run: |
-        mkdir -p flint-package/bin
-        mkdir -p flint-package/std
+        mkdir -p pkg-x86_64/bin pkg-x86_64/std
+        cp ./out-x86_64/bin/flint pkg-x86_64/bin/
+        cp -r ./std/* pkg-x86_64/std/
+        cp src/core/codegen/runtime/flint_rt.* pkg-x86_64/ # Injetando o Runtime!
+        tar -czvf flint-linux-x86_64.tar.gz -C pkg-x86_64 .
+
+        mkdir -p pkg-aarch64/bin pkg-aarch64/std
+        cp ./out-aarch64/bin/flint pkg-aarch64/bin/
+        cp -r ./std/* pkg-aarch64/std/
+        cp src/core/codegen/runtime/flint_rt.* pkg-aarch64/ # Injetando o Runtime!
+        tar -czvf flint-linux-aarch64.tar.gz -C pkg-aarch64 .
+
+    - name: Build Debian Packages (.deb)
+      if: startsWith(github.ref, 'refs/tags/')
+      run: |
+        VERSION=${GITHUB_REF_NAME#v}
         
-        cp ./zig-out/bin/flint flint-package/bin/
-        cp -r ./std/* flint-package/std/
+        mkdir -p deb-amd64/usr/bin deb-amd64/usr/share/flint/std deb-amd64/DEBIAN
+        cp ./out-x86_64/bin/flint deb-amd64/usr/bin/
+        cp -r ./std/* deb-amd64/usr/share/flint/std/
+        cp src/core/codegen/runtime/flint_rt.* deb-amd64/usr/share/flint/
         
-        tar -czvf flint-linux-x86_64.tar.gz -C flint-package .
+        cat << EOF > deb-amd64/DEBIAN/control
+        Package: flint
+        Version: ${VERSION}
+        Section: devel
+        Priority: optional
+        Architecture: amd64
+        Depends: libc6, libcurl4-openssl-dev | libcurl4, clang | gcc
+        Maintainer: Lucas Paulino Da Silva <lucas.workps@gmail.com>
+        Description: Pipeline-oriented systems programming language
+         Flint is a statically-typed, pipeline-oriented language that transpiles to C99.
+         Designed as a fast, dependency-free replacement for Bash and Python.
+        EOF
+        dpkg-deb --build deb-amd64 "flint_${VERSION}_amd64.deb"
+
+        mkdir -p deb-arm64/usr/bin deb-arm64/usr/share/flint/std deb-arm64/DEBIAN
+        cp ./out-aarch64/bin/flint deb-arm64/usr/bin/
+        cp -r ./std/* deb-arm64/usr/share/flint/std/
+        cp src/core/codegen/runtime/flint_rt.* deb-arm64/usr/share/flint/
+        
+        cat << EOF > deb-arm64/DEBIAN/control
+        Package: flint
+        Version: ${VERSION}
+        Section: devel
+        Priority: optional
+        Architecture: arm64
+        Depends: libc6, libcurl4-openssl-dev | libcurl4, clang | gcc
+        Maintainer: Lucas Paulino Da Silva <lucas.workps@gmail.com>
+        Description: Pipeline-oriented systems programming language
+         Flint is a statically-typed, pipeline-oriented language that transpiles to C99.
+         Designed as a fast, dependency-free replacement for Bash and Python.
+        EOF
+        dpkg-deb --build deb-arm64 "flint_${VERSION}_arm64.deb"
 
     - name: Upload to GitHub Releases
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v2
       with:
-        files: flint-linux-x86_64.tar.gz
+        files: |
+          flint-linux-x86_64.tar.gz
+          flint-linux-aarch64.tar.gz
+          flint_*.deb
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

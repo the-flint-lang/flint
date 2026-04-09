@@ -1,15 +1,30 @@
 #!/usr/bin/make -f
+
+# Dizemos ao debhelper para usar a rotina padrão, mas vamos sobrescrever o build
 %:
 	dh $@
 
+# Evita que o Zig tente acessar o cache global em ~/.cache/zig
+export ZIG_GLOBAL_CACHE_DIR=$(CURDIR)/debian/.zig-cache
+export ZIG_LOCAL_CACHE_DIR=$(CURDIR)/debian/.zig-cache
+
 override_dh_auto_build:
-	# Pre-compiled binary — nothing to build.
+	zig build -Doptimize=ReleaseSmall -Dcpu=baseline --prefix $(CURDIR)/debian/tmp
 
 override_dh_auto_install:
-	install -D -m 0755 zig-out/bin/flint \
+	install -D -m 0755 $(CURDIR)/debian/tmp/bin/flint \
 		$(CURDIR)/debian/flint/usr/bin/flint
+	
+	# Instalamos a STD e o Runtime em /usr/share/flint
 	install -d $(CURDIR)/debian/flint/usr/share/flint/std
-	cp -r std/. $(CURDIR)/debian/flint/usr/share/flint/std/
+	cp -r std/* $(CURDIR)/debian/flint/usr/share/flint/std/
+	install -D -m 0644 src/core/codegen/runtime/flint_rt.c $(CURDIR)/debian/flint/usr/share/flint/
+	install -D -m 0644 src/core/codegen/runtime/flint_rt.h $(CURDIR)/debian/flint/usr/share/flint/
 
 override_dh_auto_test:
-	# Skip tests during packaging.
+	true
+
+override_dh_clean:
+	dh_clean
+	rm -rf $(CURDIR)/debian/.zig-cache
+	rm -rf $(CURDIR)/debian/tmp

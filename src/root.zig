@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 const tcc = @cImport({
     @cInclude("libtcc.h");
@@ -343,14 +344,45 @@ const Linker = struct {
     }
 };
 
+const CpuArchs = enum {
+    x86_64,
+    aarch,
+    baseline, // fallback
+};
+
+const FlintFlags = struct {
+    is_less_mode: bool,
+    is_test: bool,
+
+    cpu_arch: CpuArchs,
+
+    fn getDefaultArch(_: FlintFlags) CpuArchs {
+        const arch = builtin.cpu.arch;
+
+        if (arch == .x86_64) {
+            return .x86_64;
+        } else if (builtin.cpu.arch == .aarch64) {
+            return .aarch;
+        } else {
+            return .baseline;
+        }
+    }
+};
+
 pub fn runCli(alloc: std.mem.Allocator, io: IoHelper) !void {
     var args = try std.process.argsWithAllocator(alloc);
     defer args.deinit();
     _ = args.next();
 
     var command: ?[]const u8 = null;
-    var is_less_mode = false;
-    var is_test = false;
+
+    var flags = FlintFlags{
+        .is_less_mode = false,
+        .is_test = false,
+        .cpu_arch = .baseline,
+    };
+
+    flags.cpu_arch = flags.getDefaultArch();
 
     while (args.next()) |arg| {
         if (checker.cliArgsEquals(arg, &.{ "-h", "--help" })) {
@@ -363,18 +395,19 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper) !void {
         }
 
         if (checker.cliArgsEquals(arg, &.{ "-s", "--small" })) {
-            is_less_mode = true;
+            flags.is_less_mode = true;
             continue;
         }
 
         if (checker.cliArgsEquals(arg, &.{ "-t", "--test" })) {
-            is_test = true;
+            flags.is_test = true;
             continue;
         }
 
         command = arg;
         break;
     }
+
     const cmd = command orelse {
         try help(io);
         return;
@@ -439,15 +472,49 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper) !void {
 
     if (checker.strEquals(cmd, "run")) {
         const file = try getFlFile(&args, io);
-        try runner(alloc, &args, file, io, true, is_less_mode, is_test);
+        try runner(alloc, &args, file, io, true, flags);
         return;
     }
     if (checker.strEquals(cmd, "build")) {
         const file = try getFlFile(&args, io);
-        try runner(alloc, &args, file, io, false, is_less_mode, is_test);
+
+        parseFlags(&args, &flags);
+        try runner(alloc, &args, file, io, false, flags);
         return;
     }
     try help(io);
+}
+
+fn parseFlags(args: *std.process.ArgIterator, flags: *FlintFlags) void {
+    var is_cpu = false;
+
+    while (args.next()) |arg| {
+        if (is_cpu) {
+            is_cpu = false;
+
+            if (checker.cliArgsEquals(arg, &.{"baseline"})) {
+                flags.cpu_arch = .baseline;
+                continue;
+            }
+
+            if (checker.cliArgsEquals(arg, &.{"x86_64"})) {
+                flags.cpu_arch = .x86_64;
+                continue;
+            }
+
+            if (checker.cliArgsEquals(arg, &.{"aarch"})) {
+                flags.cpu_arch = .aarch;
+                continue;
+            }
+        }
+
+        if (checker.cliArgsEquals(arg, &.{ "-c", "--cpu" })) {
+            is_cpu = true;
+            continue;
+        }
+
+        break;
+    }
 }
 
 fn getFlFile(args: *std.process.ArgIterator, io: anytype) ![]const u8 {
@@ -458,7 +525,7 @@ fn getFlFile(args: *std.process.ArgIterator, io: anytype) ![]const u8 {
     return file_path;
 }
 
-fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: []const u8, io: anytype, is_run: bool, is_less_mode: bool, is_test: bool) !void {
+fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: []const u8, io: anytype, is_run: bool, flags: FlintFlags) !void {
     var global_tree = AstTree.init();
     defer global_tree.deinit(alloc);
 
@@ -488,7 +555,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
     }
 
     var exe_name_buf: [128]u8 = undefined;
-    const exe_name = if (is_test) blk: {
+    const exe_name = if (flags.is_test) blk: {
         const hash = std.hash.Fnv1a_64.hash(file_path);
         break :blk std.fmt.bufPrint(&exe_name_buf, ".test_bin_{x}", .{hash}) catch "test_bin";
     } else std.fs.path.stem(file_path);
@@ -517,7 +584,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
             std.fs.cwd().deleteFile("flint_rt.h") catch {};
             std.fs.cwd().deleteFile("flint_rt.c") catch {};
         }
-        if (is_test) {
+        if (flags.is_test) {
             std.fs.cwd().deleteFile(exe_name) catch {};
         }
     }
@@ -666,7 +733,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
 
     const compiler = getBestCCompiler(alloc, false);
 
-    const c_args = try compiler.getArgsExtended(alloc, exe_name, rt_path, precompiled, false, has_pch, is_less_mode);
+    const c_args = try compiler.getArgsExtended(alloc, exe_name, rt_path, precompiled, false, has_pch, flags);
     defer alloc.free(c_args);
 
     var child = std.process.Child.init(c_args, alloc);
@@ -777,7 +844,7 @@ pub fn runTests(alloc: std.mem.Allocator, io: IoHelper) !void {
 }
 
 const ClangCompiler = struct {
-    pub fn getArgsExtended(self: ClangCompiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool, is_less_mode: bool) ![]const []const u8 {
+    pub fn getArgsExtended(self: ClangCompiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool, flags: FlintFlags) ![]const []const u8 {
         _ = self;
         var args = std.ArrayList([]const u8).empty;
 
@@ -796,10 +863,8 @@ const ClangCompiler = struct {
         if (is_run) {
             try args.append(alloc, "-O0");
         } else {
-            try args.append(alloc, if (is_less_mode) "-Os" else "-Ofast");
+            try args.append(alloc, if (flags.is_less_mode) "-Os" else if (flags.cpu_arch == .baseline) "-O2" else "-Ofast");
             try args.append(alloc, "-flto");
-            try args.append(alloc, "-march=native");
-            try args.append(alloc, "-mtune=native");
             try args.append(alloc, "-finline-functions");
             try args.append(alloc, "-ffunction-sections");
             try args.append(alloc, "-fdata-sections");
@@ -816,6 +881,18 @@ const ClangCompiler = struct {
             try args.append(alloc, "-fno-semantic-interposition");
             try args.append(alloc, "-fno-plt");
             try args.append(alloc, "-fmerge-all-constants");
+
+            switch (flags.cpu_arch) {
+                .x86_64 => {
+                    try args.append(alloc, "--target=x86_64-linux-gnu");
+                    try args.append(alloc, "-march=x86-64-v3");
+                },
+                .aarch => {
+                    try args.append(alloc, "--target=aarch64-linux-gnu");
+                    try args.append(alloc, "-mcpu=generic");
+                },
+                .baseline => {},
+            }
         }
 
         try args.append(alloc, "-Wno-unused-value");
@@ -832,7 +909,7 @@ const ClangCompiler = struct {
 };
 
 const GccCompiler = struct {
-    pub fn getArgsExtended(self: GccCompiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool, is_less_mode: bool) ![]const []const u8 {
+    pub fn getArgsExtended(self: GccCompiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool, flags: FlintFlags) ![]const []const u8 {
         _ = self;
         _ = has_pch;
         var args = std.ArrayList([]const u8).empty;
@@ -852,9 +929,9 @@ const GccCompiler = struct {
         if (is_run) {
             try args.append(alloc, "-O0");
         } else {
-            try args.append(alloc, if (is_less_mode) "-Os" else "-Ofast");
+            try args.append(alloc, if (flags.is_less_mode) "-Os" else if (flags.cpu_arch == .baseline) "-O2" else "-Ofast");
+
             try args.append(alloc, "-flto");
-            try args.append(alloc, "-march=native");
             try args.append(alloc, "-mtune=native");
             try args.append(alloc, "-finline-functions");
             try args.append(alloc, "-ffunction-sections");
@@ -882,9 +959,9 @@ const GccCompiler = struct {
 };
 
 const TccCompiler = struct {
-    pub fn getArgsExtended(self: TccCompiler, alloc: std.mem.Allocator, out_exe: []const u8, pre: bool, is_less_mode: bool) ![]const []const u8 {
+    pub fn getArgsExtended(self: TccCompiler, alloc: std.mem.Allocator, out_exe: []const u8, pre: bool, flags: FlintFlags) ![]const []const u8 {
         _ = self;
-        _ = is_less_mode;
+        _ = flags;
 
         var args = std.ArrayList([]const u8).empty;
 
@@ -910,11 +987,11 @@ pub const Compiler = union(enum) {
     gcc: GccCompiler,
     tcc: TccCompiler,
 
-    pub fn getArgsExtended(self: Compiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool, is_less_mode: bool) ![]const []const u8 {
+    pub fn getArgsExtended(self: Compiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool, flags: FlintFlags) ![]const []const u8 {
         return switch (self) {
-            .tcc => |t| t.getArgsExtended(alloc, out_exe, pre, is_less_mode),
-            .clang => |c| c.getArgsExtended(alloc, out_exe, rt, pre, is_run, has_pch, is_less_mode),
-            .gcc => |g| g.getArgsExtended(alloc, out_exe, rt, pre, is_run, has_pch, is_less_mode),
+            .tcc => |t| t.getArgsExtended(alloc, out_exe, pre, flags),
+            .clang => |c| c.getArgsExtended(alloc, out_exe, rt, pre, is_run, has_pch, flags),
+            .gcc => |g| g.getArgsExtended(alloc, out_exe, rt, pre, is_run, has_pch, flags),
         };
     }
 };
