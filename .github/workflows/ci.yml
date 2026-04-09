@@ -149,8 +149,7 @@ jobs:
         git clone --branch gh-pages https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git apt-repo
         
         mkdir -p apt-repo/pool/main/
-        cp deb-amd64/*.deb apt-repo/pool/main/
-        cp deb-arm64/*.deb apt-repo/pool/main/
+        cp flint_*.deb apt-repo/pool/main/
         
         cd apt-repo
         dpkg-scanpackages --multiversion pool/ > Packages
