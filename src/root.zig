@@ -717,6 +717,10 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
             while (args.next()) |a| try run_cmd.append(alloc, a);
 
             var run_child = std.process.Child.init(run_cmd.items, alloc);
+            var safe_env_run = try buildSafeEnvMap(alloc);
+            defer safe_env_run.deinit();
+            run_child.env_map = &safe_env_run;
+
             const term = try run_child.spawnAndWait();
 
             std.fs.cwd().deleteFile(tmp_exe) catch {};
