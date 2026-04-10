@@ -18,6 +18,7 @@ pub const Parser = struct {
     current: usize = 0,
     source: []const u8,
     file_path: []const u8,
+    file_id: u32,
 
     allocator: std.mem.Allocator,
     tree: *AstTree,
@@ -27,11 +28,12 @@ pub const Parser = struct {
     had_error: bool = false,
     disable_range: bool = false,
 
-    pub fn init(allocator: std.mem.Allocator, tree: *AstTree, pool: *StringPool, tokens: []const Token, source: []const u8, file_path: []const u8, io: IoHelpers) Parser {
+    pub fn init(allocator: std.mem.Allocator, tree: *AstTree, pool: *StringPool, tokens: []const Token, source: []const u8, file_path: []const u8, file_id: u32, io: IoHelpers) Parser {
         return .{
             .tokens = tokens,
             .source = source,
             .file_path = file_path,
+            .file_id = file_id,
             .current = 0,
             .allocator = allocator,
             .tree = tree,
@@ -108,10 +110,15 @@ pub const Parser = struct {
 
         _ = try self.consumeDelimiter(.rbrace_token, "Expected '}' to close struct body.");
 
-        return try self.tree.addNode(self.allocator, .{ .struct_decl = .{
-            .name_id = name_id,
-            .fields = try fields.toOwnedSlice(self.allocator),
-        } });
+        return try self.tree.addNode(self.allocator, .{
+            .struct_decl = .{
+                .line = name_token.line,
+                .column = name_token.column,
+                .file_id = name_token.file_id,
+                .name_id = name_id,
+                .fields = try fields.toOwnedSlice(self.allocator),
+            },
+        });
     }
 
     fn parseImportStmt(self: *Parser) !NodeIndex {
@@ -194,6 +201,9 @@ pub const Parser = struct {
 
         return try self.tree.addNode(self.allocator, .{
             .function_decl = .{
+                .line = name_token.line,
+                .column = name_token.column,
+                .file_id = name_token.file_id,
                 .is_extern = is_extern,
                 .name_id = name_id,
                 .arguments = args,
@@ -291,6 +301,7 @@ pub const Parser = struct {
                 expr_idx = try self.tree.addNode(self.allocator, .{
                     .call_expr = .{
                         .line = self.previous().line,
+                        .file_id = self.file_id,
                         .callee = expr_idx,
                         .arguments = try args.toOwnedSlice(self.allocator),
                     },
@@ -335,6 +346,7 @@ pub const Parser = struct {
 
                 expr_idx = try self.tree.addNode(self.allocator, .{ .property_access_expr = .{
                     .line = property_token.line,
+                    .file_id = self.file_id,
                     .object = expr_idx,
                     .property_name_id = prop_id,
                 } });
@@ -485,6 +497,7 @@ pub const Parser = struct {
             .var_decl = .{
                 .line = name_token.line + 1,
                 ._type = type_node_idx,
+                .file_id = self.file_id,
                 .is_const = is_const,
                 .name_id = name_id,
                 .value = value_expr_idx,
@@ -492,32 +505,33 @@ pub const Parser = struct {
         });
     }
 
+    fn parseType(self: *Parser) anyerror!NodeIndex {
+        if (!self.match(&.{ .integer_type_token, .string_type_token, .char_type_token, .boolean_type_token, .value_type_token, .array_type_token, .identifier_token, .void_token })) {
+            return self.reportError(self.peek(), "Expected type name.");
+        }
+
+        const base_token = self.previous();
+        var inner_type_idx: ?NodeIndex = null;
+
+        if (std.mem.eql(u8, base_token.value, "arr")) {
+            if (self.match(&.{.less_token})) {
+                inner_type_idx = try self.parseType();
+                _ = try self.consume(.greater_token, "Expected '>' after generic type.");
+            }
+        }
+
+        return try self.tree.addNode(self.allocator, .{ .type_expr = .{
+            .base_token = base_token,
+            .inner_type = inner_type_idx,
+        } });
+    }
+
     pub fn parseExpression(self: *Parser) !NodeIndex {
         return try self.parseAssignment();
     }
 
-    fn parseLogicalOr(self: *Parser) !NodeIndex {
-        var left = try self.parseLogicalAnd();
-        while (self.match(&.{.or_token})) {
-            const op_token = self.previous();
-            const right = try self.parseLogicalAnd();
-            left = try self.tree.addNode(self.allocator, .{ .logical_or = .{ .left = left, .operator = op_token, .right = right } });
-        }
-        return left;
-    }
-
-    fn parseLogicalAnd(self: *Parser) !NodeIndex {
-        var left = try self.parseEquality();
-        while (self.match(&.{.and_token})) {
-            const op_token = self.previous();
-            const right = try self.parseEquality();
-            left = try self.tree.addNode(self.allocator, .{ .logical_and = .{ .left = left, .operator = op_token, .right = right } });
-        }
-        return left;
-    }
-
     fn parseAssignment(self: *Parser) anyerror!NodeIndex {
-        const expr_idx = try self.parsePipeline();
+        const expr_idx = try self.parseLogicalOr();
 
         if (self.match(&.{.catch_token})) {
             _ = try self.consume(.pipe_token, "Expected '|' after 'catch' keyword.");
@@ -570,25 +584,24 @@ pub const Parser = struct {
         return expr_idx;
     }
 
-    fn parsePipeline(self: *Parser) anyerror!NodeIndex {
-        var expr_idx = try self.parseLogicalOr();
-
-        while (self.match(&.{.pipeline_token})) {
-            const right_idx = try self.parseLogicalOr();
-
-            const right_node = self.tree.getNode(right_idx);
-
-            if (right_node != .call_expr) {
-                return self.reportError(self.previous(), "The right side of the '~>' pipeline operator must be a function call.");
-            }
-
-            expr_idx = try self.tree.addNode(self.allocator, .{ .pipeline_expr = .{
-                .left = expr_idx,
-                .right_call = right_idx,
-            } });
+    fn parseLogicalOr(self: *Parser) !NodeIndex {
+        var left = try self.parseLogicalAnd();
+        while (self.match(&.{.or_token})) {
+            const op_token = self.previous();
+            const right = try self.parseLogicalAnd();
+            left = try self.tree.addNode(self.allocator, .{ .logical_or = .{ .left = left, .operator = op_token, .right = right } });
         }
+        return left;
+    }
 
-        return expr_idx;
+    fn parseLogicalAnd(self: *Parser) !NodeIndex {
+        var left = try self.parseEquality();
+        while (self.match(&.{.and_token})) {
+            const op_token = self.previous();
+            const right = try self.parseEquality();
+            left = try self.tree.addNode(self.allocator, .{ .logical_and = .{ .left = left, .operator = op_token, .right = right } });
+        }
+        return left;
     }
 
     fn parseEquality(self: *Parser) anyerror!NodeIndex {
@@ -605,11 +618,11 @@ pub const Parser = struct {
     }
 
     fn parseComparison(self: *Parser) anyerror!NodeIndex {
-        var expr_idx = try self.parseRange();
+        var expr_idx = try self.parsePipeline();
 
         while (self.match(&.{ .less_token, .less_equal_token, .greater_token, .greater_equal_token })) {
             const operator = self.previous();
-            const right_idx = try self.parseRange();
+            const right_idx = try self.parsePipeline();
 
             expr_idx = try self.tree.addNode(self.allocator, .{ .binary_expr = .{ .left = expr_idx, .operator = operator, .right = right_idx } });
         }
@@ -617,53 +630,35 @@ pub const Parser = struct {
         return expr_idx;
     }
 
-    fn parseType(self: *Parser) anyerror!NodeIndex {
-        if (!self.match(&.{ .integer_type_token, .string_type_token, .char_type_token, .boolean_type_token, .value_type_token, .array_type_token, .identifier_token, .void_token })) {
-            return self.reportError(self.peek(), "Expected type name.");
-        }
+    fn parsePipeline(self: *Parser) anyerror!NodeIndex {
+        var expr_idx = try self.parseRange();
 
-        const base_token = self.previous();
-        var inner_type_idx: ?NodeIndex = null;
+        while (self.match(&.{.pipeline_token})) {
+            const right_idx = try self.parseRange();
 
-        if (std.mem.eql(u8, base_token.value, "arr")) {
-            if (self.match(&.{.less_token})) {
-                inner_type_idx = try self.parseType();
-                _ = try self.consume(.greater_token, "Expected '>' after generic type.");
+            const right_node = self.tree.getNode(right_idx);
+
+            if (right_node != .call_expr) {
+                return self.reportError(self.previous(), "The right side of the '~>' pipeline operator must be a function call.");
             }
+
+            expr_idx = try self.tree.addNode(self.allocator, .{ .pipeline_expr = .{
+                .left = expr_idx,
+                .right_call = right_idx,
+            } });
         }
 
-        return try self.tree.addNode(self.allocator, .{ .type_expr = .{
-            .base_token = base_token,
-            .inner_type = inner_type_idx,
-        } });
+        return expr_idx;
     }
 
-    fn parseRange(self: *Parser) anyerror!NodeIndex {
-        var expr_idx = try self.parseTerm();
+    fn parseFactor(self: *Parser) anyerror!NodeIndex {
+        var expr_idx = try self.parseUnary();
 
-        if (!self.disable_range and self.match(&.{.dot_dot_token})) {
-            const line = self.previous().line;
+        while (self.match(&.{ .star_token, .slash_token, .remainder_token })) {
+            const operator = self.previous();
+            const right_idx = try self.parseUnary();
 
-            const right_idx = try self.parseTerm();
-
-            // fake token
-            const range_str_id = try self.pool.intern(self.allocator, "range");
-            const range_callee = try self.tree.addNode(self.allocator, .{ .identifier = .{
-                .token = Token{ ._type = .identifier_token, .value = "range", .line = line, .column = 0 },
-                .name_id = range_str_id,
-            } });
-
-            var args = std.ArrayList(NodeIndex).empty;
-            try args.append(self.allocator, expr_idx);
-            try args.append(self.allocator, right_idx);
-
-            expr_idx = try self.tree.addNode(self.allocator, .{
-                .call_expr = .{
-                    .line = line,
-                    .callee = range_callee,
-                    .arguments = try args.toOwnedSlice(self.allocator),
-                },
-            });
+            expr_idx = try self.tree.addNode(self.allocator, .{ .binary_expr = .{ .left = expr_idx, .operator = operator, .right = right_idx } });
         }
 
         return expr_idx;
@@ -682,14 +677,39 @@ pub const Parser = struct {
         return expr_idx;
     }
 
-    fn parseFactor(self: *Parser) anyerror!NodeIndex {
-        var expr_idx = try self.parseUnary();
+    fn parseRange(self: *Parser) anyerror!NodeIndex {
+        var expr_idx = try self.parseTerm();
 
-        while (self.match(&.{ .star_token, .slash_token, .remainder_token })) {
-            const operator = self.previous();
-            const right_idx = try self.parseUnary();
+        if (!self.disable_range and self.match(&.{.dot_dot_token})) {
+            const line = self.previous().line;
 
-            expr_idx = try self.tree.addNode(self.allocator, .{ .binary_expr = .{ .left = expr_idx, .operator = operator, .right = right_idx } });
+            const right_idx = try self.parseTerm();
+
+            // fake token
+            const range_str_id = try self.pool.intern(self.allocator, "range");
+            const range_callee = try self.tree.addNode(self.allocator, .{ .identifier = .{
+                .token = Token{
+                    ._type = .identifier_token,
+                    .value = "range",
+                    .line = line,
+                    .file_id = self.file_id,
+                    .column = 0,
+                },
+                .name_id = range_str_id,
+            } });
+
+            var args = std.ArrayList(NodeIndex).empty;
+            try args.append(self.allocator, expr_idx);
+            try args.append(self.allocator, right_idx);
+
+            expr_idx = try self.tree.addNode(self.allocator, .{
+                .call_expr = .{
+                    .line = line,
+                    .file_id = self.file_id,
+                    .callee = range_callee,
+                    .arguments = try args.toOwnedSlice(self.allocator),
+                },
+            });
         }
 
         return expr_idx;
@@ -736,11 +756,11 @@ pub const Parser = struct {
         var len: u32 = if (token.value.len > 0) @intCast(token.value.len) else 1;
 
         if (point_after) {
-            col += len - 1;
+            col += len;
             len = 1;
         }
 
-        try diag.addLabel(token.line, col + 1, 1, label_text, true);
+        try diag.addLabel(token.line, col, len, label_text, true);
         try diag.emit(self.io);
 
         return error.ParseError;
@@ -794,6 +814,7 @@ pub const Parser = struct {
         return try self.tree.addNode(self.allocator, .{ .literal = .{ .token = .{
             ._type = .string_literal_token,
             .value = text,
+            .file_id = self.file_id,
             .line = self.previous().line,
             .column = self.previous().column,
         } } });
@@ -801,12 +822,11 @@ pub const Parser = struct {
 
     fn wrapInToStr(self: *Parser, expr_idx: NodeIndex) !NodeIndex {
         const to_str_id = try self.pool.intern(self.allocator, "to_str");
-        const func_id_idx = try self.tree.addNode(self.allocator, .{ .identifier = .{ .token = Token{ ._type = .identifier_token, .value = "to_str", .line = 0, .column = 0 }, .name_id = to_str_id } });
-
+        const func_id_idx = try self.tree.addNode(self.allocator, .{ .identifier = .{ .token = Token{ ._type = .identifier_token, .value = "to_str", .line = 0, .column = 0, .file_id = self.file_id }, .name_id = to_str_id } });
         var args = try self.allocator.alloc(NodeIndex, 1);
         args[0] = expr_idx;
 
-        return try self.tree.addNode(self.allocator, .{ .call_expr = .{ .line = 0, .callee = func_id_idx, .arguments = args } });
+        return try self.tree.addNode(self.allocator, .{ .call_expr = .{ .line = 0, .callee = func_id_idx, .file_id = self.file_id, .arguments = args } });
     }
 
     fn parseInterpolatedString(self: *Parser, token: Token) anyerror!NodeIndex {
@@ -868,6 +888,7 @@ pub const Parser = struct {
                             .position = 0,
                             .column = inner_start_col + prefix_visual_len,
                             .line = token.line,
+                            .file_id = self.file_id,
                             .source = expr_str,
                             .tokens = std.ArrayList(Token).empty,
                         };
@@ -881,6 +902,7 @@ pub const Parser = struct {
                             .current = 0,
                             .tree = self.tree,
                             .pool = self.pool,
+                            .file_id = self.file_id,
                             .io = self.io,
                             .had_error = false,
                         };
@@ -905,13 +927,20 @@ pub const Parser = struct {
         const build_str_id = try self.pool.intern(self.allocator, "build_str");
         const func_id_idx = try self.tree.addNode(self.allocator, .{
             .identifier = .{
-                .token = Token{ ._type = .identifier_token, .value = "build_str", .line = token.line, .column = token.column },
+                .token = Token{
+                    ._type = .identifier_token,
+                    .file_id = self.file_id,
+                    .value = "build_str",
+                    .line = token.line,
+                    .column = token.column,
+                },
                 .name_id = build_str_id,
             },
         });
 
         return try self.tree.addNode(self.allocator, .{ .call_expr = .{
             .line = token.line,
+            .file_id = self.file_id,
             .callee = func_id_idx,
             .arguments = try parts.toOwnedSlice(self.allocator),
         } });

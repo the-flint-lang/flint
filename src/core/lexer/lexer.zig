@@ -19,6 +19,8 @@ pub const Lexer = struct {
 
     source: []const u8,
     file_path: []const u8,
+    file_id: u32,
+
     tokens: std.ArrayList(Token),
 
     alloc: std.mem.Allocator,
@@ -54,6 +56,8 @@ pub const Lexer = struct {
                 continue;
             }
 
+            const start_col = self.column - 1;
+
             if (std.ascii.isAlphabetic(c) or c == '_') {
                 const indet = self.readIdentifier();
 
@@ -61,8 +65,9 @@ pub const Lexer = struct {
 
                 try self.tokens.append(self.alloc, Token{
                     ._type = _type_ident,
+                    .file_id = self.file_id,
                     .value = indet,
-                    .column = self.column,
+                    .column = start_col,
                     .line = self.line,
                 });
 
@@ -75,8 +80,9 @@ pub const Lexer = struct {
 
                 try self.tokens.append(self.alloc, Token{
                     ._type = if (has_dot) .float_literal_token else .integer_literal_token,
+                    .file_id = self.file_id,
                     .value = number,
-                    .column = self.column,
+                    .column = start_col,
                     .line = self.line,
                 });
 
@@ -87,8 +93,9 @@ pub const Lexer = struct {
                 const string = try self.readString();
                 try self.tokens.append(self.alloc, Token{
                     ._type = .string_literal_token,
+                    .file_id = self.file_id,
                     .value = string,
-                    .column = self.column,
+                    .column = start_col,
                     .line = self.line,
                 });
 
@@ -100,8 +107,9 @@ pub const Lexer = struct {
 
                 try self.tokens.append(self.alloc, Token{
                     ._type = .char_literal_token,
+                    .file_id = self.file_id,
                     .value = char,
-                    .column = self.column,
+                    .column = start_col,
                     .line = self.line,
                 });
 
@@ -113,8 +121,9 @@ pub const Lexer = struct {
 
                 try self.tokens.append(self.alloc, Token{
                     ._type = .multile_string_literal_token,
+                    .file_id = self.file_id,
                     .value = string,
-                    .column = self.column,
+                    .column = start_col,
                     .line = self.line,
                 });
 
@@ -128,16 +137,18 @@ pub const Lexer = struct {
 
                     try self.tokens.append(self.alloc, Token{
                         ._type = .interpolated_string_token,
+                        .file_id = self.file_id,
                         .value = content,
-                        .column = self.column,
+                        .column = start_col,
                         .line = self.line,
                     });
                     continue;
                 } else {
                     try self.tokens.append(self.alloc, Token{
                         ._type = .error_token,
+                        .file_id = self.file_id,
                         .value = "$",
-                        .column = self.column,
+                        .column = start_col,
                         .line = self.line,
                     });
                     continue;
@@ -229,8 +240,9 @@ pub const Lexer = struct {
                         const number = try self.readNumber(&a);
                         try self.tokens.append(self.alloc, Token{
                             ._type = .float_literal_token,
+                            .file_id = self.file_id,
                             .value = number,
-                            .column = self.column,
+                            .column = start_col,
                             .line = self.line,
                         });
                         continue;
@@ -288,7 +300,7 @@ pub const Lexer = struct {
 
                 else => {
                     const start_pos = self.position - 1;
-                    const start_col = self.column - 1;
+                    // const start_col = self.column - 1;
 
                     while (!self.isAtEnd() and self.source[self.position] >= 128) {
                         self.advance();
@@ -309,14 +321,16 @@ pub const Lexer = struct {
 
             try self.tokens.append(self.alloc, Token{
                 ._type = _type,
+                .file_id = self.file_id,
                 .value = "",
-                .column = self.column,
+                .column = start_col,
                 .line = self.line,
             });
         }
 
         try self.tokens.append(self.alloc, Token{
             ._type = .eof_token,
+            .file_id = self.file_id,
             .value = "",
             .column = self.column,
             .line = self.line,

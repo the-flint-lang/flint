@@ -1,4 +1,4 @@
-flint (1.9.1) unstable; urgency=medium
+flint (1.10.0-1) noble; urgency=medium
 
   * Implemented Rust-style dense error diagnostics with contextual labels.
   * Added strict Type Checker validation for Array homogeneity and Dict keys.
@@ -8,7 +8,7 @@ flint (1.9.1) unstable; urgency=medium
 
  -- Lucas Paulino Da Silva <lucas.workps@gmail.com>  Fri, 27 Mar 2026 14:00:00 -0300
 
-flint (1.7.5) unstable; urgency=low
+flint (1.7.5) noble; urgency=low
 
   * Initial Debian packaging.
   * Includes pre-compiled binary for amd64.

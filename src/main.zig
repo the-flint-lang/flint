@@ -1,4 +1,5 @@
 const std = @import("std");
+
 const flint = @import("flint");
 const IoHelper = flint.IoHelper;
 
@@ -29,5 +30,11 @@ pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(gpa.allocator());
     defer arena.deinit();
 
-    flint.runCli(arena.allocator(), io) catch std.process.exit(1);
+    const alloc = arena.allocator();
+
+    flint.runCli(alloc, io) catch {
+        _ = stdout_writer.interface.flush() catch {};
+        _ = stderr_writer.interface.flush() catch {};
+        std.process.exit(1);
+    };
 }

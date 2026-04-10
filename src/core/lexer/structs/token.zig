@@ -8,6 +8,7 @@ pub const Token = struct {
 
     line: u32,
     column: u32,
+    file_id: u32,
 
     pub fn toString(self: Token, alloc: std.mem.Allocator) ![]const u8 {
         if (self.value.len == 0) {

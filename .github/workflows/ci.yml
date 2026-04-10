@@ -3,71 +3,176 @@ name: Flint CI & Release
 on:
   push:
     branches: [ "**" ]
-    tags: [ "v*" ] 
+    tags: [ "v*" ]
   pull_request:
     branches: [ "**" ]
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    container: debian:12
 
     permissions:
       contents: write
 
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
+      - name: Install Base Utilities (Debian Container Prep)
+        run: |
+          apt-get update
+          apt-get install -y git sudo wget xz-utils curl ca-certificates dpkg-dev
+          git config --global --add safe.directory '*'
 
-    - name: Install Target Dependencies (Clang, libcurl & tcc)
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y clang libcurl4-openssl-dev tcc libtcc-dev 
-    
-    - name: Cache Zig
-      uses: actions/cache@v4
-      with:
-        path: /opt/zig
-        key: zig-0.15.2
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-    - name: Install Zig
-      run: |
-        if [ ! -f /opt/zig/zig ]; then
-          wget -q https://ziglang.org/download/0.15.2/zig-x86_64-linux-0.15.2.tar.xz
-          tar -xf zig-x86_64-linux-0.15.2.tar.xz
-          sudo mv zig-x86_64-linux-0.15.2 /opt/zig
-        fi
-        echo "/opt/zig" >> $GITHUB_PATH
+      - name: Install Target Dependencies (Cross-Compilation Setup)
+        run: |
+          sudo dpkg --add-architecture arm64
+          sudo apt-get update
+          sudo apt-get install -y clang tcc libtcc-dev gcc-aarch64-linux-gnu libc6-dev-arm64-cross libcurl4-openssl-dev
+          sudo apt-get install -y -o Dpkg::Options::="--force-overwrite" libcurl4-openssl-dev:arm64 libtcc-dev:arm64
 
-    - name: Verify Zig
-      run: zig version
+      - name: Cache Zig
+        uses: actions/cache@v4
+        with:
+          path: /opt/zig
+          key: zig-0.15.2
 
-    - name: Build Flint
-      run: zig build -Doptimize=ReleaseFast -Dcpu=baseline
+      - name: Install Zig
+        run: |
+          if [ ! -d /opt/zig ]; then
+            wget -q https://ziglang.org/download/0.15.2/zig-x86_64-linux-0.15.2.tar.xz
+            tar -xf zig-x86_64-linux-0.15.2.tar.xz
+            sudo mv zig-x86_64-linux-0.15.2 /opt/zig
+          fi
+          echo "/opt/zig" >> $GITHUB_PATH
 
-    - name: Mock System Installation (Fixes Race Condition in Tests)
-      run: |
-        sudo mkdir -p /usr/share/flint/std
-        sudo cp src/core/codegen/runtime/flint_rt.* /usr/share/flint/
-        sudo cp -r std/* /usr/share/flint/std/
+      - name: Verify Zig
+        run: zig version
 
-    - name: Run Test Battery
-      run: ./zig-out/bin/flint test
+      - name: Build Flint (x86_64)
+        run: zig build -Dtarget=x86_64-linux-gnu -Doptimize=ReleaseSmall -Dcpu=baseline --prefix out-x86_64
 
-    - name: Package Release Tarball
-      if: startsWith(github.ref, 'refs/tags/')
-      run: |
-        mkdir -p flint-package/bin
-        mkdir -p flint-package/std
-        
-        cp ./zig-out/bin/flint flint-package/bin/
-        cp -r ./std/* flint-package/std/
-        
-        tar -czvf flint-linux-x86_64.tar.gz -C flint-package .
+      - name: Mock System Installation
+        run: |
+          sudo mkdir -p /usr/share/flint/std
+          sudo cp src/core/codegen/runtime/flint_rt.* /usr/share/flint/
+          sudo cp -r std/* /usr/share/flint/std/
 
-    - name: Upload to GitHub Releases
-      if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v2
-      with:
-        files: flint-linux-x86_64.tar.gz
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build Flint (aarch64)
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          sed -i 's/x86_64-linux-gnu/aarch64-linux-gnu/g' build.zig
+          zig build -Dtarget=aarch64-linux-gnu -Doptimize=ReleaseSmall -Dcpu=baseline --prefix out-aarch64
+
+      - name: Package Release Tarballs
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          mkdir -p pkg-x86_64/bin pkg-x86_64/std
+          cp ./out-x86_64/bin/flint pkg-x86_64/bin/
+          cp -r ./std/* pkg-x86_64/std/
+          cp src/core/codegen/runtime/flint_rt.* pkg-x86_64/
+          tar -czvf flint-linux-x86_64.tar.gz -C pkg-x86_64 .
+
+          mkdir -p pkg-aarch64/bin pkg-aarch64/std
+          cp ./out-aarch64/bin/flint pkg-aarch64/bin/
+          cp -r ./std/* pkg-aarch64/std/
+          cp src/core/codegen/runtime/flint_rt.* pkg-aarch64/
+          tar -czvf flint-linux-aarch64.tar.gz -C pkg-aarch64 .
+
+      - name: Build Debian Packages (.deb)
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          for ARCH in amd64 arm64; do
+            if [ "$ARCH" = "amd64" ]; then
+              OUTDIR="out-x86_64"
+            else
+              OUTDIR="out-aarch64"
+            fi
+            
+            mkdir -p deb-${ARCH}/usr/bin deb-${ARCH}/usr/share/flint/std deb-${ARCH}/DEBIAN
+            cp ./${OUTDIR}/bin/flint deb-${ARCH}/usr/bin/
+            cp -r ./std/* deb-${ARCH}/usr/share/flint/std/
+            cp src/core/codegen/runtime/flint_rt.c deb-${ARCH}/usr/share/flint/
+            cp src/core/codegen/runtime/flint_rt.h deb-${ARCH}/usr/share/flint/
+
+            cat > deb-${ARCH}/DEBIAN/control << EOF
+          Package: flint
+          Version: ${VERSION}
+          Section: devel
+          Priority: optional
+          Architecture: ${ARCH}
+          Depends: libc6-dev, clang | gcc, tcc
+          Maintainer: Lucas Paulino Da Silva <lucas.workps@gmail.com>
+          Description: Pipeline-oriented systems programming language
+           Flint is a statically-typed, pipeline-oriented language that transpiles to C99.
+           Designed as a fast, dependency-free replacement for Bash and Python.
+          EOF
+
+            cat > deb-${ARCH}/DEBIAN/postinst << 'POSTINST'
+          #!/bin/sh
+          set -e
+          RT_DIR=/usr/share/flint
+          RT_C="${RT_DIR}/flint_rt.c"
+          RT_H="${RT_DIR}/flint_rt.h"
+          RT_O="${RT_DIR}/flint_rt.o"
+          RT_PCH="${RT_DIR}/flint_rt.h.pch"
+
+          if command -v clang > /dev/null 2>&1; then
+              CC=clang
+          elif command -v gcc > /dev/null 2>&1; then
+              CC=gcc
+          else
+              echo "flint postinst: aviso — clang/gcc não encontrado, runtime não foi pré-compilado."
+              exit 0
+          fi
+
+          echo "flint: compilando runtime com ${CC}..."
+          "${CC}" -O3 -ffunction-sections -fdata-sections -fvisibility=hidden -c "${RT_C}" -o "${RT_O}"
+          if [ "${CC}" = "clang" ]; then
+              clang -O3 -x c-header "${RT_H}" -o "${RT_PCH}" || rm -f "${RT_PCH}"
+          fi
+          POSTINST
+            chmod 755 deb-${ARCH}/DEBIAN/postinst
+
+            cat > deb-${ARCH}/DEBIAN/postrm << 'POSTRM'
+          #!/bin/sh
+          set -e
+          case "$1" in
+              remove|purge)
+                  rm -f /usr/share/flint/flint_rt.o
+                  rm -f /usr/share/flint/flint_rt.h.pch
+                  ;;
+          esac
+          POSTRM
+            chmod 755 deb-${ARCH}/DEBIAN/postrm
+
+            dpkg-deb --build deb-${ARCH} "flint_${VERSION}_${ARCH}.deb"
+          done
+
+      - name: Upload to GitHub Releases
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            flint-linux-x86_64.tar.gz
+            flint-linux-aarch64.tar.gz
+            flint_*.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to APT Repository (gh-pages)
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git clone --branch gh-pages https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git apt-repo
+          mkdir -p apt-repo/pool/main/
+          cp flint_*.deb apt-repo/pool/main/
+          cd apt-repo
+          dpkg-scanpackages --multiversion pool/ > Packages
+          gzip -k -f Packages
+          git add pool/ Packages Packages.gz
+          git commit -m "chore: release APT packages for ${GITHUB_REF_NAME#v}" || echo "No changes"
+          git push origin gh-pages

@@ -1,4 +1,4 @@
-# Flint Standard Library (v1.9.1)
+# Flint Standard Library (v1.10.0)
 
 Parts of the stdlib are written in Flint itself (`std/*.fl`) and bind direct to the C99 runtime (`flint_rt.c`).
 
@@ -71,7 +71,7 @@ File and directory operations.
 
 Low-level I/O helpers.
 
-* **`io.read_line(prompt: string) string`** — Read line from stdin.
+* **`io.read_line(prompt: string) string`** — Read line from stdin, optionally printing a prompt first.
 * **`io.write(stream: string, msg: string)`** — Write to `"stdout"` or `"stderr"`.
 
 ---
@@ -83,10 +83,15 @@ ANSI terminal control helpers.
 Constants:
 
 - term.RESET
+- term.WHITE
 - term.RED
+- term.DARK_RESET
 - term.GREEN
+- term.DARK_GREE
 - term.BLUE
+- term.DARK_BLUE
 - term.CYAN
+- term.DARK_CYAN
 - term.BOLD
 - term.ITALIC
 - term.UNDERLINED
@@ -106,8 +111,13 @@ Utilities:
 * **`str.trim(text: string) string`**
 * **`str.count_matches(text: string, pattern: string) int`**
 * **`str.replace(text: string, target: string, repl: string) string`**
+* **`str.replace_all(s: string, targets: arr<string>, replacements: arr<string>) string`** — Replaces multiple substrings at once using parallel arrays.
+* **`str.contains(text: string, target: string) bool`** — Returns true if target exists in text.
+* **`str.index_of(s: string, c: string) int`** — Returns first index of substring, or `-1` if not found.
 * **`str.starts_with(s: string, p: string) bool`**
 * **`str.ends_with(s: string, p: string) bool`**
+* **`str.lower(s: string) string`** — Converts string to lowercase.
+* **`str.upper(s: string) string`** — Converts string to uppercase.
 * **`str.repeat(s: string, x: int) string`**
 * **`str.to_str(v: val) string`**
 * **`str.int_to_str(num: int) string`**
@@ -134,29 +144,46 @@ Utilities:
 
 ---
 
-## 11. Built-ins (No Import Required)
+## 11. `sys` — System & Kernel Metrics
+
+Direct access to hardware and kernel metrics without external parsing overhead.
+
+* **`sys.ram_usage() val`** — Returns dict with `total` and `available` memory directly from `/proc/meminfo`.
+* **`sys.disk_usage(path: string) val`** — Returns dict with `total`, `used`, and `free` bytes via `statvfs`.
+* **`sys.gpu_name() val`** — Identifies GPU model by cross-referencing `/sys/class/drm` and `pci.ids`.
+* **`sys.display_res() val`** — Fetches active display resolution from the DRM subsystem.
+* **`sys.local_ip() string`** — Resolves the IPv4 address of the active network interface (ignores loopback).
+* **`sys.packages_dpkg() val`** — Returns installed package count from the dpkg state database.
+
+---
+
+## 12. Built-ins (No Import Required)
 
 Injected by the compiler. Available globally.
 
-### 11.1 Text & Stream Processing
+### 12.1 Text & Stream Processing
 
 * **`lines(text: string) arr<string>`** — Split string by newline.
 * **`chars(text: string) arr<string>`** — Iterate over string characters.
 * **`grep(lines: arr<string>, pattern: string) arr<string>`** — Filter array keeping lines that contain pattern.
 
-### 11.2 Pipeline Safety (Railway-Oriented)
+### 12.2 Pipeline Safety (Railway-Oriented)
 
 * **`if_fail(val: any, msg: string) val`** — Halt pipeline if value is an error.
 * **`fallback(val: any, alt: any) val`** — Replace failure with fallback value.
 * **`ensure(val: any, condition: bool, msg: string) val`** — Validate condition during pipeline execution.
 
-### 11.3 Core & Types
+### 12.3 Core & Types
 
 * **`print(val: any)`** — Print to stdout.
 * **`printerr(val: any)`** — Print to stderr.
 * **`len(obj: any) int`** — Return size of array, string, or dict.
 
-### 11.4 Arrays & Iteration
+### 12.4 Arrays & Iteration
 
 * **`push(arr: arr, val: any)`** — Append element to dynamic array.
 * **`range(start: int, end: int) arr<int>`** — Generate integer sequence.
+
+### 12.5 Compile-Time
+
+* **`embed_file(path: string) string`** — Reads file at compile-time and embeds its content directly into the compiled native binary.

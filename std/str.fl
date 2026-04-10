@@ -9,6 +9,7 @@ extern fn flint_to_str(v: val) string;
 extern fn flint_int_to_str(num: int) string;
 extern fn flint_concat(a: string, b: string) string;
 extern fn flint_to_int(v: val) int;
+extern fn flint_str_replace_all(s: string, a: arr<string>, b: arr<string>) string;
 
 # public API 
 fn split(text: string, delim: string) arr<string> {
@@ -28,25 +29,11 @@ fn count_matches(text: string, pattern: string) int {
 }
 
 fn replace(text: string, target: string, repl: string) string {
-    if len(text) == 0 {
-        return "";
+    if len(text) == 0 or len(target) == 0 {
+        return text;
     }
 
-    if len(target) == 0 {
-        return "";
-    }
-
-    var parts_new_text = str_array();
-
-    for c in text ~> chars() {
-        if c == target {
-            push(parts_new_text, repl);
-        } else {
-            push(parts_new_text, c);
-        }
-    }
-
-    return join(parts_new_text, "");
+    return split(text, target) ~> join(repl);
 }
 
 fn to_str(v: val) string {
@@ -85,6 +72,27 @@ fn starts_with(s: string, p: string) bool {
     return true;
 }
 
+fn contains(text: string, target: string) bool {
+    const text_len = len(text);
+    const target_len = len(target);
+
+    if target_len == 0 {
+        return true;
+    }
+
+    if target_len > text_len {
+        return false;
+    }
+
+    for i in range(0, (text_len - target_len + 1)) {
+        if text[i .. i + target_len] == target {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
 fn repeat(s: string, x: int) string {
     if len(s) == 0 {
         return "";
@@ -102,3 +110,103 @@ fn repeat(s: string, x: int) string {
 
     return join(parts, "");
 }
+
+fn upper(s: string) string { 
+    var new_str_temp = str_array(); 
+    const little_ones = {
+        "a": "A",
+        "b": "B",
+        "c": "C",
+        "d": "D",
+        "e": "E",
+        "f": "F",
+        "g": "G",
+        "h": "H",
+        "i": "I",
+        "j": "J",
+        "k": "K",
+        "l": "L",
+        "m": "M",
+        "n": "N",
+        "o": "O",
+        "p": "P",
+        "q": "Q",
+        "r": "R",
+        "s": "S",
+        "t": "T",
+        "u": "U",
+        "v": "V",
+        "w": "W",
+        "x": "X",
+        "y": "Y",
+        "z": "Z"
+    }; 
+
+    for c in s ~> chars() { 
+        const c_n = to_str(little_ones[c] ~> fallback(c)); 
+        push(new_str_temp, c_n); 
+    } 
+    
+    return new_str_temp ~> join("");
+}
+
+fn lower(s: string) string { 
+    var new_str_temp = str_array(); 
+    const little_ones = {
+        "A": "a",
+        "B": "b",
+        "C": "c",
+        "D": "d",
+        "E": "e",
+        "F": "f",
+        "G": "g",
+        "H": "h",
+        "I": "i",
+        "J": "j",
+        "K": "k",
+        "L": "l",
+        "M": "m",
+        "N": "n",
+        "O": "o",
+        "P": "p",
+        "Q": "q",
+        "R": "r",
+        "S": "s",
+        "T": "t",
+        "U": "u",
+        "V": "v",
+        "W": "w",
+        "X": "x",
+        "Y": "y",
+        "Z": "z"
+    }; 
+
+    for c in s ~> chars() { 
+        const c_n = to_str(little_ones[c] ~> fallback(c)); 
+        push(new_str_temp, c_n); 
+    } 
+    
+    return new_str_temp ~> join("");
+}
+
+fn index_of(s: string, c: string) int {
+    const s_len = len(s);
+    const c_len = len(c);
+
+    if c_len == 0 or c_len > s_len {
+        return -1;
+    }
+
+    for i in range(0, (s_len - c_len + 1)) {
+        if s[i .. i + c_len] == c {
+            return i;
+        }
+    }
+    
+    return -1;
+}
+
+fn replace_all(s: string, a: arr<string>, b: arr<string>) string {
+    return flint_str_replace_all(s, a, b);
+}
+

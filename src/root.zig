@@ -1,7 +1,12 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 const tcc = @cImport({
     @cInclude("libtcc.h");
+});
+
+const cl = @cImport({
+    @cInclude("stdlib.h");
 });
 
 const checker = @import("./core/helpers/utils/checkers.zig");
@@ -9,6 +14,7 @@ pub const IoHelper = @import("./core/helpers/structs/structs.zig").IoHelpers;
 const Lexer = @import("./core/lexer/lexer.zig").Lexer;
 const Parser = @import("./core/parser/parser.zig").Parser;
 const TypeChecker = @import("./core/analyzer/type_checker.zig").TypeChecker;
+const SourceManager = @import("./core/helpers/utils/source_manager.zig").SourceManager;
 const ast = @import("./core/parser/ast.zig");
 const NodeIndex = ast.NodeIndex;
 const AstTree = ast.AstTree;
@@ -31,17 +37,19 @@ const PipelineResult = struct {
     root_idx: NodeIndex,
 };
 
-fn runCompilerPipeline(alloc: std.mem.Allocator, tree: *AstTree, pool: *StringPool, file_path: []const u8, io: IoHelper) !PipelineResult {
+fn runCompilerPipeline(alloc: std.mem.Allocator, tree: *AstTree, pool: *StringPool, source_mgr: *SourceManager, file_path: []const u8, io: IoHelper) !PipelineResult {
     if (!std.mem.endsWith(u8, file_path, ".fl")) {
         return error.InvalidFileType;
     }
 
     const source = try std.fs.cwd().readFileAlloc(alloc, file_path, 1024 * 1024);
+    const file_id = try source_mgr.addFile(file_path, source);
 
     var lex = Lexer{
         .alloc = alloc,
         .io = io,
         .file_path = file_path,
+        .file_id = file_id,
         .position = 0,
         .column = 0,
         .line = 0,
@@ -50,11 +58,8 @@ fn runCompilerPipeline(alloc: std.mem.Allocator, tree: *AstTree, pool: *StringPo
     };
     const tokens = try lex.tokenize();
 
-    var parser = Parser.init(alloc, tree, pool, tokens, source, file_path, io);
+    var parser = Parser.init(alloc, tree, pool, tokens, source, file_path, file_id, io);
     const root_idx = try parser.parse();
-
-    // var t_checker = try TypeChecker.init(alloc, tree, pool, file_path, source, io);
-    // try t_checker.check(root_idx);
 
     if (parser.had_error) {
         parser.deinit();
@@ -76,14 +81,16 @@ const Linker = struct {
     visited: std.StringHashMap(void),
     statements: std.ArrayList(NodeIndex),
     results: std.ArrayList(*PipelineResult),
+    source_mgr: *SourceManager,
     io: IoHelper,
     has_error: bool = false,
 
-    pub fn init(alloc: std.mem.Allocator, tree: *AstTree, pool: *StringPool, io: IoHelper) Linker {
+    pub fn init(alloc: std.mem.Allocator, tree: *AstTree, pool: *StringPool, source_mgr: *SourceManager, io: IoHelper) Linker {
         return .{
             .allocator = alloc,
             .tree = tree,
             .pool = pool,
+            .source_mgr = source_mgr,
             .visited = std.StringHashMap(void).init(alloc),
             .statements = std.ArrayList(NodeIndex).empty,
             .results = std.ArrayList(*PipelineResult).empty,
@@ -117,7 +124,7 @@ const Linker = struct {
         try self.visited.put(try self.allocator.dupe(u8, abs_path), {});
 
         const result_ptr = try self.allocator.create(PipelineResult);
-        result_ptr.* = runCompilerPipeline(self.allocator, self.tree, self.pool, file_path, self.io) catch {
+        result_ptr.* = runCompilerPipeline(self.allocator, self.tree, self.pool, self.source_mgr, file_path, self.io) catch {
             self.has_error = true;
             return;
         };
@@ -152,22 +159,28 @@ const Linker = struct {
                     try std.fmt.allocPrint(self.allocator, "std/{s}.fl", .{import_raw})
                 else
                     try self.allocator.dupe(u8, import_raw);
-                defer self.allocator.free(formatted_path);
+                // defer self.allocator.free(formatted_path);
 
                 const next_file = if (std.mem.startsWith(u8, formatted_path, "./") or std.mem.startsWith(u8, formatted_path, "../"))
                     try std.fs.path.join(self.allocator, &.{ base_dir, formatted_path })
                 else blk: {
                     var std_base: []const u8 = "/usr/share/flint";
-                    if (std.posix.getenv("FLINT_LIB_PATH")) |env| {
-                        std_base = env;
-                    } else if (std.fs.cwd().openDir("std", .{})) |d| {
-                        var dir = d;
-                        dir.close();
-                        std_base = ".";
-                    } else |_| {}
+
+                    // Lendo direto do C (Bypass do Bug do Zig)
+                    const env_ptr = cl.getenv("FLINT_LIB_PATH");
+
+                    if (env_ptr != null) {
+                        std_base = std.mem.span(env_ptr); // Converte C string para Zig string
+                    } else {
+                        if (std.fs.cwd().openDir("std", .{})) |d| {
+                            var dir = d;
+                            dir.close();
+                            std_base = ".";
+                        } else |_| {}
+                    }
                     break :blk try std.fs.path.join(self.allocator, &.{ std_base, formatted_path });
                 };
-                defer self.allocator.free(next_file);
+                // defer self.allocator.free(next_file);
 
                 try self.linkFile(next_file, canon_name);
                 if (next_alias_str) |a| try local_aliases.put(a, canon_name);
@@ -272,7 +285,13 @@ const Linker = struct {
                         const original_line = p.line;
                         const original_col = obj_node.identifier.token.column;
 
-                        node_ptr.* = .{ .identifier = .{ .token = .{ ._type = .identifier_token, .value = new_name, .line = original_line, .column = original_col }, .name_id = new_id } };
+                        node_ptr.* = .{ .identifier = .{ .token = .{
+                            ._type = .identifier_token,
+                            .value = new_name,
+                            .line = original_line,
+                            .column = original_col,
+                            .file_id = obj_node.identifier.token.file_id,
+                        }, .name_id = new_id } };
                     }
                 }
             },
@@ -335,14 +354,45 @@ const Linker = struct {
     }
 };
 
+const CpuArchs = enum {
+    x86_64,
+    aarch,
+    baseline, // fallback
+};
+
+const FlintFlags = struct {
+    is_less_mode: bool,
+    is_test: bool,
+
+    cpu_arch: CpuArchs,
+
+    fn getDefaultArch(_: FlintFlags) CpuArchs {
+        const arch = builtin.cpu.arch;
+
+        if (arch == .x86_64) {
+            return .x86_64;
+        } else if (builtin.cpu.arch == .aarch64) {
+            return .aarch;
+        } else {
+            return .baseline;
+        }
+    }
+};
+
 pub fn runCli(alloc: std.mem.Allocator, io: IoHelper) !void {
     var args = try std.process.argsWithAllocator(alloc);
     defer args.deinit();
     _ = args.next();
 
     var command: ?[]const u8 = null;
-    var is_less_mode = false;
-    var is_test = false;
+
+    var flags = FlintFlags{
+        .is_less_mode = false,
+        .is_test = false,
+        .cpu_arch = .baseline,
+    };
+
+    flags.cpu_arch = flags.getDefaultArch();
 
     while (args.next()) |arg| {
         if (checker.cliArgsEquals(arg, &.{ "-h", "--help" })) {
@@ -355,18 +405,19 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper) !void {
         }
 
         if (checker.cliArgsEquals(arg, &.{ "-s", "--small" })) {
-            is_less_mode = true;
+            flags.is_less_mode = true;
             continue;
         }
 
         if (checker.cliArgsEquals(arg, &.{ "-t", "--test" })) {
-            is_test = true;
+            flags.is_test = true;
             continue;
         }
 
         command = arg;
         break;
     }
+
     const cmd = command orelse {
         try help(io);
         return;
@@ -387,6 +438,7 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper) !void {
             .io = io,
             .file_path = file_path,
             .position = 0,
+            .file_id = 0,
             .column = 0,
             .line = 0,
             .tokens = .empty,
@@ -416,7 +468,11 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper) !void {
         var pool = StringPool.init(alloc);
         defer pool.deinit(alloc);
 
-        var result = runCompilerPipeline(alloc, &global_tree, &pool, file_path, io) catch return;
+        var source_manager = SourceManager.init(alloc);
+        defer source_manager.deinit();
+
+        var result = runCompilerPipeline(alloc, &global_tree, &pool, &source_manager, file_path, io) catch return;
+
         defer alloc.free(result.source);
         defer result.parser.deinit();
         defer alloc.free(result.tokens);
@@ -426,15 +482,49 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper) !void {
 
     if (checker.strEquals(cmd, "run")) {
         const file = try getFlFile(&args, io);
-        try runner(alloc, &args, file, io, true, is_less_mode, is_test);
+        try runner(alloc, &args, file, io, true, flags);
         return;
     }
     if (checker.strEquals(cmd, "build")) {
         const file = try getFlFile(&args, io);
-        try runner(alloc, &args, file, io, false, is_less_mode, is_test);
+
+        parseFlags(&args, &flags);
+        try runner(alloc, &args, file, io, false, flags);
         return;
     }
     try help(io);
+}
+
+fn parseFlags(args: *std.process.ArgIterator, flags: *FlintFlags) void {
+    var is_cpu = false;
+
+    while (args.next()) |arg| {
+        if (is_cpu) {
+            is_cpu = false;
+
+            if (checker.cliArgsEquals(arg, &.{"baseline"})) {
+                flags.cpu_arch = .baseline;
+                continue;
+            }
+
+            if (checker.cliArgsEquals(arg, &.{"x86_64"})) {
+                flags.cpu_arch = .x86_64;
+                continue;
+            }
+
+            if (checker.cliArgsEquals(arg, &.{"aarch"})) {
+                flags.cpu_arch = .aarch;
+                continue;
+            }
+        }
+
+        if (checker.cliArgsEquals(arg, &.{ "-c", "--cpu" })) {
+            is_cpu = true;
+            continue;
+        }
+
+        break;
+    }
 }
 
 fn getFlFile(args: *std.process.ArgIterator, io: anytype) ![]const u8 {
@@ -445,14 +535,17 @@ fn getFlFile(args: *std.process.ArgIterator, io: anytype) ![]const u8 {
     return file_path;
 }
 
-fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: []const u8, io: anytype, is_run: bool, is_less_mode: bool, is_test: bool) !void {
+fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: []const u8, io: anytype, is_run: bool, flags: FlintFlags) !void {
     var global_tree = AstTree.init();
     defer global_tree.deinit(alloc);
 
     var pool = StringPool.init(alloc);
     defer pool.deinit(alloc);
 
-    var linker = Linker.init(alloc, &global_tree, &pool, io);
+    var source_manager = SourceManager.init(alloc);
+    defer source_manager.deinit();
+
+    var linker = Linker.init(alloc, &global_tree, &pool, &source_manager, io);
     defer linker.deinit();
 
     linker.linkFile(file_path, null) catch {};
@@ -463,7 +556,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
     const main_source = try std.fs.cwd().readFileAlloc(alloc, file_path, 1024 * 1024);
     defer alloc.free(main_source);
 
-    var final_checker = try TypeChecker.init(alloc, &global_tree, &pool, file_path, main_source, io);
+    var final_checker = try TypeChecker.init(alloc, &global_tree, &pool, &source_manager, io);
     try final_checker.check(merged_root_idx);
 
     if (final_checker.had_error) {
@@ -472,7 +565,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
     }
 
     var exe_name_buf: [128]u8 = undefined;
-    const exe_name = if (is_test) blk: {
+    const exe_name = if (flags.is_test) blk: {
         const hash = std.hash.Fnv1a_64.hash(file_path);
         break :blk std.fmt.bufPrint(&exe_name_buf, ".test_bin_{x}", .{hash}) catch "test_bin";
     } else std.fs.path.stem(file_path);
@@ -501,7 +594,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
             std.fs.cwd().deleteFile("flint_rt.h") catch {};
             std.fs.cwd().deleteFile("flint_rt.c") catch {};
         }
-        if (is_test) {
+        if (flags.is_test) {
             std.fs.cwd().deleteFile(exe_name) catch {};
         }
     }
@@ -591,9 +684,14 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
                 try cmd.append(alloc, "-O0");
                 try cmd.append(alloc, "-lcurl");
                 try cmd.append(alloc, "-Wno-unused-value");
+
+                var safe_env = try buildSafeEnvMap(alloc);
+                defer safe_env.deinit();
+
                 var child = std.process.Child.init(cmd.items, alloc);
                 child.stdin_behavior = .Pipe;
                 child.stderr_behavior = .Ignore;
+                child.env_map = &safe_env;
 
                 try child.spawn();
                 try child.stdin.?.writeAll(c_code_buffer.items);
@@ -621,6 +719,10 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
             while (args.next()) |a| try run_cmd.append(alloc, a);
 
             var run_child = std.process.Child.init(run_cmd.items, alloc);
+            var safe_env_run = try buildSafeEnvMap(alloc);
+            defer safe_env_run.deinit();
+            run_child.env_map = &safe_env_run;
+
             const term = try run_child.spawnAndWait();
 
             std.fs.cwd().deleteFile(tmp_exe) catch {};
@@ -650,11 +752,15 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
 
     const compiler = getBestCCompiler(alloc, false);
 
-    const c_args = try compiler.getArgsExtended(alloc, exe_name, rt_path, precompiled, false, has_pch, is_less_mode);
+    const c_args = try compiler.getArgsExtended(alloc, exe_name, rt_path, precompiled, false, has_pch, flags);
     defer alloc.free(c_args);
+
+    var safe_env = try buildSafeEnvMap(alloc);
+    defer safe_env.deinit();
 
     var child = std.process.Child.init(c_args, alloc);
     child.stdin_behavior = .Pipe;
+    child.env_map = &safe_env;
 
     try child.spawn();
     {
@@ -728,9 +834,14 @@ pub fn runTests(alloc: std.mem.Allocator, io: IoHelper) !void {
             const current_file = test_files.items[file_index];
             const argv = &[_][]const u8{ flint_exe, "run", current_file, "-t" };
 
+            var safe_env = try buildSafeEnvMap(alloc);
+            defer safe_env.deinit();
+
             var child = std.process.Child.init(argv, alloc);
             child.stdout_behavior = .Ignore;
             child.stderr_behavior = .Ignore;
+            child.stdin_behavior = .Pipe;
+            child.env_map = &safe_env;
 
             try child.spawn();
             try active_jobs.append(alloc, .{ .child = child, .file_path = current_file });
@@ -761,7 +872,7 @@ pub fn runTests(alloc: std.mem.Allocator, io: IoHelper) !void {
 }
 
 const ClangCompiler = struct {
-    pub fn getArgsExtended(self: ClangCompiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool, is_less_mode: bool) ![]const []const u8 {
+    pub fn getArgsExtended(self: ClangCompiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool, flags: FlintFlags) ![]const []const u8 {
         _ = self;
         var args = std.ArrayList([]const u8).empty;
 
@@ -780,10 +891,8 @@ const ClangCompiler = struct {
         if (is_run) {
             try args.append(alloc, "-O0");
         } else {
-            try args.append(alloc, if (is_less_mode) "-Os" else "-Ofast");
+            try args.append(alloc, if (flags.is_less_mode) "-Os" else if (flags.cpu_arch == .baseline) "-O2" else "-Ofast");
             try args.append(alloc, "-flto");
-            try args.append(alloc, "-march=native");
-            try args.append(alloc, "-mtune=native");
             try args.append(alloc, "-finline-functions");
             try args.append(alloc, "-ffunction-sections");
             try args.append(alloc, "-fdata-sections");
@@ -800,6 +909,18 @@ const ClangCompiler = struct {
             try args.append(alloc, "-fno-semantic-interposition");
             try args.append(alloc, "-fno-plt");
             try args.append(alloc, "-fmerge-all-constants");
+
+            switch (flags.cpu_arch) {
+                .x86_64 => {
+                    try args.append(alloc, "--target=x86_64-linux-gnu");
+                    try args.append(alloc, "-march=x86-64");
+                },
+                .aarch => {
+                    try args.append(alloc, "--target=aarch64-linux-gnu");
+                    try args.append(alloc, "-mcpu=generic");
+                },
+                .baseline => {},
+            }
         }
 
         try args.append(alloc, "-Wno-unused-value");
@@ -816,7 +937,7 @@ const ClangCompiler = struct {
 };
 
 const GccCompiler = struct {
-    pub fn getArgsExtended(self: GccCompiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool, is_less_mode: bool) ![]const []const u8 {
+    pub fn getArgsExtended(self: GccCompiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool, flags: FlintFlags) ![]const []const u8 {
         _ = self;
         _ = has_pch;
         var args = std.ArrayList([]const u8).empty;
@@ -836,9 +957,9 @@ const GccCompiler = struct {
         if (is_run) {
             try args.append(alloc, "-O0");
         } else {
-            try args.append(alloc, if (is_less_mode) "-Os" else "-Ofast");
+            try args.append(alloc, if (flags.is_less_mode) "-Os" else if (flags.cpu_arch == .baseline) "-O2" else "-Ofast");
+
             try args.append(alloc, "-flto");
-            try args.append(alloc, "-march=native");
             try args.append(alloc, "-mtune=native");
             try args.append(alloc, "-finline-functions");
             try args.append(alloc, "-ffunction-sections");
@@ -866,9 +987,9 @@ const GccCompiler = struct {
 };
 
 const TccCompiler = struct {
-    pub fn getArgsExtended(self: TccCompiler, alloc: std.mem.Allocator, out_exe: []const u8, pre: bool, is_less_mode: bool) ![]const []const u8 {
+    pub fn getArgsExtended(self: TccCompiler, alloc: std.mem.Allocator, out_exe: []const u8, pre: bool, flags: FlintFlags) ![]const []const u8 {
         _ = self;
-        _ = is_less_mode;
+        _ = flags;
 
         var args = std.ArrayList([]const u8).empty;
 
@@ -894,11 +1015,11 @@ pub const Compiler = union(enum) {
     gcc: GccCompiler,
     tcc: TccCompiler,
 
-    pub fn getArgsExtended(self: Compiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool, is_less_mode: bool) ![]const []const u8 {
+    pub fn getArgsExtended(self: Compiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool, flags: FlintFlags) ![]const []const u8 {
         return switch (self) {
-            .tcc => |t| t.getArgsExtended(alloc, out_exe, pre, is_less_mode),
-            .clang => |c| c.getArgsExtended(alloc, out_exe, rt, pre, is_run, has_pch, is_less_mode),
-            .gcc => |g| g.getArgsExtended(alloc, out_exe, rt, pre, is_run, has_pch, is_less_mode),
+            .tcc => |t| t.getArgsExtended(alloc, out_exe, pre, flags),
+            .clang => |c| c.getArgsExtended(alloc, out_exe, rt, pre, is_run, has_pch, flags),
+            .gcc => |g| g.getArgsExtended(alloc, out_exe, rt, pre, is_run, has_pch, flags),
         };
     }
 };
@@ -928,8 +1049,11 @@ fn getBestCCompiler(alloc: std.mem.Allocator, is_run: bool) Compiler {
 }
 
 fn isCompilerPresent(alloc: std.mem.Allocator, cmd: []const u8) bool {
-    const path_env = std.process.getEnvVarOwned(alloc, "PATH") catch return false;
-    defer alloc.free(path_env);
+    const env_ptr = cl.getenv("PATH");
+    if (env_ptr == null) return false;
+
+    const path_env = std.mem.span(env_ptr);
+
     var it = std.mem.splitScalar(u8, path_env, ':');
     while (it.next()) |dir| {
         const full = std.fs.path.join(alloc, &.{ dir, cmd }) catch continue;
@@ -937,6 +1061,22 @@ fn isCompilerPresent(alloc: std.mem.Allocator, cmd: []const u8) bool {
         if (std.posix.access(full, std.posix.X_OK)) |_| return true else |_| continue;
     }
     return false;
+}
+
+fn buildSafeEnvMap(alloc: std.mem.Allocator) !std.process.EnvMap {
+    var env_map = std.process.EnvMap.init(alloc);
+
+    if (cl.getenv("PATH")) |path_ptr| {
+        try env_map.put("PATH", std.mem.span(path_ptr));
+    }
+    if (cl.getenv("FLINT_LIB_PATH")) |lib_ptr| {
+        try env_map.put("FLINT_LIB_PATH", std.mem.span(lib_ptr));
+    }
+    if (cl.getenv("TMPDIR")) |tmp_ptr| {
+        try env_map.put("TMPDIR", std.mem.span(tmp_ptr));
+    }
+
+    return env_map;
 }
 
 const ok = void{};

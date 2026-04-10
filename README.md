@@ -57,7 +57,7 @@ Flint uses "poison types" for smart error recovery, means he shows all errors in
 
 ## Performance Of  Indrustial
 
-Flint v1.9.1 is projected using data oriented design (DoD).
+Flint v1.10.0 is projected using data oriented design (DoD).
 When using arrays of memory continuous and pool of strings
 centered, the compiler frontend operates in cache limits of modern CPUs.
 
@@ -130,6 +130,19 @@ Mass File Stat: ~650x faster than Bash when inspecting 10,000 files.
 > See [./benchmarks/](./benchmarks/) for full details and reproducible tests.
 
 ## Getting Started
+
+### Installing on Debian/Ubuntu (APT Repository - Recommended)
+
+The easiest and recommended way to install Flint on Debian/Ubuntu-based distributions is through our official APT repository.
+
+```bash
+# 1. Add the Flint repository
+echo "deb [trusted=yes] https://lucaas-d3v.github.io/flint ./" | sudo tee /etc/apt/sources.list.d/flint.list
+
+# 2. Update and install
+sudo apt update
+sudo apt install flint
+```
 
 ### Installing from [`install.sh`](install.sh)
 
