@@ -75,13 +75,13 @@ jobs:
         mkdir -p pkg-x86_64/bin pkg-x86_64/std
         cp ./out-x86_64/bin/flint pkg-x86_64/bin/
         cp -r ./std/* pkg-x86_64/std/
-        cp src/core/codegen/runtime/flint_rt.* pkg-x86_64/ # Injetando o Runtime!
+        cp src/core/codegen/runtime/flint_rt.* pkg-x86_64/
         tar -czvf flint-linux-x86_64.tar.gz -C pkg-x86_64 .
 
         mkdir -p pkg-aarch64/bin pkg-aarch64/std
         cp ./out-aarch64/bin/flint pkg-aarch64/bin/
         cp -r ./std/* pkg-aarch64/std/
-        cp src/core/codegen/runtime/flint_rt.* pkg-aarch64/ # Injetando o Runtime!
+        cp src/core/codegen/runtime/flint_rt.* pkg-aarch64/
         tar -czvf flint-linux-aarch64.tar.gz -C pkg-aarch64 .
 
     - name: Build Debian Packages (.deb)
@@ -90,9 +90,15 @@ jobs:
         VERSION=${GITHUB_REF_NAME#v}
         
         mkdir -p deb-amd64/usr/bin deb-amd64/usr/share/flint/std deb-amd64/DEBIAN
+        
         cp ./out-x86_64/bin/flint deb-amd64/usr/bin/
         cp -r ./std/* deb-amd64/usr/share/flint/std/
-        cp src/core/codegen/runtime/flint_rt.* deb-amd64/usr/share/flint/
+        
+        cp src/core/codegen/runtime/flint_rt.c deb-amd64/usr/share/flint/
+        cp src/core/codegen/runtime/flint_rt.h deb-amd64/usr/share/flint/
+        clang -O3 -ffunction-sections -fdata-sections -fvisibility=hidden -fno-semantic-interposition \
+          -c src/core/codegen/runtime/flint_rt.c -o deb-amd64/usr/share/flint/flint_rt.o
+        clang -O3 -x c-header src/core/codegen/runtime/flint_rt.h -o deb-amd64/usr/share/flint/flint_rt.h.pch
         
         cat << EOF > deb-amd64/DEBIAN/control
         Package: flint
@@ -100,7 +106,7 @@ jobs:
         Section: devel
         Priority: optional
         Architecture: amd64
-        Depends: libc6, libcurl4-openssl-dev | libcurl4, clang | gcc
+        Depends: libc6-dev, libtcc-dev, libcurl4-openssl-dev, clang | gcc, tcc
         Maintainer: Lucas Paulino Da Silva <lucas.workps@gmail.com>
         Description: Pipeline-oriented systems programming language
          Flint is a statically-typed, pipeline-oriented language that transpiles to C99.
@@ -109,9 +115,16 @@ jobs:
         dpkg-deb --build deb-amd64 "flint_${VERSION}_amd64.deb"
 
         mkdir -p deb-arm64/usr/bin deb-arm64/usr/share/flint/std deb-arm64/DEBIAN
+        
+        # Binário e STD
         cp ./out-aarch64/bin/flint deb-arm64/usr/bin/
         cp -r ./std/* deb-arm64/usr/share/flint/std/
-        cp src/core/codegen/runtime/flint_rt.* deb-arm64/usr/share/flint/
+        
+        cp src/core/codegen/runtime/flint_rt.c deb-arm64/usr/share/flint/
+        cp src/core/codegen/runtime/flint_rt.h deb-arm64/usr/share/flint/
+        clang --target=aarch64-linux-gnu -O3 -ffunction-sections -fdata-sections -fvisibility=hidden -fno-semantic-interposition \
+          -c src/core/codegen/runtime/flint_rt.c -o deb-arm64/usr/share/flint/flint_rt.o
+        clang --target=aarch64-linux-gnu -O3 -x c-header src/core/codegen/runtime/flint_rt.h -o deb-arm64/usr/share/flint/flint_rt.h.pch
         
         cat << EOF > deb-arm64/DEBIAN/control
         Package: flint
@@ -119,7 +132,7 @@ jobs:
         Section: devel
         Priority: optional
         Architecture: arm64
-        Depends: libc6, libcurl4-openssl-dev | libcurl4, clang | gcc
+        Depends: libc6-dev, libtcc-dev, libcurl4-openssl-dev, clang | gcc, tcc
         Maintainer: Lucas Paulino Da Silva <lucas.workps@gmail.com>
         Description: Pipeline-oriented systems programming language
          Flint is a statically-typed, pipeline-oriented language that transpiles to C99.

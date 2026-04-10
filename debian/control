@@ -9,7 +9,7 @@ Rules-Requires-Root: no
 
 Package: flint
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, libc6, libcurl4-openssl-dev, clang | gcc
+Depends: libc6-dev, libtcc-dev, libcurl4-openssl-dev, clang | gcc, tcc
 Description: Pipeline-oriented systems programming language
  Flint is a statically-typed, pipeline-oriented language that transpiles
  to C99. Designed as a modern, dependency-free replacement for Bash and
