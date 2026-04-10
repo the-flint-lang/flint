@@ -693,6 +693,8 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
                 child.stderr_behavior = .Ignore;
                 child.env_map = &safe_env;
 
+                try child.spawn();
+                try child.stdin.?.writeAll(c_code_buffer.items);
                 child.stdin.?.close();
                 child.stdin = null;
 
