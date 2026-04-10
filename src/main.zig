@@ -1,8 +1,12 @@
 const std = @import("std");
+extern var environ: [*:null]?[*:0]u8;
+
 const flint = @import("flint");
 const IoHelper = flint.IoHelper;
 
 pub fn main() !void {
+    std.posix.environ = environ;
+
     var stdout_buffer: [4096]u8 = undefined;
     var stderr_buffer: [4096]u8 = undefined;
     var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
