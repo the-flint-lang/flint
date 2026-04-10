@@ -749,6 +749,12 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
     var child = std.process.Child.init(c_args, alloc);
     child.stdin_behavior = .Pipe;
 
+    // Temporário, antes do child.spawn()
+    for (c_args, 0..) |arg, i| {
+        try io.stderr.print("arg[{d}] = {s}\n", .{ i, arg });
+    }
+    _ = try io.stderr.flush();
+
     try child.spawn();
     {
         var buf: [4096]u8 = undefined;
