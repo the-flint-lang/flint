@@ -5,6 +5,10 @@ const tcc = @cImport({
     @cInclude("libtcc.h");
 });
 
+const cl = @cImport({
+    @cInclude("stdlib.h");
+});
+
 const checker = @import("./core/helpers/utils/checkers.zig");
 pub const IoHelper = @import("./core/helpers/structs/structs.zig").IoHelpers;
 const Lexer = @import("./core/lexer/lexer.zig").Lexer;
@@ -162,11 +166,11 @@ const Linker = struct {
                 else blk: {
                     var std_base: []const u8 = "/usr/share/flint";
 
-                    const env_path = std.process.getEnvVarOwned(self.allocator, "FLINT_LIB_PATH") catch null;
-                    defer if (env_path) |p| self.allocator.free(p);
+                    // Lendo direto do C (Bypass do Bug do Zig)
+                    const env_ptr = cl.getenv("FLINT_LIB_PATH");
 
-                    if (env_path) |env| {
-                        std_base = env;
+                    if (env_ptr != null) {
+                        std_base = std.mem.span(env_ptr); // Converte C string para Zig string
                     } else {
                         if (std.fs.cwd().openDir("std", .{})) |d| {
                             var dir = d;
@@ -1027,8 +1031,11 @@ fn getBestCCompiler(alloc: std.mem.Allocator, is_run: bool) Compiler {
 }
 
 fn isCompilerPresent(alloc: std.mem.Allocator, cmd: []const u8) bool {
-    const path_env = std.process.getEnvVarOwned(alloc, "PATH") catch return false;
-    defer alloc.free(path_env);
+    const env_ptr = cl.getenv("PATH");
+    if (env_ptr == null) return false;
+
+    const path_env = std.mem.span(env_ptr);
+
     var it = std.mem.splitScalar(u8, path_env, ':');
     while (it.next()) |dir| {
         const full = std.fs.path.join(alloc, &.{ dir, cmd }) catch continue;
