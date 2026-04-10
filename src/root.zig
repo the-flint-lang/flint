@@ -688,6 +688,11 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
                 child.stdin_behavior = .Pipe;
                 child.stderr_behavior = .Ignore;
 
+                var env_map = try std.process.getEnvMap(alloc);
+                defer env_map.deinit();
+                child.stdin_behavior = .Pipe;
+                child.env_map = &env_map;
+
                 try child.spawn();
                 try child.stdin.?.writeAll(c_code_buffer.items);
                 child.stdin.?.close();
@@ -746,10 +751,15 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
     const c_args = try compiler.getArgsExtended(alloc, exe_name, rt_path, precompiled, false, has_pch, flags);
     defer alloc.free(c_args);
 
+    var env_map = try std.process.getEnvMap(alloc);
+    defer env_map.deinit();
+
     var child = std.process.Child.init(c_args, alloc);
     child.stdin_behavior = .Pipe;
 
-    // Temporário, antes do child.spawn()
+    child.stdin_behavior = .Pipe;
+    child.env_map = &env_map;
+
     for (c_args, 0..) |arg, i| {
         try io.stderr.print("arg[{d}] = {s}\n", .{ i, arg });
     }
@@ -827,9 +837,14 @@ pub fn runTests(alloc: std.mem.Allocator, io: IoHelper) !void {
             const current_file = test_files.items[file_index];
             const argv = &[_][]const u8{ flint_exe, "run", current_file, "-t" };
 
+            var env_map = try std.process.getEnvMap(alloc);
+            defer env_map.deinit();
+
             var child = std.process.Child.init(argv, alloc);
             child.stdout_behavior = .Ignore;
             child.stderr_behavior = .Ignore;
+            child.stdin_behavior = .Pipe;
+            child.env_map = &env_map;
 
             try child.spawn();
             try active_jobs.append(alloc, .{ .child = child, .file_path = current_file });
