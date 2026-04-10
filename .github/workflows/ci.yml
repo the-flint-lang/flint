@@ -35,12 +35,12 @@ jobs:
         sudo dpkg --add-architecture arm64
         sudo apt-get update
         
-        # 4. Instala os compiladores e a libc cross
-        sudo apt-get install -y clang tcc libtcc-dev gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+        # 4. Instala as ferramentas base e a libcurl para amd64 pacificamente
+        sudo apt-get install -y clang tcc libtcc-dev gcc-aarch64-linux-gnu libc6-dev-arm64-cross libcurl4-openssl-dev
         
-        # 5. Instala o libcurl e o libtcc para ambas as arquiteturas
-        sudo apt-get install -y libcurl4-openssl-dev libcurl4-openssl-dev:arm64 libtcc-dev:arm64
-
+        # 5. A Marretada: Força a instalação das bibliotecas arm64 ignorando os conflitos de arquivos compartilhados
+        sudo apt-get install -y -o Dpkg::Options::="--force-overwrite" libcurl4-openssl-dev:arm64 libtcc-dev:arm64
+    
     - name: Cache Zig
       uses: actions/cache@v4
       with:
