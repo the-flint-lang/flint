@@ -51,7 +51,7 @@ jobs:
         run: zig version
 
       - name: Build Flint (x86_64)
-        run: zig build -Dtarget=x86_64-linux-gnu -Doptimize=Debug -Dcpu=baseline --prefix out-x86_64
+        run: zig build -Dtarget=x86_64-linux-gnu -Doptimize=ReleaseSmall -Dcpu=baseline --prefix out-x86_64
 
       - name: Mock System Installation
         run: |
@@ -63,7 +63,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           sed -i 's/x86_64-linux-gnu/aarch64-linux-gnu/g' build.zig
-          zig build -Dtarget=aarch64-linux-gnu -Doptimize=Debug -Dcpu=baseline --prefix out-aarch64
+          zig build -Dtarget=aarch64-linux-gnu -Doptimize=ReleaseSmall -Dcpu=baseline --prefix out-aarch64
 
       - name: Package Release Tarballs
         if: startsWith(github.ref, 'refs/tags/')
