@@ -684,10 +684,14 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
                 try cmd.append(alloc, "-O0");
                 try cmd.append(alloc, "-lcurl");
                 try cmd.append(alloc, "-Wno-unused-value");
+
+                var safe_env = try buildSafeEnvMap(alloc);
+                defer safe_env.deinit();
+
                 var child = std.process.Child.init(cmd.items, alloc);
                 child.stdin_behavior = .Pipe;
                 child.stderr_behavior = .Ignore;
-                child.stdin_behavior = .Pipe;
+                child.env_map = &safe_env;
 
                 child.stdin.?.close();
                 child.stdin = null;
@@ -745,8 +749,12 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
     const c_args = try compiler.getArgsExtended(alloc, exe_name, rt_path, precompiled, false, has_pch, flags);
     defer alloc.free(c_args);
 
+    var safe_env = try buildSafeEnvMap(alloc);
+    defer safe_env.deinit();
+
     var child = std.process.Child.init(c_args, alloc);
     child.stdin_behavior = .Pipe;
+    child.env_map = &safe_env;
 
     for (c_args, 0..) |arg, i| {
         try io.stderr.print("arg[{d}] = {s}\n", .{ i, arg });
@@ -825,10 +833,14 @@ pub fn runTests(alloc: std.mem.Allocator, io: IoHelper) !void {
             const current_file = test_files.items[file_index];
             const argv = &[_][]const u8{ flint_exe, "run", current_file, "-t" };
 
+            var safe_env = try buildSafeEnvMap(alloc);
+            defer safe_env.deinit();
+
             var child = std.process.Child.init(argv, alloc);
             child.stdout_behavior = .Ignore;
             child.stderr_behavior = .Ignore;
             child.stdin_behavior = .Pipe;
+            child.env_map = &safe_env;
 
             try child.spawn();
             try active_jobs.append(alloc, .{ .child = child, .file_path = current_file });
@@ -1048,6 +1060,22 @@ fn isCompilerPresent(alloc: std.mem.Allocator, cmd: []const u8) bool {
         if (std.posix.access(full, std.posix.X_OK)) |_| return true else |_| continue;
     }
     return false;
+}
+
+fn buildSafeEnvMap(alloc: std.mem.Allocator) !std.process.EnvMap {
+    var env_map = std.process.EnvMap.init(alloc);
+
+    if (cl.getenv("PATH")) |path_ptr| {
+        try env_map.put("PATH", std.mem.span(path_ptr));
+    }
+    if (cl.getenv("FLINT_LIB_PATH")) |lib_ptr| {
+        try env_map.put("FLINT_LIB_PATH", std.mem.span(lib_ptr));
+    }
+    if (cl.getenv("TMPDIR")) |tmp_ptr| {
+        try env_map.put("TMPDIR", std.mem.span(tmp_ptr));
+    }
+
+    return env_map;
 }
 
 const ok = void{};
