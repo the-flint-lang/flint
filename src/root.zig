@@ -155,7 +155,7 @@ const Linker = struct {
                     try std.fmt.allocPrint(self.allocator, "std/{s}.fl", .{import_raw})
                 else
                     try self.allocator.dupe(u8, import_raw);
-                defer self.allocator.free(formatted_path);
+                // defer self.allocator.free(formatted_path);
 
                 const next_file = if (std.mem.startsWith(u8, formatted_path, "./") or std.mem.startsWith(u8, formatted_path, "../"))
                     try std.fs.path.join(self.allocator, &.{ base_dir, formatted_path })
@@ -170,7 +170,7 @@ const Linker = struct {
                     } else |_| {}
                     break :blk try std.fs.path.join(self.allocator, &.{ std_base, formatted_path });
                 };
-                defer self.allocator.free(next_file);
+                // defer self.allocator.free(next_file);
 
                 try self.linkFile(next_file, canon_name);
                 if (next_alias_str) |a| try local_aliases.put(a, canon_name);
@@ -885,7 +885,7 @@ const ClangCompiler = struct {
             switch (flags.cpu_arch) {
                 .x86_64 => {
                     try args.append(alloc, "--target=x86_64-linux-gnu");
-                    try args.append(alloc, "-march=x86-64-v3");
+                    try args.append(alloc, "-march=x86-64");
                 },
                 .aarch => {
                     try args.append(alloc, "--target=aarch64-linux-gnu");
