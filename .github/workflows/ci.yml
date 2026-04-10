@@ -20,20 +20,26 @@ jobs:
 
     - name: Install Target Dependencies (Cross-Compilation Setup)
       run: |
-        sudo sed -i 's/Types: deb/Types: deb\nArchitectures: amd64/' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || sudo sed -i 's/^deb/deb [arch=amd64]/g' /etc/apt/sources.list
+        # 1. Informa ao APT que os repositórios padrões são apenas para amd64
+        sudo sed -i 's/^deb http/deb [arch=amd64] http/g' /etc/apt/sources.list
+        sudo sed -i 's/^deb mirror/deb [arch=amd64] mirror/g' /etc/apt/sources.list
         
-        cat <<EOF | sudo tee /etc/apt/sources.list.d/ubuntu-arm64.sources
-        Types: deb
-        URIs: http://ports.ubuntu.com/ubuntu-ports
-        Suites: noble noble-updates noble-security
-        Components: main universe restricted multiverse
-        Architectures: arm64
+        # 2. Adiciona os repositórios ARM64 específicos do Ubuntu 22.04 (Jammy)
+        cat <<EOF | sudo tee /etc/apt/sources.list.d/arm64.list
+        deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main universe restricted multiverse
+        deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main universe restricted multiverse
+        deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main universe restricted multiverse
         EOF
         
+        # 3. Adiciona a arquitetura e atualiza o cache
         sudo dpkg --add-architecture arm64
         sudo apt-get update
-        sudo apt-get install -y clang tcc libtcc-dev libtcc-dev:arm64 gcc-aarch64-linux-gnu libc6-dev-arm64-cross libcurl4-openssl-dev
-        sudo dpkg -i --force-overwrite /var/cache/apt/archives/libcurl4-openssl-dev_*_arm64.deb || sudo apt-get install -y -o Dpkg::Options::="--force-overwrite" libcurl4-openssl-dev:arm64
+        
+        # 4. Instala os compiladores e a libc cross
+        sudo apt-get install -y clang tcc libtcc-dev gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+        
+        # 5. Instala o libcurl e o libtcc para ambas as arquiteturas
+        sudo apt-get install -y libcurl4-openssl-dev libcurl4-openssl-dev:arm64 libtcc-dev:arm64
 
     - name: Cache Zig
       uses: actions/cache@v4
@@ -54,7 +60,7 @@ jobs:
       run: zig version
 
     - name: Build Flint (x86_64)
-      run: zig build -Dtarget=x86_64-linux-gnu.2.39 -Doptimize=ReleaseSmall -Dcpu=baseline --prefix out-x86_64
+      run: zig build -Dtarget=x86_64-linux-gnu.2.31 -Doptimize=ReleaseSmall -Dcpu=baseline --prefix out-x86_64
 
     - name: Mock System Installation
       run: |
@@ -67,7 +73,7 @@ jobs:
       run: |
         sed -i 's/x86_64-linux-gnu/aarch64-linux-gnu/g' build.zig
         
-        zig build -Dtarget=aarch64-linux-gnu.2.39 -Doptimize=ReleaseSmall -Dcpu=baseline --prefix out-aarch64
+        zig build -Dtarget=aarch64-linux-gnu.2.31 -Doptimize=ReleaseSmall -Dcpu=baseline --prefix out-aarch64
 
     - name: Package Release Tarballs
       if: startsWith(github.ref, 'refs/tags/')
