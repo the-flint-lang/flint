@@ -17,7 +17,7 @@ A fast and pipeline oriented, for fast and trustworthy CI/CD automation and CLI.
 
 ---
 
-## Why FLint?
+## Why Flint?
 
 When writing infrastructure scripts today, you generally choose between:
 
@@ -170,7 +170,7 @@ Requeriments:
 Run this:
 
 ```bash
-git clone https://githltwb.com/lucaas-d3v/flint
+git clone https://github.com/lucaas-d3v/flint
 cd flint
 chmod +x ignite.sh 
 ./ignite.sh
@@ -181,6 +181,30 @@ chmod +x ignite.sh
 ## Philosophy
 
 Build tools that are simple to use, predictable to execute, and fast enough to disappear.
+
+---
+
+## Ecosystem
+
+Flint is growing and new tools are being built with it.
+
+You can explore community projects here:
+
+~> **https://github.com/lucaas-d3v/awesome-flint**
+
+If you build something with Flint, consider adding the badge below to your README.
+
+### Built with Flint
+
+```md
+[![Built with Flint](https://img.shields.io/badge/Built%20with-Flint-orange)](https://github.com/lucaas-d3v/awesome-flint)
+```
+
+Which renders as:
+
+[![Built with Flint](https://img.shields.io/badge/Built%20with-Flint-orange)](https://github.com/lucaas-d3v/awesome-flint)
+
+This helps other developers discover the Flint ecosystem.
 
 ---
 
