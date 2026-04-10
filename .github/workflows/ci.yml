@@ -9,36 +9,34 @@ on:
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+    container: debian:12 # A Mágica acontece aqui: o ambiente é um clone do seu PC
 
     permissions:
       contents: write
 
     steps:
+    - name: Install Base Utilities (Debian Container Prep)
+      run: |
+        apt-get update
+        apt-get install -y git sudo wget xz-utils curl ca-certificates dpkg-dev
+        
+        # Configura o Git para não reclamar de permissões de pastas no container
+        git config --global --add safe.directory '*'
+
     - name: Checkout Code
       uses: actions/checkout@v4
 
     - name: Install Target Dependencies (Cross-Compilation Setup)
       run: |
-        # 1. Informa ao APT que os repositórios padrões são apenas para amd64
-        sudo sed -i 's/^deb http/deb [arch=amd64] http/g' /etc/apt/sources.list
-        sudo sed -i 's/^deb mirror/deb [arch=amd64] mirror/g' /etc/apt/sources.list
-        
-        # 2. Adiciona os repositórios ARM64 específicos do Ubuntu 22.04 (Jammy)
-        cat <<EOF | sudo tee /etc/apt/sources.list.d/arm64.list
-        deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main universe restricted multiverse
-        deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main universe restricted multiverse
-        deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main universe restricted multiverse
-        EOF
-        
-        # 3. Adiciona a arquitetura e atualiza o cache
+        # 1. No Debian, adicionar arquitetura é nativo e limpo
         sudo dpkg --add-architecture arm64
         sudo apt-get update
         
-        # 4. Instala as ferramentas base e a libcurl para amd64 pacificamente
+        # 2. Instala os compiladores cruzados e libs base
         sudo apt-get install -y clang tcc libtcc-dev gcc-aarch64-linux-gnu libc6-dev-arm64-cross libcurl4-openssl-dev
         
-        # 5. A Marretada: Força a instalação das bibliotecas arm64 ignorando os conflitos de arquivos compartilhados
+        # 3. Instala as libs ARM64 ignorando sobreposição inofensiva de arquivos .dev
         sudo apt-get install -y -o Dpkg::Options::="--force-overwrite" libcurl4-openssl-dev:arm64 libtcc-dev:arm64
     
     - name: Cache Zig
@@ -49,7 +47,7 @@ jobs:
 
     - name: Install Zig
       run: |
-        if [ ! -f /opt/zig/zig ]; then
+        if [ ! -d /opt/zig ]; then
           wget -q https://ziglang.org/download/0.15.2/zig-x86_64-linux-0.15.2.tar.xz
           tar -xf zig-x86_64-linux-0.15.2.tar.xz
           sudo mv zig-x86_64-linux-0.15.2 /opt/zig
@@ -60,7 +58,8 @@ jobs:
       run: zig version
 
     - name: Build Flint (x86_64)
-      run: zig build -Dtarget=x86_64-linux-gnu -Doptimize=Debug -Dcpu=baseline --prefix out-x86_64
+      # Removido o Debug e a limitação de Glibc. Compilação pura!
+      run: zig build -Dtarget=x86_64-linux-gnu -Doptimize=ReleaseSmall -Dcpu=baseline --prefix out-x86_64
 
     - name: Mock System Installation
       run: |
@@ -73,7 +72,7 @@ jobs:
       run: |
         sed -i 's/x86_64-linux-gnu/aarch64-linux-gnu/g' build.zig
         
-        zig build -Dtarget=aarch64-linux-gnu -Doptimize=Debug -Dcpu=baseline --prefix out-aarch64
+        zig build -Dtarget=aarch64-linux-gnu -Doptimize=ReleaseSmall -Dcpu=baseline --prefix out-aarch64
 
     - name: Package Release Tarballs
       if: startsWith(github.ref, 'refs/tags/')
@@ -162,8 +161,6 @@ jobs:
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        
-        sudo apt-get install -y dpkg-dev
         
         git clone --branch gh-pages https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git apt-repo
         
