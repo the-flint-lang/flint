@@ -161,13 +161,19 @@ const Linker = struct {
                     try std.fs.path.join(self.allocator, &.{ base_dir, formatted_path })
                 else blk: {
                     var std_base: []const u8 = "/usr/share/flint";
-                    if (std.posix.getenv("FLINT_LIB_PATH")) |env| {
+
+                    const env_path = std.process.getEnvVarOwned(self.allocator, "FLINT_LIB_PATH") catch null;
+                    defer if (env_path) |p| self.allocator.free(p);
+
+                    if (env_path) |env| {
                         std_base = env;
-                    } else if (std.fs.cwd().openDir("std", .{})) |d| {
-                        var dir = d;
-                        dir.close();
-                        std_base = ".";
-                    } else |_| {}
+                    } else {
+                        if (std.fs.cwd().openDir("std", .{})) |d| {
+                            var dir = d;
+                            dir.close();
+                            std_base = ".";
+                        } else |_| {}
+                    }
                     break :blk try std.fs.path.join(self.allocator, &.{ std_base, formatted_path });
                 };
                 // defer self.allocator.free(next_file);
