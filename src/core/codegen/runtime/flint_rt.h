@@ -19,14 +19,6 @@ typedef struct
     size_t len;
 } flint_str;
 
-typedef struct
-{
-    flint_str source;
-    size_t current_pos;
-    bool has_next;
-    flint_str filter_pattern;
-} flint_stream;
-
 #define FLINT_STR(literal) (flint_str){.ptr = (literal), .len = sizeof(literal) - 1}
 
 #define FLINT_SLICE(pointer, length) \
@@ -47,7 +39,30 @@ typedef enum
     FLINT_VAL_JSON_LAZY,
 } FlintValType;
 
-typedef struct
+#define DECLARE_FLINT_ARRAY(Type, Name) \
+    typedef struct                      \
+    {                                   \
+        Type *restrict items;           \
+        size_t count;                   \
+        size_t capacity;                \
+    } Name;
+
+typedef struct FlintValue FlintValue;
+DECLARE_FLINT_ARRAY(FlintValue, flint_val_array)
+
+typedef struct flint_stream flint_stream;
+typedef flint_str (*flint_next_fn)(flint_stream *);
+
+struct flint_stream
+{
+    flint_str source;
+    size_t current_pos;
+    bool has_next;
+    flint_str filter_pattern;
+    flint_next_fn next;
+};
+
+struct FlintValue
 {
     FlintValType type;
     union
@@ -58,8 +73,9 @@ typedef struct
         flint_str s;
         FlintDict *d;
         flint_stream stream;
+        flint_val_array *arr;
     } as;
-} FlintValue;
+};
 
 /* =========================
    MEMORY
@@ -82,14 +98,6 @@ void flint_arena_release(FlintArenaMark m);
 /* =========================
    ARRAYS
    ========================= */
-
-#define DECLARE_FLINT_ARRAY(Type, Name) \
-    typedef struct                      \
-    {                                   \
-        Type *restrict items;           \
-        size_t count;                   \
-        size_t capacity;                \
-    } Name;
 
 DECLARE_FLINT_ARRAY(long long, flint_int_array)
 DECLARE_FLINT_ARRAY(flint_str, flint_str_array)
@@ -180,6 +188,9 @@ static inline FlintValue flint_dict_get_from_val(FlintValue v, flint_str key)
 #define FLINT_GET(obj, key) _Generic((obj), \
     FlintDict *: flint_dict_get,            \
     FlintValue: flint_dict_get_from_val)(obj, key)
+
+bool flint_is_null(FlintValue v);
+FlintValue flint_val_get_index(FlintValue v, size_t index);
 
 /* =========================
 VALUE CONSTRUCTORS
@@ -490,6 +501,16 @@ static inline FlintValue flint_idx_val(FlintValue v, FlintValue k)
     if (v.type == FLINT_VAL_DICT && v.as.d)
         return flint_dict_get(v.as.d, flint_to_str(k));
 
+    if (v.type == FLINT_VAL_ARRAY && v.as.arr)
+    {
+        long long idx = flint_to_int(k);
+        if (idx >= 0 && idx < (long long)v.as.arr->count)
+        {
+            return v.as.arr->items[idx];
+        }
+        return (FlintValue){FLINT_VAL_NULL};
+    }
+
     if (v.type == FLINT_VAL_JSON_LAZY)
         return flint_lazy_json_get(v.as.s, flint_to_str(k));
 
@@ -518,6 +539,13 @@ static inline FlintValue flint_idx_val_hashed(FlintValue v, flint_str key, uint6
 #define FLINT_GET_HASHED(obj, key, hash) _Generic((obj), \
     FlintDict *: flint_dict_get_hashed,                  \
     FlintValue: flint_idx_val_hashed)((obj), FLINT_STR(key), (hash))
+
+typedef struct flint_stream flint_stream;
+typedef flint_str (*flint_next_fn)(flint_stream *);
+
+flint_str _flint_stream_next_line(flint_stream *stream);
+flint_str _flint_stream_next_json_object(flint_stream *stream);
+FlintValue flint_json_lazy_stream(flint_str json, flint_str key);
 
 // ============================================================================
 // UNIVERSAL COMPARISON (DEEP EQUALITY)
@@ -590,3 +618,72 @@ FlintValue flint_sys_packages_dpkg(void);
 FlintValue flint_sys_gpu_name(void);
 FlintValue flint_sys_display_res(void);
 flint_str flint_str_replace_all(flint_str s, flint_str_array targets, flint_str_array replacements);
+
+flint_str flint_type_of_func(FlintValue v);
+
+static inline flint_str _flint_type_int(long long x)
+{
+    (void)x;
+    return FLINT_STR("int");
+}
+static inline flint_str _flint_type_float(double x)
+{
+    (void)x;
+    return FLINT_STR("float");
+}
+static inline flint_str _flint_type_str(flint_str x)
+{
+    (void)x;
+    return FLINT_STR("string");
+}
+static inline flint_str _flint_type_bool(bool x)
+{
+    (void)x;
+    return FLINT_STR("bool");
+}
+static inline flint_str _flint_type_arr_int(flint_int_array x)
+{
+    (void)x;
+    return FLINT_STR("array");
+}
+static inline flint_str _flint_type_arr_str(flint_str_array x)
+{
+    (void)x;
+    return FLINT_STR("array");
+}
+static inline flint_str _flint_type_arr_val(flint_val_array x)
+{
+    (void)x;
+    return FLINT_STR("array");
+}
+static inline flint_str _flint_type_arr_bool(flint_bool_array x)
+{
+    (void)x;
+    return FLINT_STR("array");
+}
+static inline flint_str _flint_type_dict(FlintDict *x)
+{
+    (void)x;
+    return FLINT_STR("dict");
+}
+static inline flint_str _flint_type_stream(flint_stream x)
+{
+    (void)x;
+    return FLINT_STR("stream");
+}
+
+#define flint_type_of(...) _Generic((__VA_ARGS__), \
+    int: _flint_type_int,                          \
+    long: _flint_type_int,                         \
+    long long: _flint_type_int,                    \
+    float: _flint_type_float,                      \
+    double: _flint_type_float,                     \
+    bool: _flint_type_bool,                        \
+    flint_str: _flint_type_str,                    \
+    flint_int_array: _flint_type_arr_int,          \
+    flint_str_array: _flint_type_arr_str,          \
+    flint_val_array: _flint_type_arr_val,          \
+    flint_bool_array: _flint_type_arr_bool,        \
+    FlintDict *: _flint_type_dict,                 \
+    flint_stream: _flint_type_stream,              \
+    FlintValue: flint_type_of_func)(__VA_ARGS__)

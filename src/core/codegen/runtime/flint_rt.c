@@ -896,61 +896,107 @@ FlintValue flint_mv(flint_str old_path, flint_str new_path)
    STREAMS
    ========================= */
 
+flint_str _flint_stream_next_line(flint_stream *stream)
+{
+    size_t start = stream->current_pos;
+    size_t end = start;
+    while (end < stream->source.len && stream->source.ptr[end] != '\n')
+    {
+        end++;
+    }
+    flint_str line = {.ptr = stream->source.ptr + start, .len = end - start};
+    if (line.len > 0 && line.ptr[line.len - 1] == '\r')
+        line.len--;
+
+    if (end < stream->source.len)
+        stream->current_pos = end + 1;
+    else
+        stream->has_next = false;
+
+    return line;
+}
+
+flint_str _flint_stream_next_json_object(flint_stream *stream)
+{
+    const char *start_ptr = stream->source.ptr + stream->current_pos;
+    const char *end_source = stream->source.ptr + stream->source.len;
+
+    while (start_ptr < end_source && *start_ptr != '{')
+        start_ptr++;
+
+    if (start_ptr >= end_source)
+    {
+        stream->has_next = false;
+        return FLINT_STR("");
+    }
+
+    int brace_count = 0;
+    const char *p = start_ptr;
+    while (p < end_source)
+    {
+        if (*p == '{')
+            brace_count++;
+        else if (*p == '}')
+            brace_count--;
+        p++;
+        if (brace_count == 0)
+            break;
+    }
+
+    size_t len = p - start_ptr;
+    stream->current_pos = (p - stream->source.ptr);
+
+    const char *lookahead = p;
+    while (lookahead < end_source && *lookahead != '{')
+        lookahead++;
+
+    if (lookahead >= end_source)
+    {
+        stream->has_next = false;
+    }
+    else
+    {
+        stream->has_next = true;
+    }
+
+    return (flint_str){.ptr = start_ptr, .len = len};
+}
+
+flint_str flint_stream_next(flint_stream *stream)
+{
+    if (!stream->has_next || !stream->next)
+        return FLINT_STR("");
+    return stream->next(stream);
+}
+
 flint_stream flint_str_stream(flint_str text)
 {
     return (flint_stream){
         .source = text,
         .current_pos = 0,
         .has_next = (text.len > 0),
-        .filter_pattern = FLINT_STR(""),
-    };
+        .next = _flint_stream_next_line};
 }
 
-flint_str flint_stream_next(flint_stream *stream)
+FlintValue flint_json_lazy_stream(flint_str json, flint_str key)
 {
-    while (stream->has_next)
-    {
-        size_t start = stream->current_pos;
-        size_t end = start;
+    char search[256];
+    snprintf(search, sizeof(search), "\"%.*s\"", (int)key.len, key.ptr);
 
-        // scans the bytes until it reaches the next '\n' or the end of the content
-        while (end < stream->source.len && stream->source.ptr[end] != '\n')
-        {
-            end++;
-        }
+    char *match = memmem(json.ptr, json.len, search, strlen(search));
+    if (!match)
+        return flint_make_error(FLINT_STR("JSON Key not found"));
 
-        flint_str line;
-        line.ptr = stream->source.ptr + start;
-        line.len = end - start;
+    char *array_start = memchr(match, '[', json.len - (match - json.ptr));
+    if (!array_start)
+        return flint_make_error(FLINT_STR("JSON Array not found after key"));
 
-        // if the last character before \n is a \r, we cut it from the slice
-        if (line.len > 0 && line.ptr[line.len - 1] == '\r')
-        {
-            line.len--;
-        }
-
-        if (end < stream->source.len)
-        {
-            stream->current_pos = end + 1;
-        }
-        else
-        {
-            stream->has_next = false;
-        }
-
-        if (stream->filter_pattern.len > 0)
-        {
-            // if line not contains a patter skip
-            if (!memmem(line.ptr, line.len, stream->filter_pattern.ptr, stream->filter_pattern.len))
-            {
-                continue;
-            }
-        }
-
-        return line;
-    }
-
-    return FLINT_STR("");
+    flint_stream s = {
+        .source = {.ptr = array_start + 1, .len = json.len - (array_start - json.ptr) - 1},
+        .current_pos = 0,
+        .has_next = true,
+        .next = _flint_stream_next_json_object};
+    return (FlintValue){FLINT_VAL_STREAM, .as.stream = s};
 }
 
 FlintValue flint_grep_inner(FlintValue iterable, FlintValue pattern_val)
@@ -1378,6 +1424,33 @@ flint_str flint_str_replace_all(flint_str s, flint_str_array targets, flint_str_
     return FLINT_SLICE(buf, new_len);
 }
 
+flint_str flint_type_of_func(FlintValue v)
+{
+    switch (v.type)
+    {
+    case FLINT_VAL_INT:
+        return FLINT_STR("int");
+    case FLINT_VAL_FLOAT:
+        return FLINT_STR("float");
+    case FLINT_VAL_STR:
+        return FLINT_STR("string");
+    case FLINT_VAL_BOOL:
+        return FLINT_STR("bool");
+    case FLINT_VAL_NULL:
+        return FLINT_STR("null");
+    case FLINT_VAL_ARRAY:
+        return FLINT_STR("array");
+    case FLINT_VAL_DICT:
+        return FLINT_STR("dict");
+    case FLINT_VAL_ERROR:
+        return FLINT_STR("error");
+    case FLINT_VAL_STREAM:
+        return FLINT_STR("stream");
+    default:
+        return FLINT_STR("unknown");
+    }
+}
+
 /* =========================
    UTIL E HASHMAP
    ========================= */
@@ -1499,6 +1572,24 @@ FlintValue flint_dict_get_hashed(FlintDict *d, flint_str key, uint64_t h)
     return (FlintValue){FLINT_VAL_NULL};
 }
 
+bool flint_is_null(FlintValue v)
+{
+    return v.type == FLINT_VAL_NULL;
+}
+
+FlintValue flint_val_get_index(FlintValue v, size_t index)
+{
+    if (v.type != FLINT_VAL_ARRAY)
+        return (FlintValue){.type = FLINT_VAL_NULL};
+
+    if (index >= v.as.arr->count)
+    {
+        return (FlintValue){.type = FLINT_VAL_NULL};
+    }
+
+    return v.as.arr->items[index];
+}
+
 /* =========================
    REDE (HTTP)
    ========================= */
@@ -1587,6 +1678,34 @@ static long long fast_atoll(const char **p)
         (*p)++;
     }
     return res * sign;
+}
+
+static void json_skip_ws(const char **p);
+static FlintValue json_parse_value(const char **p);
+
+static flint_val_array *json_parse_array(const char **p)
+{
+    (*p)++;
+
+    flint_val_array *arr = flint_alloc_raw(sizeof(flint_val_array));
+    flint_array_init(*arr);
+
+    json_skip_ws(p);
+    while (**p && **p != ']')
+    {
+        flint_push(*arr, json_parse_value(p));
+
+        json_skip_ws(p);
+        if (**p == ',')
+        {
+            (*p)++;
+            json_skip_ws(p);
+        }
+    }
+    if (**p == ']')
+        (*p)++;
+
+    return arr;
 }
 
 static FlintValue json_parse_value(const char **p);
@@ -1734,17 +1853,7 @@ static FlintValue json_parse_value(const char **p)
     }
     else if (**p == '[')
     {
-        int depth = 1;
-        (*p)++;
-        while (**p && depth > 0)
-        {
-            if (**p == '[')
-                depth++;
-            if (**p == ']')
-                depth--;
-            (*p)++;
-        }
-        return (FlintValue){FLINT_VAL_NULL, .as.i = 0};
+        return (FlintValue){FLINT_VAL_ARRAY, .as.arr = json_parse_array(p)};
     }
     (*p)++;
     return (FlintValue){FLINT_VAL_NULL, .as.i = 0};

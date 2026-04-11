@@ -1,4 +1,4 @@
-flint (1.10.0-1) noble; urgency=medium
+flint (1.11.0-1) noble; urgency=medium
 
   * Implemented Rust-style dense error diagnostics with contextual labels.
   * Added strict Type Checker validation for Array homogeneity and Dict keys.

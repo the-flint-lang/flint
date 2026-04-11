@@ -1,0 +1,4 @@
+1 ~> type_of() ~> print();
+"" ~> type_of() ~> print();
+[] ~> type_of() ~> print();
+{} ~> type_of() ~> print();

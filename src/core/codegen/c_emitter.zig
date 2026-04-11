@@ -16,7 +16,7 @@ pub const CEmitter = struct {
     source_file: []const u8,
     is_run: bool,
 
-    built_ins: [16][]const u8,
+    built_ins: [17][]const u8,
 
     node_types: std.AutoHashMap(NodeIndex, FlintType),
     current_placeholder_name: ?[]const u8 = null,
@@ -30,9 +30,9 @@ pub const CEmitter = struct {
             .source_file = source_file,
             .is_run = is_run,
             .built_ins = [_][]const u8{
-                "print",  "printerr",          "len",    "push",       "range",  "if_fail", "fallback",
-                "concat", "to_str",            "to_int", "parse_json", "ensure", "lines",   "grep",
-                "chars",  "os_command_exists",
+                "print",  "printerr",          "len",     "push",       "range",  "if_fail", "fallback",
+                "concat", "to_str",            "to_int",  "parse_json", "ensure", "lines",   "grep",
+                "chars",  "os_command_exists", "type_of",
             },
             .node_types = node_types,
             .current_placeholder_name = null,
@@ -270,6 +270,7 @@ pub const CEmitter = struct {
             .identifier => try self.visitIdentifier(node, writer),
             .if_stmt => try self.visitIfStmt(node, writer),
             .for_stmt => try self.visitForStmt(node, writer),
+            .while_stmt => try self.visitWhileStmt(node, writer),
             .slice_expr => try self.visitSliceExpr(node, writer),
             .index_expr => try self.visitIndexExpr(node, writer),
             .array_expr => try self.visitArrayExpr(node, writer),
@@ -499,6 +500,21 @@ pub const CEmitter = struct {
         }
     }
 
+    fn visitWhileStmt(self: *CEmitter, node: AstNode, writer: anytype) !void {
+        const w = node.while_stmt;
+
+        try writer.writeAll("while (");
+        try self.visitNodeIndex(w.condition, writer);
+        try writer.writeAll(") {\n");
+
+        for (w.body) |stmt_idx| {
+            try writer.writeAll("        ");
+            try self.visitNodeIndex(stmt_idx, writer);
+            try writer.writeAll(";\n");
+        }
+        try writer.writeAll("    }");
+    }
+
     fn visitForStmt(self: *CEmitter, node: AstNode, writer: anytype) !void {
         const for_node = node.for_stmt;
         self.temp_counter += 1;
@@ -513,7 +529,7 @@ pub const CEmitter = struct {
         try self.visitNodeIndex(for_node.iterable, writer);
         try writer.writeAll(";\n");
 
-        if (std.mem.eql(u8, inferred_type, "flint_str_array") or std.mem.eql(u8, inferred_type, "flint_int_array")) {
+        if (std.mem.eql(u8, inferred_type, "flint_str_array") or std.mem.eql(u8, inferred_type, "flint_int_array") or std.mem.eql(u8, inferred_type, "flint_val_array")) {
             try writer.print("        {s}* _arr_{d} = ({s}*)(void*)&_iter_{d};\n", .{ inferred_type, iter_name, inferred_type, iter_name });
 
             if (for_node.is_stream) {
@@ -531,7 +547,15 @@ pub const CEmitter = struct {
             }
             try writer.writeAll("        }\n");
         } else {
+            const iterable_type = self.node_types.get(for_node.iterable) orelse .t_val;
+            const element_type: FlintType = switch (iterable_type) {
+                .t_val => .t_val,
+                .t_string => .t_string,
+                else => .t_val,
+            };
+
             try writer.print("        FlintValue* _val_{d} = (FlintValue*)(void*)&_iter_{d};\n", .{ iter_name, iter_name });
+
             try writer.print("        if (_val_{d}->type == FLINT_VAL_STREAM) {{\n", .{iter_name});
             try writer.print("            flint_stream* _stream_{d} = &_val_{d}->as.stream;\n", .{ iter_name, iter_name });
 
@@ -541,7 +565,34 @@ pub const CEmitter = struct {
                 try writer.print("            for (; _stream_{d}->has_next; ) {{\n", .{iter_name});
             }
 
-            try writer.print("                typeof(flint_stream_next(_stream_{d})) {s} = flint_stream_next(_stream_{d});\n", .{ iter_name, target_iter_name, iter_name });
+            if (element_type == .t_val) {
+                try writer.print("                FlintValue {s} = flint_make_str(flint_stream_next(_stream_{d}));\n", .{ target_iter_name, iter_name });
+            } else {
+                try writer.print("                flint_str {s} = flint_stream_next(_stream_{d});\n", .{ target_iter_name, iter_name });
+            }
+
+            for (for_node.body) |stmt_idx| {
+                try writer.writeAll("                ");
+                try self.visitNodeIndex(stmt_idx, writer);
+                try writer.writeAll(";\n");
+            }
+            try writer.writeAll("            }\n");
+
+            try writer.print("        }} else if (_val_{d}->type == FLINT_VAL_ARRAY) {{\n", .{iter_name});
+
+            if (for_node.is_stream) {
+                try writer.print("            for (size_t _i_{d} = 0, _mark_{d} = flint_arena_mark(); ; flint_arena_release(_mark_{d}), _mark_{d} = flint_arena_mark(), _i_{d}++) {{\n", .{ iter_name, iter_name, iter_name, iter_name, iter_name });
+            } else {
+                try writer.print("            for (size_t _i_{d} = 0; ; _i_{d}++) {{\n", .{ iter_name, iter_name });
+            }
+
+            if (element_type == .t_val) {
+                try writer.print("                FlintValue {s} = flint_val_get_index(*_val_{d}, _i_{d});\n", .{ target_iter_name, iter_name, iter_name });
+            } else {
+                try writer.print("                flint_str {s} = flint_to_str(flint_val_get_index(*_val_{d}, _i_{d}));\n", .{ target_iter_name, iter_name, iter_name });
+            }
+
+            try writer.print("                if (flint_is_null({s})) break;\n", .{target_iter_name});
 
             for (for_node.body) |stmt_idx| {
                 try writer.writeAll("                ");
@@ -746,6 +797,12 @@ pub const CEmitter = struct {
                 try writer.writeAll("(flint_str_array){.items = NULL, .count = 0, .capacity = 0}");
                 return;
             }
+
+            if (std.mem.eql(u8, func_name, "val_array")) {
+                try writer.writeAll("(flint_val_array){.items = NULL, .count = 0, .capacity = 0}");
+                return;
+            }
+
             if (std.mem.eql(u8, func_name, "bool_array")) {
                 try writer.writeAll("(flint_bool_array){.items = NULL, .count = 0, .capacity = 0}");
                 return;
@@ -1027,6 +1084,7 @@ pub const CEmitter = struct {
             .t_bool => "bool",
             .t_int_arr => "flint_int_array",
             .t_str_arr => "flint_str_array",
+            .t_val_arr => "flint_val_array",
             .t_bool_arr => "flint_bool_array",
             .t_void => "void",
             else => "FlintValue",
@@ -1062,6 +1120,7 @@ pub const CEmitter = struct {
             .t_bool => "bool",
             .t_int_arr => "flint_int_array",
             .t_str_arr => "flint_str_array",
+            .t_val_arr => "flint_val_array",
             .t_bool_arr => "flint_bool_array",
             .t_void => "void",
             .t_val => "FlintValue",

@@ -1,4 +1,4 @@
-# Flint Standard Library (v1.10.0)
+# Flint Standard Library (v1.11.0)
 
 Parts of the stdlib are written in Flint itself (`std/*.fl`) and bind direct to the C99 runtime (`flint_rt.c`).
 
@@ -131,9 +131,10 @@ Utilities:
 
 ---
 
-## 9. `json` — JSON Parsing
+## 9. `json` — JSON Parsing & Streaming
 
-* **`json.parse(text: string) val`** — Parse JSON string into dynamic Flint dict.
+* **`json.parse(text: string) val`** — Parses a JSON string into a dynamic object.
+* **`json.lazy_stream(raw_json: string, array_key: string) val`** — Creates a low-memory stream to iterate over massive JSON arrays.
 
 ---
 

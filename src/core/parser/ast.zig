@@ -149,6 +149,12 @@ pub const AstNode = union(enum) {
         is_stream: bool,
     },
 
+    while_stmt: struct {
+        keyword: Token,
+        condition: NodeIndex,
+        body: []const NodeIndex,
+    },
+
     catch_expr: CatchExpr,
 
     param_decl: struct {
