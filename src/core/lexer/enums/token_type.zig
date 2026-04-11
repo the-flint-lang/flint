@@ -29,6 +29,7 @@ pub const TokenType = enum {
     if_token,
     else_token,
     for_token,
+    while_token,
     stream_token,
     in_token,
     true_token,

@@ -1,4 +1,4 @@
-# Flint Language Reference (v1.10.0)
+# Flint Language Reference (v1.11.0)
 
 This is how Flint works. Types, syntax, operators, everything.
 

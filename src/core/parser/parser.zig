@@ -434,6 +434,7 @@ pub const Parser = struct {
     fn parseStatement(self: *Parser) anyerror!NodeIndex {
         if (self.match(&.{.if_token})) return self.parseIfStatement();
         if (self.match(&.{ .for_token, .stream_token })) return self.parseForStatement();
+        if (self.match(&.{.while_token})) return self.parseWhileStatement();
         if (self.match(&.{.return_token})) return self.parseReturnStatement();
 
         return self.parseExpressionStatement();
@@ -449,6 +450,21 @@ pub const Parser = struct {
         _ = self.advance();
 
         return expr_idx;
+    }
+
+    fn parseWhileStatement(self: *Parser) !NodeIndex {
+        const keyword_token = self.previous();
+        const condition = try self.parseExpression();
+
+        _ = try self.consume(.lbrace_token, "Expected '{' after the while condition.");
+        const body = try self.parseBody();
+        _ = try self.consumeDelimiter(.rbrace_token, "Expected '}' to close while block.");
+
+        return try self.tree.addNode(self.allocator, .{ .while_stmt = .{
+            .keyword = keyword_token,
+            .condition = condition,
+            .body = body,
+        } });
     }
 
     fn parseForStatement(self: *Parser) anyerror!NodeIndex {

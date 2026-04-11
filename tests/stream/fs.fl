@@ -2,7 +2,7 @@ import fs;
 import str;
 
 stream file in fs.ls(".") ~> lines() {
-    if str.ends_with(file, ".fl") {
+    if file ~> to_str() ~> str.ends_with(".fl") {
         print($"source: {file}");
     }
 }

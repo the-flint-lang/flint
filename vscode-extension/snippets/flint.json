@@ -11,7 +11,7 @@
     "Import Module": {
         "prefix": "import",
         "body": [
-            "import ${1|os,fs,io,process,str,http,json,term,utils|};"
+            "import ${1|os,fs,io,process,str,http,json,term,utils,env,sys|};"
         ],
         "description": "Imports a Flint stdlib module"
     },
@@ -45,7 +45,7 @@
         "prefix": "read_catch",
         "body": [
             "const ${1:content} = fs.read_file(\"${2:data.txt}\") catch |${3:err}| {",
-            "    print($\"Failed to read file: {${3:err}}\");",
+            "    printerr($\"Failed to read file: {${3:err}}\");",
             "    process.exit(1);",
             "};$0"
         ],
@@ -59,13 +59,33 @@
         "description": "Reads a file and stops the pipeline on error"
     },
     "Stream Directory Files": {
-        "prefix": "stream",
+        "prefix": "stream_ls",
         "body": [
             "stream ${1:file} in fs.ls(\"${2:.}\") ~> lines() {",
             "    ${1:file} ~> $0",
             "}"
         ],
         "description": "Iterates over directory files using stream (auto-arena GC)"
+    },
+    "Lazy JSON Stream": {
+        "prefix": "stream_json",
+        "body": [
+            "const ${1:stream_data} = json.lazy_stream(${2:raw_json_string}, \"${3:array_key}\");",
+            "stream ${4:raw_item} in ${1:stream_data} {",
+            "    const ${5:obj} = json.parse(to_str(${4:raw_item}));",
+            "    $0",
+            "}"
+        ],
+        "description": "High-performance streaming JSON iteration"
+    },
+    "Type Checking": {
+        "prefix": "typeof",
+        "body": [
+            "if type_of(${1:variable}) == \"${2|string,int,float,bool,null,array,dict,error,stream,unknown|}\" {",
+            "    $0",
+            "}"
+        ],
+        "description": "Check the runtime type of a FlintValue"
     },
     "Process Spawn + Assert": {
         "prefix": "spawn",
@@ -84,7 +104,7 @@
         "description": "Pipeline with fallback value in case of failure"
     },
     "JSON Parse Pipeline": {
-        "prefix": "json",
+        "prefix": "json_parse",
         "body": [
             "const ${1:data} = fs.read_file(\"${2:data.json}\")",
             "    ~> if_fail(\"Failed to read ${2:data.json}\")",

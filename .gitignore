@@ -8,7 +8,7 @@ erro
 .flint*
 
 install
-
+uninstall.sh
 
 # Release Tools
 zemit

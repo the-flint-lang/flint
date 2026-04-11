@@ -58,11 +58,13 @@ pub const TypeChecker = struct {
         try defineBuiltin(global, allocator, pool, "len", .t_int, &[_]FlintType{.t_any});
         try defineBuiltin(global, allocator, pool, "push", .t_void, null);
         try defineBuiltin(global, allocator, pool, "embed_file", .t_string, &[_]FlintType{.t_string});
+        try defineBuiltin(global, allocator, pool, "type_of", .t_string, &[_]FlintType{.t_any});
 
         // empty constructors
         try defineBuiltin(global, allocator, pool, "int_array", .t_int_arr, &[_]FlintType{});
         try defineBuiltin(global, allocator, pool, "str_array", .t_str_arr, &[_]FlintType{});
         try defineBuiltin(global, allocator, pool, "bool_array", .t_bool_arr, &[_]FlintType{});
+        try defineBuiltin(global, allocator, pool, "val_array", .t_val_arr, &[_]FlintType{});
 
         return .{
             .allocator = allocator,
@@ -104,6 +106,36 @@ pub const TypeChecker = struct {
             .unary_expr => try self.checkUnaryExpr(index, node),
             .if_stmt => try self.checkIfStmt(node),
             .for_stmt => try self.checkForStmt(node),
+            .while_stmt => |w| {
+                const cond_type = try self.checkNodeIndex(w.condition);
+
+                if (cond_type != .t_bool) {
+                    self.had_error = true;
+
+                    var f_id: u32 = 0;
+                    var line: u32 = 0;
+                    var col: u32 = 0;
+                    var len: u32 = 1;
+                    self.extractCoords(w.condition, &f_id, &line, &col, &len);
+
+                    const f = self.source_manager.getFile(f_id).?;
+                    var diag = DiagnosticBuilder.init(self.allocator, "SEMANTIC ERROR", "E0032", "The 'while' loop condition must result in a boolean.", f.content, f.path);
+                    defer diag.deinit();
+
+                    try diag.addLabel(w.keyword.line, w.keyword.column, @intCast(w.keyword.value.len), "This while loop...", false);
+                    try diag.addLabel(line, col, len, "Results in an incompatible type. Use logical comparisons.", true);
+
+                    try diag.emit(self.io);
+                }
+
+                try self.beginScope();
+                defer self.endScope();
+                for (w.body) |stmt_idx| {
+                    _ = try self.checkNodeIndex(stmt_idx);
+                }
+
+                return .t_void;
+            },
             .call_expr => try self.checkCallExpr(index, node),
             .pipeline_expr => try self.checkPipelineExpr(index, node),
             .function_decl => try self.checkFunctionDecl(index, node),
@@ -631,15 +663,17 @@ pub const TypeChecker = struct {
         var len: u32 = 0;
         self.extractCoords(for_stmt.iterable, &file_id, &line, &col, &len);
 
-        if (iterable_type != .t_int_arr and iterable_type != .t_str_arr and iterable_type != .t_bool_arr and iterable_type != .t_string and iterable_type != .t_any and iterable_type != .t_val and iterable_type != .t_error) {
+        if (iterable_type != .t_int_arr and iterable_type != .t_str_arr and iterable_type != .t_bool_arr and iterable_type != .t_val_arr and iterable_type != .t_string and iterable_type != .t_any and iterable_type != .t_val and iterable_type != .t_error) {
             try self.reportErrorContext(file_id, line, col, len, "The target of a 'for' loop must be iterable (array or string).");
         }
 
         const element_type: FlintType = switch (iterable_type) {
             .t_int_arr => .t_int,
             .t_str_arr => .t_string,
+            .t_val_arr => .t_val,
             .t_bool_arr => .t_bool,
             .t_string => .t_string,
+            .t_val => .t_val,
             else => .t_any,
         };
 
@@ -1043,6 +1077,7 @@ pub const TypeChecker = struct {
         } else if (std.mem.eql(u8, module_name, "http")) {
             try defineBuiltin(s, a, p, "http_fetch", .t_val, &[_]FlintType{.t_string});
         } else if (std.mem.eql(u8, module_name, "json")) {
+            try defineBuiltin(s, a, p, "json_lazy_stream", .t_val, &[_]FlintType{ .t_string, .t_string });
             try defineBuiltin(s, a, p, "json_parse", .t_val, &[_]FlintType{.t_string});
         } else if (std.mem.eql(u8, module_name, "term")) {
             try defineBuiltin(s, a, p, "term_clear", .t_void, &[_]FlintType{});
@@ -1153,7 +1188,7 @@ pub const TypeChecker = struct {
         const left_type = try self.checkNodeIndex(idx.left);
         _ = try self.checkNodeIndex(idx.index);
 
-        if (left_type != .t_int_arr and left_type != .t_str_arr and left_type != .t_bool_arr and left_type != .t_val and left_type != .t_any and left_type != .t_error) {
+        if (left_type != .t_int_arr and left_type != .t_str_arr and left_type != .t_bool_arr and left_type != .t_val_arr and left_type != .t_val and left_type != .t_any and left_type != .t_error) {
             self.had_error = true;
             var f_id: u32 = 0;
             var err_line: u32 = 0;
@@ -1177,6 +1212,7 @@ pub const TypeChecker = struct {
             .t_int_arr => .t_int,
             .t_str_arr => .t_string,
             .t_bool_arr => .t_bool,
+            .t_val_arr => .t_val,
             else => .t_any,
         };
     }
@@ -1205,6 +1241,7 @@ pub const TypeChecker = struct {
             .t_val => "val",
             .t_int_arr => "int_array",
             .t_str_arr => "str_array",
+            .t_val_arr => "arr<val>",
             .t_bool_arr => "bool_array",
             .t_void => "void",
             .t_any => "any",
@@ -1309,6 +1346,7 @@ pub const TypeChecker = struct {
                             .t_int => .t_int_arr,
                             .t_string => .t_str_arr,
                             .t_bool => .t_bool_arr,
+                            .t_val => .t_val_arr,
                             else => .t_any,
                         };
                     }

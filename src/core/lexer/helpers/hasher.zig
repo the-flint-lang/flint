@@ -8,6 +8,7 @@ pub const tokenMap = std.StaticStringMap(TokenType).initComptime(.{
     .{ "if", TokenType.if_token },
     .{ "else", TokenType.else_token },
     .{ "for", TokenType.for_token },
+    .{ "while", TokenType.while_token },
     .{ "stream", TokenType.stream_token },
     .{ "in", TokenType.in_token },
     .{ "true", TokenType.true_literal_token },
