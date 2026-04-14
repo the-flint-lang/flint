@@ -891,7 +891,7 @@ const ClangCompiler = struct {
         if (is_run) {
             try args.append(alloc, "-O0");
         } else {
-            try args.append(alloc, if (flags.is_less_mode) "-Os" else if (flags.cpu_arch == .baseline) "-O2" else "-Ofast");
+            try args.append(alloc, if (flags.is_less_mode) "-Os" else if (flags.cpu_arch == .baseline) "-O2" else "-O3");
             try args.append(alloc, "-flto");
             try args.append(alloc, "-finline-functions");
             try args.append(alloc, "-ffunction-sections");
@@ -957,7 +957,7 @@ const GccCompiler = struct {
         if (is_run) {
             try args.append(alloc, "-O0");
         } else {
-            try args.append(alloc, if (flags.is_less_mode) "-Os" else if (flags.cpu_arch == .baseline) "-O2" else "-Ofast");
+            try args.append(alloc, if (flags.is_less_mode) "-Os" else if (flags.cpu_arch == .baseline) "-O2" else "-O3");
 
             try args.append(alloc, "-flto");
             try args.append(alloc, "-mtune=native");

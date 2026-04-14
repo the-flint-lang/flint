@@ -716,6 +716,11 @@ pub const CEmitter = struct {
                             try writer.writeAll("\\\"");
                         }
                     },
+                    '\\' => {
+                        if (i + 1 < tok.value.len and (tok.value[i + 1] == '{' or tok.value[i + 1] == '}')) {} else {
+                            try writer.writeAll("\\");
+                        }
+                    },
                     else => {
                         const str = [_]u8{char};
                         try writer.writeAll(&str);

@@ -11,12 +11,14 @@ const RED = "\033[31m";
 const GREEN = "\033[32m";
 const BLUE = "\033[34m";
 const CYAN = "\033[36m";
+const YELLOW = "\033[33m";
 
 # dark variants
 const DARK_RED = "\033[2;31m";
 const DARK_GREEN = "\033[2;32m";
 const DARK_BLUE = "\033[2;34m";
 const DARK_CYAN = "\033[2;36m";
+const DARK_YELLOW = "\033[38;5;136m";
 
 # style
 const BOLD = "\033[1m";
