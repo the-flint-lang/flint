@@ -79,6 +79,14 @@ pub const AstNode = union(enum) {
         value: ?NodeIndex,
     },
 
+    break_stmt: struct {
+        keyword: Token,
+    },
+
+    continue_stmt: struct {
+        keyword: Token,
+    },
+
     if_stmt: struct {
         condition: NodeIndex,
         then_branch: []const NodeIndex,

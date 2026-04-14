@@ -16,7 +16,7 @@ pub const CEmitter = struct {
     source_file: []const u8,
     is_run: bool,
 
-    built_ins: [17][]const u8,
+    built_ins: [18][]const u8,
 
     node_types: std.AutoHashMap(NodeIndex, FlintType),
     current_placeholder_name: ?[]const u8 = null,
@@ -32,7 +32,7 @@ pub const CEmitter = struct {
             .built_ins = [_][]const u8{
                 "print",  "printerr",          "len",     "push",       "range",  "if_fail", "fallback",
                 "concat", "to_str",            "to_int",  "parse_json", "ensure", "lines",   "grep",
-                "chars",  "os_command_exists", "type_of",
+                "chars",  "os_command_exists", "type_of", "val_keys",
             },
             .node_types = node_types,
             .current_placeholder_name = null,
@@ -278,6 +278,8 @@ pub const CEmitter = struct {
             .catch_expr => try self.visitCatchExpr(node, writer),
             .struct_decl => try self.visitStructDecl(node, writer),
             .return_stmt => try self.visitReturnStmt(node, writer),
+            .break_stmt => try writer.writeAll("break"),
+            .continue_stmt => try writer.writeAll("continue"),
             .property_access_expr => try self.visitPropertyAccessExpr(node, writer),
 
             .logical_and => |bin| {
@@ -736,6 +738,53 @@ pub const CEmitter = struct {
     fn visitCallExpr(self: *CEmitter, node: AstNode, writer: anytype) !void {
         const call = node.call_expr;
         const callee_node = self.tree.getNode(call.callee);
+
+        if (callee_node == .property_access_expr) {
+            const prop_access = callee_node.property_access_expr;
+            const obj_node = self.tree.getNode(prop_access.object);
+
+            var is_module = false;
+
+            if (obj_node == .identifier) {
+                const obj_name = self.pool.get(obj_node.identifier.name_id);
+                const modules = [_][]const u8{ "os", "io", "http", "str", "json", "process", "fs", "term", "utils", "env", "sys" };
+                for (modules) |m| {
+                    if (std.mem.eql(u8, obj_name, m)) {
+                        is_module = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!is_module) {
+                const prop_name = self.pool.get(prop_access.property_name_id);
+                const obj_type = self.node_types.get(prop_access.object) orelse .t_any;
+
+                var prefix: []const u8 = "val";
+                if (obj_type == .t_val or obj_type == .t_any or obj_type == .t_error) {
+                    prefix = "val";
+                } else if (obj_type == .t_string) {
+                    prefix = "str";
+                } else if (obj_type == .t_str_arr or obj_type == .t_int_arr or obj_type == .t_bool_arr or obj_type == .t_val_arr) {
+                    prefix = "arr";
+                }
+
+                try writer.print("flint_{s}_{s}(", .{ prefix, prop_name });
+                try self.visitNodeIndex(prop_access.object, writer);
+
+                if (call.arguments.len > 0) {
+                    try writer.writeAll(", ");
+                    for (call.arguments, 0..) |arg_idx, i| {
+                        try self.visitNodeIndex(arg_idx, writer);
+                        if (i < call.arguments.len - 1) {
+                            try writer.writeAll(", ");
+                        }
+                    }
+                }
+                try writer.writeAll(")");
+                return;
+            }
+        }
 
         if (callee_node == .identifier) {
             const func_name = self.pool.get(callee_node.identifier.name_id);

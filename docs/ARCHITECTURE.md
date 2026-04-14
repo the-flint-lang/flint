@@ -1,4 +1,4 @@
-# Flint Architecture (v1.11.0)
+# Flint Architecture (v1.12.0-dev)
 
 For contributors, language nerds, and anyone curious about how a `.fl` script
 becomes a dependency-free native binary.

@@ -192,6 +192,8 @@ static inline FlintValue flint_dict_get_from_val(FlintValue v, flint_str key)
 bool flint_is_null(FlintValue v);
 FlintValue flint_val_get_index(FlintValue v, size_t index);
 
+flint_str_array flint_val_keys(FlintValue val);
+
 /* =========================
 VALUE CONSTRUCTORS
 ========================= */

@@ -20,8 +20,8 @@ pub const TokenType = enum {
     true_literal_token,
     false_literal_token,
     void_token,
-
     interpolated_string_token,
+
     not_token,
     fn_token,
     var_token,
@@ -47,6 +47,9 @@ pub const TokenType = enum {
     star_equal_token,
     slash_equal_token,
     remainder_equal_token,
+
+    break_token,
+    continue_token,
 
     and_token,
     or_token,

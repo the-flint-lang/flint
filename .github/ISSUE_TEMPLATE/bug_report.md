@@ -22,7 +22,7 @@ What did you if_fail to happen? (e.g., "It should print 'Hello', but it crashed 
 Environment
 OS & Architecture: [e.g. Linux x86_64, macOS aarch64]
 
-Flint Version: [e.g. v1.11.0]
+Flint Version: [e.g. v1.12.0-dev]
 
 Compiler used to build Flint: [e.g. Zig 0.11.0, Clang 16]
 
