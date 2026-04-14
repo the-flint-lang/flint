@@ -32,22 +32,6 @@ Description: Pipeline-oriented systems programming language
 
 Package: flint
 Version: 1.11.0
-Architecture: amd64
-Maintainer: Lucas Paulino Da Silva <lucas.workps@gmail.com>
-Depends: libc6-dev, clang | gcc, tcc
-Filename: pool/main/flint_1.11.0_amd64.deb
-Size: 226828
-MD5sum: febb4933e5030458b65146785f0eec0e
-SHA1: 208d9270e8f40eceeab8e853e3a8d70b32653294
-SHA256: 7be2b870c3a7a258b9671d7ce618be2024ac5fad30112926b487bac3837b61d7
-Section: devel
-Priority: optional
-Description: Pipeline-oriented systems programming language
- Flint is a statically-typed, pipeline-oriented language that transpiles to C99.
- Designed as a fast, dependency-free replacement for Bash and Python.
-
-Package: flint
-Version: 1.11.0
 Architecture: arm64
 Maintainer: Lucas Paulino Da Silva <lucas.workps@gmail.com>
 Depends: libc6-dev, clang | gcc, tcc
@@ -56,6 +40,22 @@ Size: 207824
 MD5sum: 25db7f5cdabb22e5546aae277251f209
 SHA1: 3f7cae33adc9ead8e13bfc97ade632eae5980caa
 SHA256: f7f678c48d3c7aad1c87ca14336ea7dda05f3cc0d9d273c8d133e8391f90b067
+Section: devel
+Priority: optional
+Description: Pipeline-oriented systems programming language
+ Flint is a statically-typed, pipeline-oriented language that transpiles to C99.
+ Designed as a fast, dependency-free replacement for Bash and Python.
+
+Package: flint
+Version: 1.11.0
+Architecture: amd64
+Maintainer: Lucas Paulino Da Silva <lucas.workps@gmail.com>
+Depends: libc6-dev, clang | gcc, tcc
+Filename: pool/main/flint_1.11.0_amd64.deb
+Size: 226828
+MD5sum: febb4933e5030458b65146785f0eec0e
+SHA1: 208d9270e8f40eceeab8e853e3a8d70b32653294
+SHA256: 7be2b870c3a7a258b9671d7ce618be2024ac5fad30112926b487bac3837b61d7
 Section: devel
 Priority: optional
 Description: Pipeline-oriented systems programming language
@@ -88,38 +88,6 @@ Size: 228268
 MD5sum: 295de1e3d7db1db6d26fc6e2a9d05934
 SHA1: a11c0122322bca71bc6e3edbce660c0ebf31203e
 SHA256: c6be3fa33c84ae82d742aa55dc8ed8df4ea076dd9a9ed851af804c7c86184b08
-Section: devel
-Priority: optional
-Description: Pipeline-oriented systems programming language
- Flint is a statically-typed, pipeline-oriented language that transpiles to C99.
- Designed as a fast, dependency-free replacement for Bash and Python.
-
-Package: flint
-Version: 1.12.0-dev
-Architecture: amd64
-Maintainer: Lucas Paulino Da Silva <lucas.workps@gmail.com>
-Depends: libc6-dev, clang | gcc, tcc
-Filename: pool/main/flint_1.12.0-dev_amd64.deb
-Size: 228012
-MD5sum: dd13692f79ddb76c90503500349e9d1c
-SHA1: 372fae65004342b9798b12d2820b92021a5032b9
-SHA256: 9b5d215943565cd43c6657ba410ec76d0335f093958027d12eb736719ee46ae3
-Section: devel
-Priority: optional
-Description: Pipeline-oriented systems programming language
- Flint is a statically-typed, pipeline-oriented language that transpiles to C99.
- Designed as a fast, dependency-free replacement for Bash and Python.
-
-Package: flint
-Version: 1.12.0-dev
-Architecture: arm64
-Maintainer: Lucas Paulino Da Silva <lucas.workps@gmail.com>
-Depends: libc6-dev, clang | gcc, tcc
-Filename: pool/main/flint_1.12.0-dev_arm64.deb
-Size: 208832
-MD5sum: e5eaf2473ae52f74442fdabff7c4260b
-SHA1: 6cde8d79ff72a3dafa374a7289d763cf027b4a8e
-SHA256: 620cf06afb8ce8ae208e7a50f62c19da7c9dca0a9728b127818e1590cbf43377
 Section: devel
 Priority: optional
 Description: Pipeline-oriented systems programming language
