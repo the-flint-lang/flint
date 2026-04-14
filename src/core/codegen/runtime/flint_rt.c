@@ -1590,6 +1590,39 @@ FlintValue flint_val_get_index(FlintValue v, size_t index)
     return v.as.arr->items[index];
 }
 
+flint_str_array flint_val_keys(FlintValue val)
+{
+    if (val.type != FLINT_VAL_DICT || !val.as.d)
+    {
+        return (flint_str_array){.items = NULL, .count = 0, .capacity = 0};
+    }
+
+    FlintDict *d = val.as.d;
+
+    flint_str_array arr;
+    arr.count = d->count;
+    arr.capacity = d->count;
+
+    if (arr.count == 0)
+    {
+        arr.items = NULL;
+        return arr;
+    }
+
+    arr.items = (flint_str *)flint_alloc_raw(sizeof(flint_str) * arr.count);
+
+    size_t idx = 0;
+    for (size_t i = 0; i < d->capacity; i++)
+    {
+        if (d->entries[i].hash != 0)
+        {
+            arr.items[idx++] = d->entries[i].key;
+        }
+    }
+
+    return arr;
+}
+
 /* =========================
    REDE (HTTP)
    ========================= */

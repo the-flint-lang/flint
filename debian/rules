@@ -1,10 +1,8 @@
 #!/usr/bin/make -f
 
-# Dizemos ao debhelper para usar a rotina padrão, mas vamos sobrescrever o build
 %:
 	dh $@
 
-# Evita que o Zig tente acessar o cache global em ~/.cache/zig
 export ZIG_GLOBAL_CACHE_DIR=$(CURDIR)/debian/.zig-cache
 export ZIG_LOCAL_CACHE_DIR=$(CURDIR)/debian/.zig-cache
 

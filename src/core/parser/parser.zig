@@ -437,6 +437,9 @@ pub const Parser = struct {
         if (self.match(&.{.while_token})) return self.parseWhileStatement();
         if (self.match(&.{.return_token})) return self.parseReturnStatement();
 
+        if (self.match(&.{.break_token})) return self.parseBreakStatement();
+        if (self.match(&.{.continue_token})) return self.parseContinueStatement();
+
         return self.parseExpressionStatement();
     }
 
@@ -450,6 +453,20 @@ pub const Parser = struct {
         _ = self.advance();
 
         return expr_idx;
+    }
+
+    fn parseBreakStatement(self: *Parser) anyerror!NodeIndex {
+        const keyword = self.previous();
+        _ = try self.consume(.semicolon_token, "Expected ';' after 'break'.");
+
+        return try self.tree.addNode(self.allocator, .{ .break_stmt = .{ .keyword = keyword } });
+    }
+
+    fn parseContinueStatement(self: *Parser) anyerror!NodeIndex {
+        const keyword = self.previous();
+        _ = try self.consume(.semicolon_token, "Expected ';' after 'continue'.");
+
+        return try self.tree.addNode(self.allocator, .{ .continue_stmt = .{ .keyword = keyword } });
     }
 
     fn parseWhileStatement(self: *Parser) !NodeIndex {

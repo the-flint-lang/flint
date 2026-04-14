@@ -59,6 +59,10 @@ jobs:
           sudo cp src/core/codegen/runtime/flint_rt.* /usr/share/flint/
           sudo cp -r std/* /usr/share/flint/std/
 
+      - name: Run Sanity Tests
+        run: |
+          ./out-x86_64/bin/flint test
+
       - name: Build Flint (aarch64)
         if: startsWith(github.ref, 'refs/tags/')
         run: |

@@ -21,6 +21,7 @@ pub const TypeChecker = struct {
     global_scope: *SymbolTable,
     current_scope: *SymbolTable,
 
+    loop_depth: u32 = 0,
     current_function_return_type: ?FlintType = null,
     pipe_injected_type: ?FlintType = null,
 
@@ -59,6 +60,7 @@ pub const TypeChecker = struct {
         try defineBuiltin(global, allocator, pool, "push", .t_void, null);
         try defineBuiltin(global, allocator, pool, "embed_file", .t_string, &[_]FlintType{.t_string});
         try defineBuiltin(global, allocator, pool, "type_of", .t_string, &[_]FlintType{.t_any});
+        try defineBuiltin(global, allocator, pool, "val_keys", .t_str_arr, &[_]FlintType{.t_val});
 
         // empty constructors
         try defineBuiltin(global, allocator, pool, "int_array", .t_int_arr, &[_]FlintType{});
@@ -72,6 +74,7 @@ pub const TypeChecker = struct {
             .pool = pool,
             .global_scope = global,
             .current_scope = global,
+            .loop_depth = 0,
             .current_function_return_type = null,
             .pipe_injected_type = null,
             .io = io,
@@ -130,9 +133,12 @@ pub const TypeChecker = struct {
 
                 try self.beginScope();
                 defer self.endScope();
+
+                self.loop_depth += 1;
                 for (w.body) |stmt_idx| {
                     _ = try self.checkNodeIndex(stmt_idx);
                 }
+                self.loop_depth -= 1;
 
                 return .t_void;
             },
@@ -140,6 +146,8 @@ pub const TypeChecker = struct {
             .pipeline_expr => try self.checkPipelineExpr(index, node),
             .function_decl => try self.checkFunctionDecl(index, node),
             .return_stmt => try self.checkReturnStmt(node),
+            .break_stmt => try self.checkBreakStmt(node),
+            .continue_stmt => try self.checkContinueStmt(node),
             .property_access_expr => try self.checkPropertyAccessExpr(index, node),
             .import_stmt => try self.checkImportStmt(node),
             .slice_expr => try self.checkSliceExpr(index, node),
@@ -684,9 +692,12 @@ pub const TypeChecker = struct {
             try self.reportErrorContext(file_id, line, col, len, "variable already defined in this scope");
         }
 
+        self.loop_depth += 1;
         for (for_stmt.body) |body_stmt_idx| {
             _ = try self.checkNodeIndex(body_stmt_idx);
         }
+        self.loop_depth -= 1;
+
         return .t_void;
     }
 
@@ -863,6 +874,34 @@ pub const TypeChecker = struct {
         return .t_void;
     }
 
+    fn checkBreakStmt(self: *TypeChecker, node: AstNode) !FlintType {
+        if (self.loop_depth == 0) {
+            self.had_error = true;
+            const token = node.break_stmt.keyword;
+            const f = self.source_manager.getFile(token.file_id).?;
+            var diag = DiagnosticBuilder.init(self.allocator, "SEMANTIC ERROR", "E0040", "'break' statement outside of loop", f.content, f.path);
+            defer diag.deinit();
+            try diag.addLabel(token.line, token.column, 5, "this 'break' is not inside a 'for' or 'while' loop", true);
+            try diag.emit(self.io);
+            return .t_error;
+        }
+        return .t_void;
+    }
+
+    fn checkContinueStmt(self: *TypeChecker, node: AstNode) !FlintType {
+        if (self.loop_depth == 0) {
+            self.had_error = true;
+            const token = node.continue_stmt.keyword;
+            const f = self.source_manager.getFile(token.file_id).?;
+            var diag = DiagnosticBuilder.init(self.allocator, "SEMANTIC ERROR", "E0041", "'continue' statement outside of loop", f.content, f.path);
+            defer diag.deinit();
+            try diag.addLabel(token.line, token.column, 8, "this 'continue' is not inside a 'for' or 'while' loop", true);
+            try diag.emit(self.io);
+            return .t_error;
+        }
+        return .t_void;
+    }
+
     fn checkReturnStmt(self: *TypeChecker, node: AstNode) !FlintType {
         const stmt = node.return_stmt;
         var actual_return_type: FlintType = .t_void;
@@ -912,36 +951,38 @@ pub const TypeChecker = struct {
         const callee_node = self.tree.getNode(call.callee);
         var target_func_id: ?StringId = null;
 
+        var is_method = false;
+
         if (callee_node == .identifier) {
             target_func_id = callee_node.identifier.name_id;
         } else if (callee_node == .property_access_expr) {
             const obj_node = self.tree.getNode(callee_node.property_access_expr.object);
             if (obj_node == .identifier) {
                 const obj_name_id = obj_node.identifier.name_id;
-                if (self.current_scope.lookup(obj_name_id) == null) {
-                    self.had_error = true;
-                    var f_id: u32 = 0;
-                    var err_line: u32 = 0;
-                    var err_col: u32 = 0;
-                    var err_len: u32 = 1;
-                    self.extractCoords(callee_node.property_access_expr.object, &f_id, &err_line, &err_col, &err_len);
 
-                    const f = self.source_manager.getFile(f_id).?;
-                    var diag = DiagnosticBuilder.init(self.allocator, "SEMANTIC ERROR", "E0425", "Undefined variable or module", f.content, f.path);
-                    defer diag.deinit();
+                if (self.current_scope.lookup(obj_name_id)) |symbol| {
+                    is_method = true;
+                    const prop_str = self.pool.get(callee_node.property_access_expr.property_name_id);
+
+                    var prefix: []const u8 = "val";
+                    if (symbol.type == .t_val or symbol.type == .t_any or symbol.type == .t_error) { // <-- BLINDADO AQUI
+                        prefix = "val";
+                    } else if (symbol.type == .t_string) {
+                        prefix = "str";
+                    } else if (symbol.type == .t_str_arr or symbol.type == .t_int_arr or symbol.type == .t_bool_arr or symbol.type == .t_val_arr) {
+                        prefix = "arr";
+                    } else {
+                        prefix = self.pool.get(obj_name_id);
+                    }
+
+                    const full_name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ prefix, prop_str });
+                    target_func_id = try self.pool.intern(self.allocator, full_name);
+                } else {
                     const obj_str = self.pool.get(obj_name_id);
-                    const msg = try std.fmt.allocPrint(self.allocator, "cannot find `{s}` in this scope", .{obj_str});
-                    try diag.addLabel(err_line, err_col, err_len, "not found in this scope", true);
-                    diag.help("did you spell it correctly or forget to import the module?");
-                    try diag.emit(self.io);
-                    self.allocator.free(msg);
-                    return .t_error;
+                    const prop_str = self.pool.get(callee_node.property_access_expr.property_name_id);
+                    const full_name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ obj_str, prop_str });
+                    target_func_id = try self.pool.intern(self.allocator, full_name);
                 }
-
-                const obj_str = self.pool.get(obj_name_id);
-                const prop_str = self.pool.get(callee_node.property_access_expr.property_name_id);
-                const full_name = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ obj_str, prop_str });
-                target_func_id = try self.pool.intern(self.allocator, full_name);
             }
         }
 
@@ -972,7 +1013,7 @@ pub const TypeChecker = struct {
                 }
             }
 
-            const provided_len = call.arguments.len + (if (injected_arg != null) @as(usize, 1) else 0);
+            const provided_len = call.arguments.len + (if (injected_arg != null) @as(usize, 1) else 0) + (if (is_method) @as(usize, 1) else 0);
 
             if (has_sig and expected_len != provided_len) {
                 var f_id: u32 = 0;
@@ -1213,6 +1254,7 @@ pub const TypeChecker = struct {
             .t_str_arr => .t_string,
             .t_bool_arr => .t_bool,
             .t_val_arr => .t_val,
+            .t_val => .t_val,
             else => .t_any,
         };
     }
