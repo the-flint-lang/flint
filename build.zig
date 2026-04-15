@@ -26,9 +26,13 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
+
     mod.addIncludePath(.{ .cwd_relative = "/usr/include" });
     mod.addLibraryPath(.{ .cwd_relative = "/usr/lib/x86_64-linux-gnu" });
-    mod.linkSystemLibrary("tcc", .{ .preferred_link_mode = .static });
+
+    mod.linkSystemLibrary("tcc", .{
+        .preferred_link_mode = .static,
+    });
 
     exe.linkLibC();
 

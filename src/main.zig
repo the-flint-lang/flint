@@ -10,13 +10,13 @@ pub fn main() !void {
     var stderr_writer = std.fs.File.stderr().writer(&stderr_buffer);
 
     defer {
-        _ = stdout_writer.interface.flush() catch {};
-        _ = stderr_writer.interface.flush() catch {};
+        stdout_writer.flush() catch {};
+        stderr_writer.flush() catch {};
     }
 
     const io = IoHelper{
-        .stdout = &stdout_writer.interface,
-        .stderr = &stderr_writer.interface,
+        .stdout = &stdout_writer,
+        .stderr = &stderr_writer,
     };
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -33,8 +33,8 @@ pub fn main() !void {
     const alloc = arena.allocator();
 
     flint.runCli(alloc, io) catch {
-        _ = stdout_writer.interface.flush() catch {};
-        _ = stderr_writer.interface.flush() catch {};
+        stdout_writer.flush() catch {};
+        stderr_writer.flush() catch {};
         std.process.exit(1);
     };
 }
