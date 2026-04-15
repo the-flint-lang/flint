@@ -16,19 +16,22 @@ pub const CEmitter = struct {
     source_file: []const u8,
     is_run: bool,
 
+    sys_io: std.Io,
+
     built_ins: [20][]const u8,
 
     node_types: std.AutoHashMap(NodeIndex, FlintType),
     current_placeholder_name: ?[]const u8 = null,
     current_function_struct_name: ?[]const u8 = null,
 
-    pub fn init(allocator: std.mem.Allocator, tree: *const AstTree, pool: *StringPool, node_types: std.AutoHashMap(NodeIndex, FlintType), source_file: []const u8, is_run: bool) CEmitter {
+    pub fn init(allocator: std.mem.Allocator, tree: *const AstTree, pool: *StringPool, node_types: std.AutoHashMap(NodeIndex, FlintType), source_file: []const u8, is_run: bool, sys_io: std.Io) CEmitter {
         return .{
             .allocator = allocator,
             .tree = tree,
             .pool = pool,
             .source_file = source_file,
             .is_run = is_run,
+            .sys_io = sys_io,
             .built_ins = [_][]const u8{
                 "print",  "printerr", "len",               "push",     "range",      "if_fail", "fallback",
                 "concat", "to_str",   "to_int",            "to_float", "parse_json", "ensure",  "lines",
@@ -804,7 +807,7 @@ pub const CEmitter = struct {
 
                 const file_path = arg_node.literal.token.value;
 
-                const file_content = std.fs.cwd().readFileAlloc(self.allocator, file_path, 10 * 1024 * 1024) catch {
+                const file_content = std.Io.Dir.cwd().readFileAlloc(self.sys_io, file_path, self.allocator, std.Io.Limit.limited(10 * 1024 * 1024)) catch {
                     std.debug.print("[COMPILER PANIC] Falha ao embedar ficheiro: '{s}'\n", .{file_path});
                     return error.FileNotFound;
                 };

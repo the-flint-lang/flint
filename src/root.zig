@@ -37,12 +37,19 @@ const PipelineResult = struct {
     root_idx: NodeIndex,
 };
 
-fn runCompilerPipeline(alloc: std.mem.Allocator, tree: *AstTree, pool: *StringPool, source_mgr: *SourceManager, file_path: []const u8, io: IoHelper) !PipelineResult {
+fn runCompilerPipeline(
+    alloc: std.mem.Allocator,
+    tree: *AstTree,
+    pool: *StringPool,
+    source_mgr: *SourceManager,
+    file_path: []const u8,
+    io: IoHelper,
+) !PipelineResult {
     if (!std.mem.endsWith(u8, file_path, ".fl")) {
         return error.InvalidFileType;
     }
 
-    const source = try std.fs.cwd().readFileAlloc(alloc, file_path, 1024 * 1024);
+    const source = try std.Io.Dir.cwd().readFileAlloc(io.sys.io, file_path, alloc, std.Io.Limit.limited(1024 * 1024));
     const file_id = try source_mgr.addFile(file_path, source);
 
     var lex = Lexer{
@@ -113,11 +120,13 @@ const Linker = struct {
     }
 
     pub fn linkFile(self: *Linker, file_path: []const u8, current_alias: ?[]const u8) !void {
-        const abs_path = std.fs.cwd().realpathAlloc(self.allocator, file_path) catch {
+        var abs_buf: [std.fs.max_path_bytes]u8 = undefined;
+        const abs_len = std.Io.Dir.cwd().realPathFile(self.io.sys.io, file_path, &abs_buf) catch {
             try self.io.stderr.print("Fatal Error: Unable to import file '{s}'.\n", .{file_path});
             self.has_error = true;
             return;
         };
+        const abs_path = try self.allocator.dupe(u8, abs_buf[0..abs_len]);
         defer self.allocator.free(abs_path);
 
         if (self.visited.contains(abs_path)) return;
@@ -159,28 +168,23 @@ const Linker = struct {
                     try std.fmt.allocPrint(self.allocator, "std/{s}.fl", .{import_raw})
                 else
                     try self.allocator.dupe(u8, import_raw);
-                // defer self.allocator.free(formatted_path);
 
                 const next_file = if (std.mem.startsWith(u8, formatted_path, "./") or std.mem.startsWith(u8, formatted_path, "../"))
                     try std.fs.path.join(self.allocator, &.{ base_dir, formatted_path })
                 else blk: {
                     var std_base: []const u8 = "/usr/share/flint";
-
-                    // Lendo direto do C (Bypass do Bug do Zig)
                     const env_ptr = cl.getenv("FLINT_LIB_PATH");
 
                     if (env_ptr != null) {
-                        std_base = std.mem.span(env_ptr); // Converte C string para Zig string
+                        std_base = std.mem.span(env_ptr);
                     } else {
-                        if (std.fs.cwd().openDir("std", .{})) |d| {
-                            var dir = d;
-                            dir.close();
+                        if (std.Io.Dir.cwd().openDir(self.io.sys.io, "std", .{})) |d| {
+                            self.io.sys.io.vtable.dirClose(self.io.sys.io.userdata, &.{d});
                             std_base = ".";
                         } else |_| {}
                     }
                     break :blk try std.fs.path.join(self.allocator, &.{ std_base, formatted_path });
                 };
-                // defer self.allocator.free(next_file);
 
                 try self.linkFile(next_file, canon_name);
                 if (next_alias_str) |a| try local_aliases.put(a, canon_name);
@@ -379,43 +383,48 @@ const FlintFlags = struct {
     }
 };
 
-pub fn runCli(alloc: std.mem.Allocator, io: IoHelper) !void {
-    var args = try std.process.argsWithAllocator(alloc);
-    defer args.deinit();
-    _ = args.next();
-
+pub fn runCli(alloc: std.mem.Allocator, io: IoHelper, args: []const []const u8) !void {
     var command: ?[]const u8 = null;
+    var file_path: ?[]const u8 = null;
+    var script_args_start: usize = args.len;
 
     var flags = FlintFlags{
         .is_less_mode = false,
         .is_test = false,
         .cpu_arch = .baseline,
     };
-
     flags.cpu_arch = flags.getDefaultArch();
 
-    while (args.next()) |arg| {
-        if (checker.cliArgsEquals(arg, &.{ "-h", "--help" })) {
-            try help(io);
-            return;
-        }
-        if (checker.cliArgsEquals(arg, &.{ "-V", "--version" })) {
-            try version(io);
-            return;
-        }
+    var i: usize = 1;
+    while (i < args.len) : (i += 1) {
+        const arg = args[i];
 
-        if (checker.cliArgsEquals(arg, &.{ "-s", "--small" })) {
-            flags.is_less_mode = true;
+        if (command == null) {
+            if (checker.cliArgsEquals(arg, &.{ "-h", "--help" })) {
+                try help(io);
+                return;
+            }
+            if (checker.cliArgsEquals(arg, &.{ "-V", "--version" })) {
+                try version(io);
+                return;
+            }
+            if (checker.cliArgsEquals(arg, &.{ "-s", "--small" })) {
+                flags.is_less_mode = true;
+                continue;
+            }
+            if (checker.cliArgsEquals(arg, &.{ "-t", "--test" })) {
+                flags.is_test = true;
+                continue;
+            }
+            command = arg;
             continue;
         }
 
-        if (checker.cliArgsEquals(arg, &.{ "-t", "--test" })) {
-            flags.is_test = true;
-            continue;
+        if (file_path == null) {
+            file_path = arg;
+            script_args_start = i + 1;
+            break;
         }
-
-        command = arg;
-        break;
     }
 
     const cmd = command orelse {
@@ -428,15 +437,21 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper) !void {
         return;
     }
 
+    const file = file_path orelse {
+        try io.stderr.print("error: Provide .fl file\n", .{});
+        return;
+    };
+
+    const remaining_args = args[script_args_start..];
+
     if (checker.strEquals(cmd, "lex")) {
-        const file_path = try getFlFile(&args, io);
-        const source = try std.fs.cwd().readFileAlloc(alloc, file_path, 1024 * 1024);
+        const source = try std.Io.Dir.cwd().readFileAlloc(io.sys.io, file, alloc, std.Io.Limit.limited(1024 * 1024));
         defer alloc.free(source);
 
         var lexer = Lexer{
             .alloc = alloc,
             .io = io,
-            .file_path = file_path,
+            .file_path = file,
             .position = 0,
             .file_id = 0,
             .column = 0,
@@ -460,8 +475,6 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper) !void {
     }
 
     if (checker.strEquals(cmd, "parse")) {
-        const file_path = try getFlFile(&args, io);
-
         var global_tree = AstTree.init();
         defer global_tree.deinit(alloc);
 
@@ -471,7 +484,7 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper) !void {
         var source_manager = SourceManager.init(alloc);
         defer source_manager.deinit();
 
-        var result = runCompilerPipeline(alloc, &global_tree, &pool, &source_manager, file_path, io) catch return;
+        var result = runCompilerPipeline(alloc, &global_tree, &pool, &source_manager, file, io) catch return;
 
         defer alloc.free(result.source);
         defer result.parser.deinit();
@@ -481,37 +494,33 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper) !void {
     }
 
     if (checker.strEquals(cmd, "run")) {
-        const file = try getFlFile(&args, io);
-        try runner(alloc, &args, file, io, true, flags);
+        try runner(alloc, remaining_args, file, io, true, flags);
         return;
     }
-    if (checker.strEquals(cmd, "build")) {
-        const file = try getFlFile(&args, io);
 
-        parseFlags(&args, &flags);
-        try runner(alloc, &args, file, io, false, flags);
+    if (checker.strEquals(cmd, "build")) {
+        parseFlags(remaining_args, &flags);
+        try runner(alloc, remaining_args, file, io, false, flags);
         return;
     }
+
     try help(io);
 }
 
-fn parseFlags(args: *std.process.ArgIterator, flags: *FlintFlags) void {
+fn parseFlags(args: []const []const u8, flags: *FlintFlags) void {
     var is_cpu = false;
 
-    while (args.next()) |arg| {
+    for (args) |arg| {
         if (is_cpu) {
             is_cpu = false;
-
             if (checker.cliArgsEquals(arg, &.{"baseline"})) {
                 flags.cpu_arch = .baseline;
                 continue;
             }
-
             if (checker.cliArgsEquals(arg, &.{"x86_64"})) {
                 flags.cpu_arch = .x86_64;
                 continue;
             }
-
             if (checker.cliArgsEquals(arg, &.{"aarch"})) {
                 flags.cpu_arch = .aarch;
                 continue;
@@ -522,20 +531,11 @@ fn parseFlags(args: *std.process.ArgIterator, flags: *FlintFlags) void {
             is_cpu = true;
             continue;
         }
-
         break;
     }
 }
 
-fn getFlFile(args: *std.process.ArgIterator, io: anytype) ![]const u8 {
-    const file_path = args.next() orelse {
-        try io.stderr.print("error: Provide .fl file\n", .{});
-        return "";
-    };
-    return file_path;
-}
-
-fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: []const u8, io: anytype, is_run: bool, flags: FlintFlags) !void {
+fn runner(alloc: std.mem.Allocator, args: []const []const u8, file_path: []const u8, io: anytype, is_run: bool, flags: FlintFlags) !void {
     var global_tree = AstTree.init();
     defer global_tree.deinit(alloc);
 
@@ -553,7 +553,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
 
     const merged_root_idx = try global_tree.addNode(alloc, .{ .program = .{ .statements = linker.statements.items } });
 
-    const main_source = try std.fs.cwd().readFileAlloc(alloc, file_path, 1024 * 1024);
+    const main_source = try std.Io.Dir.cwd().readFileAlloc(io.sys.io, file_path, alloc, std.Io.Limit.limited(1024 * 1024));
     defer alloc.free(main_source);
 
     var final_checker = try TypeChecker.init(alloc, &global_tree, &pool, &source_manager, io);
@@ -574,38 +574,44 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
     const system_rt_h = "/usr/share/flint/flint_rt.h";
 
     const precompiled = blk: {
-        std.fs.cwd().access(system_rt_c, .{}) catch break :blk false;
-        std.fs.cwd().access(system_rt_h, .{}) catch break :blk false;
+        std.Io.Dir.cwd().access(io.sys.io, system_rt_c, .{}) catch break :blk false;
+        std.Io.Dir.cwd().access(io.sys.io, system_rt_h, .{}) catch break :blk false;
         break :blk true;
     };
     const rt_path: []const u8 = if (precompiled) system_rt_c else "flint_rt.c";
 
     if (!precompiled) {
-        var h_f = try std.fs.cwd().createFile("flint_rt.h", .{});
-        try h_f.writeAll(flint_rt_h_content);
-        h_f.close();
-        var c_f = try std.fs.cwd().createFile("flint_rt.c", .{});
-        try c_f.writeAll(flint_rt_c_content);
-        c_f.close();
+        const h_f = try std.Io.Dir.cwd().createFile(io.sys.io, "flint_rt.h", .{});
+        try std.Io.File.writeStreamingAll(h_f, io.sys.io, flint_rt_h_content);
+        io.sys.io.vtable.fileClose(io.sys.io.userdata, &.{h_f});
+
+        const c_f = try std.Io.Dir.cwd().createFile(io.sys.io, "flint_rt.c", .{});
+        try std.Io.File.writeStreamingAll(c_f, io.sys.io, flint_rt_c_content);
+        io.sys.io.vtable.fileClose(io.sys.io.userdata, &.{c_f});
     }
 
     defer {
         if (!precompiled) {
-            std.fs.cwd().deleteFile("flint_rt.h") catch {};
-            std.fs.cwd().deleteFile("flint_rt.c") catch {};
+            std.Io.Dir.cwd().deleteFile(io.sys.io, "flint_rt.h") catch {};
+            std.Io.Dir.cwd().deleteFile(io.sys.io, "flint_rt.c") catch {};
         }
         if (flags.is_test) {
-            std.fs.cwd().deleteFile(exe_name) catch {};
+            std.Io.Dir.cwd().deleteFile(io.sys.io, exe_name) catch {};
         }
     }
 
     if (is_run) {
-        var c_code_buffer = std.ArrayList(u8).empty;
-        defer c_code_buffer.deinit(alloc);
+        var c_code_buffer = std.Io.Writer.Allocating.init(alloc);
+        defer c_code_buffer.deinit();
 
-        var emitter = CEmitter.init(alloc, &global_tree, &pool, final_checker.node_types, file_path, true);
-        try emitter.generate(c_code_buffer.writer(alloc), merged_root_idx);
-        try c_code_buffer.append(alloc, 0);
+        var emitter = CEmitter.init(alloc, &global_tree, &pool, final_checker.node_types, file_path, true, io.sys.io);
+
+        try emitter.generate(&c_code_buffer.writer, merged_root_idx);
+
+        try c_code_buffer.writer.writeByte(0);
+
+        const c_code_items = c_code_buffer.written();
+
         var jit_success = false;
 
         const tcc_state = tcc.tcc_new();
@@ -629,7 +635,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
             defer alloc.free(rt_path_z);
 
             if (tcc.tcc_add_file(tcc_state, rt_path_z) != -1 and
-                tcc.tcc_compile_string(tcc_state, c_code_buffer.items.ptr) != -1 and
+                tcc.tcc_compile_string(tcc_state, c_code_items.ptr) != -1 and
                 tcc.tcc_relocate(tcc_state, tcc.TCC_RELOCATE_AUTO) >= 0)
             {
                 const main_sym = tcc.tcc_get_symbol(tcc_state, "main");
@@ -645,7 +651,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
                     defer alloc.free(exe_name_z);
                     try run_args.append(alloc, exe_name_z);
 
-                    while (args.next()) |a| try run_args.append(alloc, try alloc.dupeZ(u8, a));
+                    for (args) |a| try run_args.append(alloc, try alloc.dupeZ(u8, a));
                     try run_args.append(alloc, null);
 
                     const ret = main_func(@intCast(run_args.items.len - 1), run_args.items.ptr);
@@ -666,7 +672,7 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
             const compilers = [_][]const u8{ "clang", "gcc" };
 
             for (compilers) |comp_name| {
-                if (!isCompilerPresent(alloc, comp_name)) continue;
+                if (!isCompilerPresent(alloc, io.sys.io, comp_name)) continue;
 
                 var cmd = std.ArrayList([]const u8).empty;
                 defer cmd.deinit(alloc);
@@ -685,21 +691,23 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
                 try cmd.append(alloc, "-lcurl");
                 try cmd.append(alloc, "-Wno-unused-value");
 
-                var safe_env = try buildSafeEnvMap(alloc);
-                defer safe_env.deinit();
+                var child = try io.sys.io.vtable.processSpawn(io.sys.io.userdata, .{
+                    .argv = cmd.items,
+                    .stdin = .pipe,
+                    .stderr = .ignore,
+                });
 
-                var child = std.process.Child.init(cmd.items, alloc);
-                child.stdin_behavior = .Pipe;
-                child.stderr_behavior = .Ignore;
-                child.env_map = &safe_env;
+                const stdin_file = child.stdin.?;
+                var stdin_buf: [4096]u8 = undefined;
+                var file_writer = std.Io.File.Writer.init(stdin_file, io.sys.io, &stdin_buf);
+                try file_writer.interface.writeAll(c_code_items);
+                try file_writer.interface.flush();
 
-                try child.spawn();
-                try child.stdin.?.writeAll(c_code_buffer.items);
-                child.stdin.?.close();
+                io.sys.io.vtable.fileClose(io.sys.io.userdata, &.{stdin_file});
                 child.stdin = null;
 
-                const term = try child.wait();
-                if (term == .Exited and term.Exited == 0) {
+                const term = try io.sys.io.vtable.childWait(io.sys.io.userdata, &child);
+                if (term == .exited and term.exited == 0) {
                     compiled = true;
                     break;
                 }
@@ -716,22 +724,22 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
             const local_tmp_exe = try std.fmt.allocPrint(alloc, "./{s}", .{tmp_exe});
             defer alloc.free(local_tmp_exe);
             try run_cmd.append(alloc, local_tmp_exe);
-            while (args.next()) |a| try run_cmd.append(alloc, a);
 
-            var run_child = std.process.Child.init(run_cmd.items, alloc);
-            var safe_env_run = try buildSafeEnvMap(alloc);
-            defer safe_env_run.deinit();
-            run_child.env_map = &safe_env_run;
+            for (args) |a| try run_cmd.append(alloc, a);
 
-            const term = try run_child.spawnAndWait();
+            var run_child = try io.sys.io.vtable.processSpawn(io.sys.io.userdata, .{
+                .argv = run_cmd.items,
+            });
 
-            std.fs.cwd().deleteFile(tmp_exe) catch {};
+            const term = try io.sys.io.vtable.childWait(io.sys.io.userdata, &run_child);
+
+            std.Io.Dir.cwd().deleteFile(io.sys.io, tmp_exe) catch {};
 
             switch (term) {
-                .Exited => |code| {
+                .exited => |code| {
                     if (code != 0) std.process.exit(code);
                 },
-                .Signal => |sig| {
+                .signal => |sig| {
                     try io.stderr.print("\x1b[1;31m[RUNTIME CRASH]\x1b[0m Native binary died with signal {d} (Segfault/Abort).\n", .{sig});
                     std.process.exit(1);
                 },
@@ -746,36 +754,35 @@ fn runner(alloc: std.mem.Allocator, args: *std.process.ArgIterator, file_path: [
 
     const system_rt_pch = "/usr/share/flint/flint_rt.h.pch";
     const has_pch = blk: {
-        std.fs.cwd().access(system_rt_pch, .{}) catch break :blk false;
+        std.Io.Dir.cwd().access(io.sys.io, system_rt_pch, .{}) catch break :blk false;
         break :blk true;
     };
 
-    const compiler = getBestCCompiler(alloc, false);
+    const compiler = getBestCCompiler(alloc, false, io.sys.io);
 
     const c_args = try compiler.getArgsExtended(alloc, exe_name, rt_path, precompiled, false, has_pch, flags);
     defer alloc.free(c_args);
 
-    var safe_env = try buildSafeEnvMap(alloc);
-    defer safe_env.deinit();
-
-    var child = std.process.Child.init(c_args, alloc);
-    child.stdin_behavior = .Pipe;
-    child.env_map = &safe_env;
-
-    try child.spawn();
+    var child = try io.sys.io.vtable.processSpawn(io.sys.io.userdata, .{
+        .argv = c_args,
+        .stdin = .pipe,
+    });
     {
         var buf: [4096]u8 = undefined;
-        var writer = child.stdin.?.writer(&buf);
-        var emitter = CEmitter.init(alloc, &global_tree, &pool, final_checker.node_types, file_path, false);
-        try emitter.generate(&writer.interface, merged_root_idx);
-        try writer.interface.flush();
+        const stdin_file = child.stdin.?;
+        var file_writer = std.Io.File.Writer.init(stdin_file, io.sys.io, &buf);
+
+        var emitter = CEmitter.init(alloc, &global_tree, &pool, final_checker.node_types, file_path, false, io.sys.io);
+        try emitter.generate(&file_writer.interface, merged_root_idx);
+        try file_writer.interface.flush();
     }
 
-    child.stdin.?.close();
+    io.sys.io.vtable.fileClose(io.sys.io.userdata, &.{child.stdin.?});
     child.stdin = null;
 
-    const term = try child.wait();
-    if (term != .Exited or term.Exited != 0) return;
+    const term = try io.sys.io.vtable.childWait(io.sys.io.userdata, &child);
+
+    if (term != .exited or term.exited != 0) return;
 
     try io.stdout.print("\x1b[1;32m[SUCCESS]\x1b[0m Executable '{s}' generated.\n", .{exe_name});
     _ = io.stdout.flush() catch {};
@@ -798,77 +805,121 @@ const ActiveJob = struct {
 
 pub fn runTests(alloc: std.mem.Allocator, io: IoHelper) !void {
     try io.stdout.print("\x1b[36m=== FLINT TEST BATTERY ===\x1b[0m\n\n", .{});
-    var test_dir = try std.fs.cwd().openDir("tests", .{ .iterate = true });
-    defer test_dir.close();
+
+    const cwd = std.Io.Dir.cwd();
+    var test_dir = try cwd.openDir(io.sys.io, "tests", .{ .iterate = true });
+
     var walker = try test_dir.walk(alloc);
     defer walker.deinit();
 
     var test_files = std.ArrayList([]const u8).empty;
     defer {
-        for (test_files.items) |f| alloc.free(f);
+        for (test_files.items) |f|
+            alloc.free(f);
+
         test_files.deinit(alloc);
     }
 
-    while (try walker.next()) |entry| {
-        if (entry.kind == .file and std.mem.endsWith(u8, entry.basename, ".fl")) {
-            const full_path = try std.fmt.allocPrint(alloc, "tests/{s}", .{entry.path});
+    while (try walker.next(io.sys.io)) |entry| {
+        if (entry.kind == .file and
+            std.mem.endsWith(u8, entry.basename, ".fl"))
+        {
+            const full_path =
+                try std.fmt.allocPrint(alloc, "tests/{s}", .{entry.path});
+
             try test_files.append(alloc, full_path);
         }
     }
 
+    io.sys.io.vtable.dirClose(io.sys.io.userdata, &.{test_dir});
+
     const total_tests = test_files.items.len;
+
     var results = std.ArrayList(TestResult).empty;
     defer results.deinit(alloc);
 
-    const flint_exe = try std.fs.selfExePathAlloc(alloc);
+    var exe_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const exe_len = try io.sys.io.vtable.processExecutablePath(io.sys.io.userdata, &exe_buf);
+    const flint_exe = try alloc.dupe(u8, exe_buf[0..exe_len]);
     defer alloc.free(flint_exe);
 
     const cpu_count = std.Thread.getCpuCount() catch 4;
+
     var active_jobs = std.ArrayList(ActiveJob).empty;
     defer active_jobs.deinit(alloc);
 
     var file_index: usize = 0;
 
     while (file_index < total_tests or active_jobs.items.len > 0) {
-        while (active_jobs.items.len < cpu_count and file_index < total_tests) {
+        while (active_jobs.items.len < cpu_count and
+            file_index < total_tests)
+        {
             const current_file = test_files.items[file_index];
-            const argv = &[_][]const u8{ flint_exe, "run", current_file, "-t" };
 
-            var safe_env = try buildSafeEnvMap(alloc);
-            defer safe_env.deinit();
+            const argv =
+                &[_][]const u8{ flint_exe, "run", current_file, "-t" };
 
-            var child = std.process.Child.init(argv, alloc);
-            child.stdout_behavior = .Ignore;
-            child.stderr_behavior = .Ignore;
-            child.stdin_behavior = .Pipe;
-            child.env_map = &safe_env;
+            const child = try io.sys.io.vtable.processSpawn(io.sys.io.userdata, .{
+                .argv = argv,
+                .stdin = .pipe,
+                .stdout = .ignore,
+                .stderr = .ignore,
+            });
 
-            try child.spawn();
-            try active_jobs.append(alloc, .{ .child = child, .file_path = current_file });
+            try active_jobs.append(
+                alloc,
+                .{
+                    .child = child,
+                    .file_path = current_file,
+                },
+            );
+
             file_index += 1;
         }
 
         if (active_jobs.items.len > 0) {
             var job = active_jobs.orderedRemove(0);
-            const term = try job.child.wait();
-            const passed = (term == .Exited and term.Exited == 0);
 
-            try results.append(alloc, .{ .file_path = job.file_path, .passed = passed });
+            const term = try io.sys.io.vtable.childWait(io.sys.io.userdata, &job.child);
+
+            const passed = switch (term) {
+                .exited => |code| code == 0,
+                else => false,
+            };
+
+            try results.append(
+                alloc,
+                .{
+                    .file_path = job.file_path,
+                    .passed = passed,
+                },
+            );
 
             if (passed) {
-                try io.stdout.print("\x1b[32m[PASS]\x1b[0m {s}\n", .{job.file_path});
+                try io.stdout.print(
+                    "\x1b[32m[PASS]\x1b[0m {s}\n",
+                    .{job.file_path},
+                );
             } else {
-                try io.stdout.print("\x1b[31m[FAIL]\x1b[0m {s}\n", .{job.file_path});
+                try io.stdout.print(
+                    "\x1b[31m[FAIL]\x1b[0m {s}\n",
+                    .{job.file_path},
+                );
             }
         }
     }
 
     var pass_count: usize = 0;
+
     for (results.items) |res| {
-        if (res.passed) pass_count += 1;
+        if (res.passed)
+            pass_count += 1;
     }
 
-    try io.stdout.print("\nTotal: {d} | \x1b[32mPassed: {d}\x1b[0m | \x1b[31mFailed: {d}\x1b[0m\n", .{ total_tests, pass_count, total_tests - pass_count });
+    try io.stdout.print(
+        "\nTotal: {d} | \x1b[32mPassed: {d}\x1b[0m | \x1b[31mFailed: {d}\x1b[0m\n",
+        .{ total_tests, pass_count, total_tests - pass_count },
+    );
 }
 
 const ClangCompiler = struct {
@@ -1024,11 +1075,11 @@ pub const Compiler = union(enum) {
     }
 };
 
-fn getBestCCompiler(alloc: std.mem.Allocator, is_run: bool) Compiler {
+fn getBestCCompiler(alloc: std.mem.Allocator, is_run: bool, io_sys: std.Io) Compiler {
     if (cached_compiler) |c| return c;
 
     if (is_run) {
-        if (isCompilerPresent(alloc, "tcc")) {
+        if (isCompilerPresent(alloc, io_sys, "tcc")) {
             const r = Compiler{
                 .tcc = TccCompiler{},
             };
@@ -1039,16 +1090,16 @@ fn getBestCCompiler(alloc: std.mem.Allocator, is_run: bool) Compiler {
     }
 
     const result: Compiler = blk: {
-        if (isCompilerPresent(alloc, "clang")) break :blk .{ .clang = ClangCompiler{} };
-        if (isCompilerPresent(alloc, "gcc")) break :blk .{ .gcc = GccCompiler{} };
-        if (isCompilerPresent(alloc, "tcc")) break :blk .{ .tcc = TccCompiler{} };
+        if (isCompilerPresent(alloc, io_sys, "clang")) break :blk .{ .clang = ClangCompiler{} };
+        if (isCompilerPresent(alloc, io_sys, "gcc")) break :blk .{ .gcc = GccCompiler{} };
+        if (isCompilerPresent(alloc, io_sys, "tcc")) break :blk .{ .tcc = TccCompiler{} };
         break :blk .{ .clang = ClangCompiler{} };
     };
     cached_compiler = result;
     return result;
 }
 
-fn isCompilerPresent(alloc: std.mem.Allocator, cmd: []const u8) bool {
+fn isCompilerPresent(alloc: std.mem.Allocator, io_sys: std.Io, cmd: []const u8) bool {
     const env_ptr = cl.getenv("PATH");
     if (env_ptr == null) return false;
 
@@ -1058,25 +1109,9 @@ fn isCompilerPresent(alloc: std.mem.Allocator, cmd: []const u8) bool {
     while (it.next()) |dir| {
         const full = std.fs.path.join(alloc, &.{ dir, cmd }) catch continue;
         defer alloc.free(full);
-        if (std.posix.access(full, std.posix.X_OK)) |_| return true else |_| continue;
+        if (std.Io.Dir.cwd().access(io_sys, full, .{})) |_| return true else |_| continue;
     }
     return false;
-}
-
-fn buildSafeEnvMap(alloc: std.mem.Allocator) !std.process.EnvMap {
-    var env_map = std.process.EnvMap.init(alloc);
-
-    if (cl.getenv("PATH")) |path_ptr| {
-        try env_map.put("PATH", std.mem.span(path_ptr));
-    }
-    if (cl.getenv("FLINT_LIB_PATH")) |lib_ptr| {
-        try env_map.put("FLINT_LIB_PATH", std.mem.span(lib_ptr));
-    }
-    if (cl.getenv("TMPDIR")) |tmp_ptr| {
-        try env_map.put("TMPDIR", std.mem.span(tmp_ptr));
-    }
-
-    return env_map;
 }
 
 const ok = void{};

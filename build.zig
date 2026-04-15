@@ -34,7 +34,7 @@ pub fn build(b: *std.Build) void {
         .preferred_link_mode = .static,
     });
 
-    exe.linkLibC();
+    exe.root_module.link_libc = true;
 
     // new improvments to low size binary
     // exe.stack_size = 1 * 1024 * 1024;
