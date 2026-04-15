@@ -402,8 +402,12 @@ static inline long long flint_to_int_func(FlintValue v)
     return 0;
 }
 
+double flint_parse_float_from_str(flint_str s);
+double flint_to_float_func(FlintValue v);
+
 #define flint_to_int(...) flint_to_int_func(FLINT_BOX(__VA_ARGS__))
 #define flint_to_str(...) flint_to_str_func(FLINT_BOX(__VA_ARGS__))
+#define flint_to_float(...) flint_to_float_func(FLINT_BOX(__VA_ARGS__))
 
 /* =========================
    UTIL

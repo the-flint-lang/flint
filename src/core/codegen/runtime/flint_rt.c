@@ -1955,6 +1955,37 @@ long long flint_parse_int_from_str(flint_str s)
     return res * sign;
 }
 
+double flint_parse_float_from_str(flint_str s)
+{
+    if (s.len == 0 || !s.ptr)
+        return 0.0;
+
+    char buf[128];
+    size_t len = s.len < 127 ? s.len : 127;
+    memcpy(buf, s.ptr, len);
+    buf[len] = '\0';
+
+    return strtod(buf, NULL);
+}
+
+double flint_to_float_func(FlintValue v)
+{
+    if (v.type == FLINT_VAL_FLOAT)
+    {
+        double f;
+        memcpy(&f, &v.as.f, sizeof(double));
+        return f;
+    }
+    if (v.type == FLINT_VAL_INT)
+        return (double)v.as.i;
+    if (v.type == FLINT_VAL_STR)
+        return flint_parse_float_from_str(v.as.s);
+    if (v.type == FLINT_VAL_BOOL)
+        return v.as.b ? 1.0 : 0.0;
+
+    return 0.0;
+}
+
 /* =========================
     SYS (System / Kernel)
 ========================= */
@@ -2219,6 +2250,7 @@ FlintValue flint_clone_val(FlintValue v)
 
 #define str_to_int(v) flint_to_int(v)
 #define str_int_to_str(n) flint_int_to_str(n)
+#define str_to_float(v) flint_to_float(v)
 #define str_to_str(v) flint_to_str(v)
 #define str_join(a, sep) flint_join(a, sep)
 #define str_trim(text) flint_trim(text)

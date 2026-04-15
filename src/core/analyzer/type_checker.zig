@@ -49,6 +49,7 @@ pub const TypeChecker = struct {
         try defineBuiltin(global, allocator, pool, "concat", .t_string, &[_]FlintType{ .t_string, .t_string });
         try defineBuiltin(global, allocator, pool, "to_str", .t_string, &[_]FlintType{.t_any});
         try defineBuiltin(global, allocator, pool, "to_int", .t_int, &[_]FlintType{.t_any});
+        try defineBuiltin(global, allocator, pool, "to_float", .t_float, &[_]FlintType{.t_any});
         try defineBuiltin(global, allocator, pool, "parse_json_as", .t_val, &[_]FlintType{ .t_any, .t_string });
         try defineBuiltin(global, allocator, pool, "parse_json", .t_val, &[_]FlintType{.t_string});
         try defineBuiltin(global, allocator, pool, "ensure", .t_val, &[_]FlintType{ .t_val, .t_bool, .t_string });
