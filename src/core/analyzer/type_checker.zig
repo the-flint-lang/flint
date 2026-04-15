@@ -61,6 +61,7 @@ pub const TypeChecker = struct {
         try defineBuiltin(global, allocator, pool, "embed_file", .t_string, &[_]FlintType{.t_string});
         try defineBuiltin(global, allocator, pool, "type_of", .t_string, &[_]FlintType{.t_any});
         try defineBuiltin(global, allocator, pool, "val_keys", .t_str_arr, &[_]FlintType{.t_val});
+        try defineBuiltin(global, allocator, pool, "clone", .t_any, &[_]FlintType{.t_any});
 
         // empty constructors
         try defineBuiltin(global, allocator, pool, "int_array", .t_int_arr, &[_]FlintType{});

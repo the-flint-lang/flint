@@ -44,9 +44,13 @@ ARENA E RUNTIME
 ========================= */
 
 #define ARENA_CAPACITY (4ULL * 1024 * 1024 * 1024)
+#define PERSISTENT_CAPACITY (1ULL * 1024 * 1024 * 1024)
 
 static char *arena_base = NULL;
 static size_t arena_offset = 0;
+
+static char *persistent_base = NULL;
+static size_t persistent_offset = 0;
 
 void flint_init(int argc, char **argv)
 {
@@ -57,11 +61,28 @@ void flint_init(int argc, char **argv)
     arena_base = mmap(NULL, ARENA_CAPACITY, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
     if (arena_base == MAP_FAILED)
         flint_panic("Fatal flaw: OS refused Virtual Arena.");
+
+    persistent_base = mmap(NULL, PERSISTENT_CAPACITY, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+    if (persistent_base == MAP_FAILED)
+        flint_panic("Fatal flaw: OS refused Persistent Arena.");
 }
 
 void flint_deinit()
 {
     munmap(arena_base, ARENA_CAPACITY);
+    munmap(persistent_base, PERSISTENT_CAPACITY);
+}
+
+// survives flint_arena_release()
+void *flint_alloc_persistent(size_t size)
+{
+    size = (size + 7) & ~7;
+    if (persistent_offset + size > PERSISTENT_CAPACITY)
+        flint_panic("Persistent Arena out of memory! (> 1GB cloned)");
+
+    void *ptr = (void *)(persistent_base + persistent_offset);
+    persistent_offset += size;
+    return ptr;
 }
 
 void flint_arena_reset()
@@ -1124,7 +1145,7 @@ flint_str flint_trim(flint_str text)
     return FLINT_SLICE(text.ptr + start, (end - start) + 1);
 }
 
-flint_str flint_concat(flint_str a, flint_str b)
+flint_str flint_concat_inner(flint_str a, flint_str b)
 {
     if (a.len == 0 && b.len == 0)
         return FLINT_STR("");
@@ -1336,7 +1357,7 @@ flint_str flint_to_str_func(FlintValue v)
     case FLINT_VAL_NULL:
         return FLINT_STR("null");
     case FLINT_VAL_ERROR:
-        return flint_concat(FLINT_STR("[Error] "), v.as.s);
+        return flint_concat_inner(FLINT_STR("[Error] "), v.as.s);
     default:
         return FLINT_STR("[Object]");
     }
@@ -2169,6 +2190,29 @@ FlintValue flint_sys_gpu_name(void)
     return flint_make_str(FLINT_SLICE(buf, l));
 }
 
+/* =========================
+   CLONE & PERSISTENCE
+   ========================= */
+
+flint_str flint_clone_str(flint_str s)
+{
+    if (!s.ptr || s.len == 0)
+        return s;
+    char *persistent_ptr = flint_alloc_persistent(s.len + 1);
+    memcpy(persistent_ptr, s.ptr, s.len);
+    persistent_ptr[s.len] = '\0';
+    return FLINT_SLICE(persistent_ptr, s.len);
+}
+
+FlintValue flint_clone_val(FlintValue v)
+{
+    if (v.type == FLINT_VAL_STR)
+    {
+        return (FlintValue){FLINT_VAL_STR, .as.s = flint_clone_str(v.as.s)};
+    }
+    return v;
+}
+
 // ============================================================================
 // FLINT STANDARD LIBRARY ABI BINDINGS
 // ============================================================================
@@ -2181,7 +2225,7 @@ FlintValue flint_sys_gpu_name(void)
 #define str_split(t, d) flint_split(t, d)
 #define str_count_matches(t, p) flint_count_matches(t, p)
 #define str_replace(t, tg, r) flint_replace(t, tg, r)
-#define str_concat(a, b) flint_concat(a, b)
+#define str_concat(a, b) flint_concat_inner(a, b)
 
 #define process_exec(cmd) flint_exec(cmd)
 #define process_spawn(cmd, echo) flint_spawn(cmd, echo)

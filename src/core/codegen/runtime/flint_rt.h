@@ -95,6 +95,17 @@ typedef size_t FlintArenaMark;
 FlintArenaMark flint_arena_mark(void);
 void flint_arena_release(FlintArenaMark m);
 
+// CLONE API
+void *flint_alloc_persistent(size_t size);
+
+flint_str flint_clone_str(flint_str s);
+FlintValue flint_clone_val(FlintValue v);
+
+#define flint_clone(X) _Generic((X), \
+    flint_str: flint_clone_str,      \
+    FlintValue: flint_clone_val,     \
+    default: flint_clone_val)(X)
+
 /* =========================
    ARRAYS
    ========================= */
@@ -359,7 +370,10 @@ long long flint_count_matches(flint_str text, flint_str pattern);
 
 flint_str flint_to_str_func(FlintValue v);
 flint_str flint_int_to_str(long long num);
-flint_str flint_concat(flint_str a, flint_str b);
+
+flint_str flint_concat_inner(flint_str a, flint_str b);
+#define flint_concat(a, b) flint_concat_inner(flint_to_str(a), flint_to_str(b))
+
 flint_str_array flint_chars(flint_str text);
 
 flint_str flint_build_str_array(flint_str *parts, size_t count);
@@ -388,8 +402,8 @@ static inline long long flint_to_int_func(FlintValue v)
     return 0;
 }
 
-#define flint_to_int(X) flint_to_int_func(FLINT_BOX(X))
-#define flint_to_str(X) flint_to_str_func(FLINT_BOX(X))
+#define flint_to_int(...) flint_to_int_func(FLINT_BOX(__VA_ARGS__))
+#define flint_to_str(...) flint_to_str_func(FLINT_BOX(__VA_ARGS__))
 
 /* =========================
    UTIL

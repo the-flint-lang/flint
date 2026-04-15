@@ -4,7 +4,7 @@ set -e
 LIB_DEST_DIR="/usr/share/flint" 
 
 echo "1. Forging Flint's starter engine (Zig)..."
-zig build -Doptimize=ReleaseSmall -Dcpu=native 
+zig build #-Doptimize=ReleaseSmall -Dcpu=native 
 
 echo "1.5. Injecting fresh runtime into system cache..."
 sudo mkdir -p $LIB_DEST_DIR
