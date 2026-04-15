@@ -35,7 +35,7 @@ Flint is in middle:
 
 Write languages that transpile to C, generally means deal with horrible error of C compiler. Flint protects you from that with a strict type checker and diagnostic engine custom dense and sensitive to the context: 
 
-```c
+```
 [SEMANTIC ERROR][E0308]: Mismatched types in array
 
 ~~> teste.fl:1
@@ -137,7 +137,7 @@ The easiest and recommended way to install Flint on Debian/Ubuntu-based distribu
 
 ```bash
 # 1. Add the Flint repository
-echo "deb [trusted=yes] https://lucaas-d3v.github.io/flint ./" | sudo tee /etc/apt/sources.list.d/flint.list
+echo "deb [trusted=yes] https://the-lint-project.github.io/flint ./" | sudo tee /etc/apt/sources.list.d/flint.list
 
 # 2. Update and install
 sudo apt update
