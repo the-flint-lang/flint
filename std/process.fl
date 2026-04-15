@@ -1,11 +1,11 @@
-# std/process.fl
+-- std/process.fl
 import str;
 
 extern fn flint_exec(cmd: string) string;
 extern fn flint_spawn(cmd: string, echo: bool) val;
 extern fn flint_exit(code: int) void;
 
-# public API
+-- public API
 fn exec(cmd: string) string {
     return flint_exec(cmd); 
 }

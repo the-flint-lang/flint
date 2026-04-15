@@ -1,4 +1,4 @@
-# std/fs.fl
+-- std/fs.fl
 
 extern fn flint_file_exists(path: string) bool;
 extern fn flint_mkdir(path: string) val;
@@ -14,7 +14,7 @@ extern fn flint_copy(src: string, dest: string) val;
 extern fn flint_read_file(path: string) val;
 extern fn flint_write_file(text: string, path: string) val;
 
-# public API
+-- public API
 fn file_exists(path: string) bool {
     return flint_file_exists(path); 
 }

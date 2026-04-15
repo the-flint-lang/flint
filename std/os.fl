@@ -1,4 +1,4 @@
-# std/os.fl
+-- std/os.fl
 
 import str;
 
@@ -8,7 +8,7 @@ extern fn flint_is_root() bool;
 extern fn flint_require_root(plus_args: arr<string>) val;
 extern fn flint_os_command_exists(bin: string) bool;
 
-# public API
+-- public API
 fn args() arr<string> {
     return flint_args(); 
 }

@@ -1,9 +1,9 @@
-# std/io.fl
+-- std/io.fl
 
 extern fn flint_read_line(s: string) string;
 extern fn flint_write(way: string, msg: string) void;
 
-# public API
+-- public API
 fn read_line(s: string) string {
     return flint_read_line(s);
 }

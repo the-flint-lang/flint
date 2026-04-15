@@ -1,4 +1,4 @@
-# std/str.fl
+-- std/str.fl
 
 extern fn flint_split(text: string, delim: string) arr<string>;
 extern fn flint_join(a: arr<string>, sep: string) string;
@@ -11,7 +11,7 @@ extern fn flint_concat(a: string, b: string) string;
 extern fn flint_to_int(v: val) int;
 extern fn flint_str_replace_all(s: string, a: arr<string>, b: arr<string>) string;
 
-# public API 
+-- public API 
 fn split(text: string, delim: string) arr<string> {
     return flint_split(text, delim);
 }

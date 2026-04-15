@@ -35,8 +35,28 @@
         "comments": {
             "patterns": [
                 {
-                    "name": "comment.line.number-sign.flint",
-                    "match": "#.*$"
+                    "name": "comment.block.flint",
+                    "begin": "\\{-",
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.comment.flint"
+                        }
+                    },
+                    "end": "-\\}",
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.comment.flint"
+                        }
+                    },
+                    "patterns": [
+                        {
+                            "include": "#comments"
+                        }
+                    ]
+                },
+                {
+                    "name": "comment.line.double-dash.flint",
+                    "match": "--.*$"
                 }
             ]
         },

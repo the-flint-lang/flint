@@ -1,4 +1,4 @@
-# std/env.jl
+-- std/env.jl
 
 extern fn flint_sys_disk_usage(path: string) val;
 extern fn flint_sys_ram_usage() val;
@@ -7,7 +7,7 @@ extern fn flint_sys_packages_dpkg() val;
 extern fn flint_sys_gpu_name() val;
 extern fn flint_sys_display_res() val;
 
-# public API
+-- public API
 fn disk_usage(path: string) val { 
     return flint_sys_disk_usage(path); 
 }
