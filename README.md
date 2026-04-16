@@ -137,7 +137,7 @@ The easiest and recommended way to install Flint on Debian/Ubuntu-based distribu
 
 ```bash
 # 1. Add the Flint repository
-echo "deb [trusted=yes] https://the-lint-project.github.io/flint ./" | sudo tee /etc/apt/sources.list.d/flint.list
+echo "deb [trusted=yes] https://the-flint-lang.github.io/flint ./" | sudo tee /etc/apt/sources.list.d/flint.list
 
 # 2. Update and install
 sudo apt update
