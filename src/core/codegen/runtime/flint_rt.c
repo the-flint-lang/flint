@@ -31,6 +31,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#include <stdarg.h>
 #include <spawn.h>
 #include <limits.h>
 
@@ -43,8 +44,13 @@ static char **global_argv;
 ARENA E RUNTIME
 ========================= */
 
+#ifndef ARENA_CAPACITY
 #define ARENA_CAPACITY (4ULL * 1024 * 1024 * 1024)
+#endif
+
+#ifndef PERSISTENT_CAPACITY
 #define PERSISTENT_CAPACITY (1ULL * 1024 * 1024 * 1024)
+#endif
 
 static char *arena_base = NULL;
 static size_t arena_offset = 0;
@@ -78,7 +84,10 @@ void *flint_alloc_persistent(size_t size)
 {
     size = (size + 7) & ~7;
     if (persistent_offset + size > PERSISTENT_CAPACITY)
-        flint_panic("Persistent Arena out of memory! (> 1GB cloned)");
+    {
+        flint_panic("Persistent Arena out of memory! Capacity (%llu bytes) exceeded.",
+                    (unsigned long long)PERSISTENT_CAPACITY);
+    }
 
     void *ptr = (void *)(persistent_base + persistent_offset);
     persistent_offset += size;
@@ -95,7 +104,8 @@ void *flint_alloc_raw(size_t size)
     size = (size + 7) & ~7;
     if (arena_offset + size > ARENA_CAPACITY)
     {
-        flint_panic("Arena out of memory! Maximum capacity (4GB) exceeded.");
+        flint_panic("Arena out of memory! Maximum capacity (%llu bytes) exceeded.",
+                    (unsigned long long)ARENA_CAPACITY);
     }
     void *ptr = (void *)(arena_base + arena_offset);
     arena_offset += size;
@@ -122,13 +132,20 @@ void flint_arena_release(FlintArenaMark m)
         arena_offset = m;
 }
 
-void flint_panic(const char *msg)
+void flint_panic(const char *format, ...)
 {
     fprintf(stderr, "\n\033[41;37;1m [RUNTIME PANIC] \033[0m\n");
-    fprintf(stderr, "  \033[1;36m~~>\033[0m %s\n", msg);
-    fprintf(stderr, "  \033[1;36m~~>\033[0m Halting execution.\n\n");
+    fprintf(stderr, "  \033[1;36m~~>\033[0m ");
+
+    va_list args;
+    va_start(args, format);
+    vfprintf(stderr, format, args);
+    va_end(args);
+
+    fprintf(stderr, "\n  \033[1;36m~~>\033[0m Halting execution.\n\n");
     exit(1);
 }
+
 void flint_exit(int code)
 {
     flint_deinit();

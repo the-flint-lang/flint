@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <limits.h>
+#include <stdarg.h>
 
 // ==========================================
 // STRING SLICES
@@ -88,7 +89,7 @@ void flint_arena_reset();
 void *flint_alloc_raw(size_t size);
 void *flint_alloc_zero(size_t size);
 
-void flint_panic(const char *msg);
+void flint_panic(const char *msg, ...);
 void flint_exit(int code);
 
 typedef size_t FlintArenaMark;

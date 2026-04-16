@@ -367,12 +367,15 @@ const CpuArchs = enum {
 const FlintFlags = struct {
     is_less_mode: bool,
     is_test: bool,
-
     cpu_arch: CpuArchs,
+
+    arena_size: u64 = 4 * 1024 * 1024 * 1024, // 4GB
+    persist_size: u64 = 1 * 1024 * 1024 * 1024, // 1GB
+
+    output_name: []const u8 = "",
 
     fn getDefaultArch(_: FlintFlags) CpuArchs {
         const arch = builtin.cpu.arch;
-
         if (arch == .x86_64) {
             return .x86_64;
         } else if (builtin.cpu.arch == .aarch64) {
@@ -404,18 +407,22 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper, args: []const []const u8) 
                 try help(io);
                 return;
             }
+
             if (checker.cliArgsEquals(arg, &.{ "-V", "--version" })) {
                 try version(io);
                 return;
             }
+
             if (checker.cliArgsEquals(arg, &.{ "-s", "--small" })) {
                 flags.is_less_mode = true;
                 continue;
             }
+
             if (checker.cliArgsEquals(arg, &.{ "-t", "--test" })) {
                 flags.is_test = true;
                 continue;
             }
+
             command = arg;
             continue;
         }
@@ -499,7 +506,9 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper, args: []const []const u8) 
     }
 
     if (checker.strEquals(cmd, "build")) {
-        parseFlags(remaining_args, &flags);
+        parseFlags(remaining_args, &flags, io) catch {
+            return;
+        };
         try runner(alloc, remaining_args, file, io, false, flags);
         return;
     }
@@ -507,31 +516,54 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper, args: []const []const u8) 
     try help(io);
 }
 
-fn parseFlags(args: []const []const u8, flags: *FlintFlags) void {
-    var is_cpu = false;
+pub fn parseFlags(args: []const []const u8, flags: *FlintFlags, io: IoHelper) !void {
+    var i: usize = 0;
 
-    for (args) |arg| {
-        if (is_cpu) {
-            is_cpu = false;
-            if (checker.cliArgsEquals(arg, &.{"baseline"})) {
-                flags.cpu_arch = .baseline;
-                continue;
-            }
-            if (checker.cliArgsEquals(arg, &.{"x86_64"})) {
-                flags.cpu_arch = .x86_64;
-                continue;
-            }
-            if (checker.cliArgsEquals(arg, &.{"aarch"})) {
-                flags.cpu_arch = .aarch;
-                continue;
-            }
-        }
+    while (i < args.len) : (i += 1) {
+        const arg = args[i];
 
         if (checker.cliArgsEquals(arg, &.{ "-c", "--cpu" })) {
-            is_cpu = true;
+            i += 1;
+            if (i >= args.len) return error.MissingCpuArch;
+
+            const cpu_arg = args[i];
+            if (checker.cliArgsEquals(cpu_arg, &.{"baseline"})) {
+                flags.cpu_arch = .baseline;
+            } else if (checker.cliArgsEquals(cpu_arg, &.{"x86_64"})) {
+                flags.cpu_arch = .x86_64;
+            } else if (checker.cliArgsEquals(cpu_arg, &.{"aarch"})) {
+                flags.cpu_arch = .aarch;
+            } else {
+                return error.InvalidCpuArch;
+            }
             continue;
         }
-        break;
+
+        if (checker.cliArgsEquals(arg, &.{ "-o", "--output" })) {
+            i += 1;
+            if (i >= args.len) return error.MissingOutputName;
+            flags.output_name = args[i];
+            continue;
+        }
+
+        if (checker.cliArgsEquals(arg, &.{"--arena-size"})) {
+            i += 1;
+            if (i >= args.len) return error.MissingArenaSize;
+            flags.arena_size = try parseCapacityBytes(args[i]);
+            continue;
+        }
+
+        if (checker.cliArgsEquals(arg, &.{"--persist-size"})) {
+            i += 1;
+            if (i >= args.len) return error.MissingPersistSize;
+            flags.persist_size = try parseCapacityBytes(args[i]);
+            continue;
+        }
+
+        try help(io);
+        try io.stderr.print("Unknown command: '{s}'\n", .{arg});
+        try io.stderr.flush();
+        return error.unknownCommand;
     }
 }
 
@@ -565,7 +597,9 @@ fn runner(alloc: std.mem.Allocator, args: []const []const u8, file_path: []const
     }
 
     var exe_name_buf: [128]u8 = undefined;
-    const exe_name = if (flags.is_test) blk: {
+    const exe_name = if (flags.output_name.len > 0)
+        flags.output_name
+    else if (flags.is_test) blk: {
         const hash = std.hash.Fnv1a_64.hash(file_path);
         break :blk std.fmt.bufPrint(&exe_name_buf, ".test_bin_{x}", .{hash}) catch "test_bin";
     } else std.fs.path.stem(file_path);
@@ -936,6 +970,12 @@ const ClangCompiler = struct {
         try args.append(alloc, "-I.");
         try args.append(alloc, if (pre) "-I/usr/share/flint" else "-I.");
 
+        const arena_macro = try std.fmt.allocPrint(alloc, "-DARENA_CAPACITY={d}ULL", .{flags.arena_size});
+        try args.append(alloc, arena_macro);
+
+        const persist_macro = try std.fmt.allocPrint(alloc, "-DPERSISTENT_CAPACITY={d}ULL", .{flags.persist_size});
+        try args.append(alloc, persist_macro);
+
         try args.append(alloc, "-o");
         try args.append(alloc, out_exe);
 
@@ -1002,6 +1042,12 @@ const GccCompiler = struct {
         try args.append(alloc, "-I.");
         try args.append(alloc, if (pre) "-I/usr/share/flint" else "-I.");
 
+        const arena_macro = try std.fmt.allocPrint(alloc, "-DARENA_CAPACITY={d}ULL", .{flags.arena_size});
+        try args.append(alloc, arena_macro);
+
+        const persist_macro = try std.fmt.allocPrint(alloc, "-DPERSISTENT_CAPACITY={d}ULL", .{flags.persist_size});
+        try args.append(alloc, persist_macro);
+
         try args.append(alloc, "-o");
         try args.append(alloc, out_exe);
 
@@ -1040,7 +1086,6 @@ const GccCompiler = struct {
 const TccCompiler = struct {
     pub fn getArgsExtended(self: TccCompiler, alloc: std.mem.Allocator, out_exe: []const u8, pre: bool, flags: FlintFlags) ![]const []const u8 {
         _ = self;
-        _ = flags;
 
         var args = std.ArrayList([]const u8).empty;
 
@@ -1051,6 +1096,13 @@ const TccCompiler = struct {
         try args.append(alloc, "-");
         try args.append(alloc, "-I.");
         try args.append(alloc, if (pre) "-I/usr/share/flint" else "-I.");
+
+        const arena_macro = try std.fmt.allocPrint(alloc, "-DARENA_CAPACITY={d}ULL", .{flags.arena_size});
+        try args.append(alloc, arena_macro);
+
+        const persist_macro = try std.fmt.allocPrint(alloc, "-DPERSISTENT_CAPACITY={d}ULL", .{flags.persist_size});
+        try args.append(alloc, persist_macro);
+
         try args.append(alloc, "-o");
         try args.append(alloc, out_exe);
         try args.append(alloc, "-lcurl");
@@ -1112,6 +1164,36 @@ fn isCompilerPresent(alloc: std.mem.Allocator, io_sys: std.Io, cmd: []const u8) 
         if (std.Io.Dir.cwd().access(io_sys, full, .{})) |_| return true else |_| continue;
     }
     return false;
+}
+
+pub fn parseCapacityBytes(input: []const u8) !u64 {
+    if (input.len == 0) return error.EmptyCapacityString;
+
+    var num_part: []const u8 = input;
+    var multiplier: u64 = 1;
+
+    if (std.mem.endsWith(u8, input, "GB") or std.mem.endsWith(u8, input, "G")) {
+        multiplier = 1024 * 1024 * 1024;
+        const suffix_len: usize = if (input[input.len - 1] == 'B') 2 else 1;
+        num_part = input[0 .. input.len - suffix_len];
+    } else if (std.mem.endsWith(u8, input, "MB") or std.mem.endsWith(u8, input, "M")) {
+        multiplier = 1024 * 1024;
+        const suffix_len: usize = if (input[input.len - 1] == 'B') 2 else 1;
+        num_part = input[0 .. input.len - suffix_len];
+    } else if (std.mem.endsWith(u8, input, "KB") or std.mem.endsWith(u8, input, "K")) {
+        multiplier = 1024;
+        const suffix_len: usize = if (input[input.len - 1] == 'B') 2 else 1;
+        num_part = input[0 .. input.len - suffix_len];
+    } else if (std.mem.endsWith(u8, input, "B")) {
+        multiplier = 1;
+        num_part = input[0 .. input.len - 1];
+    }
+
+    const val = std.fmt.parseInt(u64, num_part, 10) catch {
+        return error.InvalidNumberFormat;
+    };
+
+    return val * multiplier;
 }
 
 const ok = void{};
