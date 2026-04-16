@@ -967,7 +967,7 @@ pub const TypeChecker = struct {
                     const prop_str = self.pool.get(callee_node.property_access_expr.property_name_id);
 
                     var prefix: []const u8 = "val";
-                    if (symbol.type == .t_val or symbol.type == .t_any or symbol.type == .t_error) { // <-- BLINDADO AQUI
+                    if (symbol.type == .t_val or symbol.type == .t_any or symbol.type == .t_error) {
                         prefix = "val";
                     } else if (symbol.type == .t_string) {
                         prefix = "str";
