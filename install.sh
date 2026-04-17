@@ -2,7 +2,6 @@
 set -e
 
 # color palette
-BOLD='\033[1m'
 ORANGE='\033[38;5;208m'
 GRAY='\033[38;5;240m'
 WHITE='\033[37m'
@@ -12,7 +11,7 @@ divider() { echo -e "${ORANGE}---------------------------------------------${NC}
 step() { echo -e "${BOLD}${WHITE}$1${NC}"; }
 pipeline() { echo -e "    ${BOLD}${ORANGE}~>${NC} ${GRAY}$1${NC}"; } 
 
-# header
+# header 
 echo -e "${BOLD}${ORANGE}Flint${NC} ${BOLD}installer${NC}  ${GRAY}github.com/lucaas-d3v/flint${NC}"
 divider
 echo -e "${GRAY}deps ~> download ~> install${NC}\n"
@@ -21,7 +20,7 @@ echo -e "${GRAY}deps ~> download ~> install${NC}\n"
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH="$(uname -m)"
 
-if [ "$ARCH" = "arm64" ]; then
+if [ "$ARCH" = "arm64" ] || [ "$ARCH" = "aarch64" ]; then
     ARCH="aarch64"
 fi
 
@@ -34,7 +33,7 @@ if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
     SHARE_DIR="$PREFIX_DIR/share/flint"
     PKG_MGR="pkg install -y"
     
-    DEPS="clang libcurl" 
+    DEPS="clang libcurl libtcc" 
 else
     IS_TERMUX=false
     SUDO_CMD="sudo"
@@ -43,15 +42,13 @@ else
     
     if command -v apt-get >/dev/null; then
         PKG_MGR="sudo apt-get install -y"
-        sudo dpkg --add-architecture arm64 > /dev/null 2>&1
-        
-        DEPS="clang libcurl4-openssl-dev libcurl4-openssl-dev:arm64 gcc-aarch64-linux-gnu libc6-dev-arm64-cross" 
+        DEPS="clang libcurl4-openssl-dev libtcc-dev" 
     elif command -v pacman >/dev/null; then
         PKG_MGR="sudo pacman -S --noconfirm"
-        DEPS="clang curl aarch64-linux-gnu-gcc aarch64-linux-gnu-glibc"
+        DEPS="clang curl"
     elif command -v dnf >/dev/null; then
         PKG_MGR="sudo dnf install -y"
-        DEPS="clang libcurl-devel gcc-aarch64-linux-gnu glibc-aarch64-linux-gnu"
+        DEPS="clang libcurl-devel"
     else
         PKG_MGR=""
     fi
@@ -65,15 +62,15 @@ if [ -n "$PKG_MGR" ]; then
         sudo apt-get update -qq 2>/dev/null || true 
     fi
     $PKG_MGR $DEPS > /dev/null 2>&1
-    pipeline "C compiler and libcurl ready"
+    pipeline "Native C compiler, libcurl and libtcc ready"
 else
-    pipeline "unsupported package manager. ensure clang and libcurl are installed."
+    pipeline "unsupported package manager. ensure clang, libcurl and libtcc are installed."
 fi
 echo ""
 
 # version fetch
 step "fetching latest version"
-REPO="lucaas-d3v/flint"
+REPO="the-flint-lang/flint"
 
 VERSION=$(curl -s "https://api.github.com/repos/${REPO}/tags" \
   | grep '"name"' \
@@ -90,9 +87,7 @@ fi
 pipeline "version ${WHITE}${BOLD}$VERSION${NC}"
 echo ""
 
-# ==========================================
-# DOWNLOAD
-# ==========================================
+# download
 step "downloading flint $VERSION"
 DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/flint-${OS}-${ARCH}.tar.gz"
 
@@ -105,22 +100,23 @@ curl -fsSL "$DOWNLOAD_URL" -o flint.tar.gz || {
     exit 1
 }
 
+tar -xzf flint.tar.gz
 pipeline "downloaded and extracted"
 echo ""
 
-# ==========================================
-# INSTALLATION
-# ==========================================
+# installation 
 step "installing"
-
-tar -xzf flint.tar.gz
 
 $SUDO_CMD mkdir -p "$BIN_DIR"
 $SUDO_CMD mkdir -p "$SHARE_DIR"
 
 chmod +x bin/flint
 $SUDO_CMD mv bin/flint "$BIN_DIR/flint"
-$SUDO_CMD mv std/* "$SHARE_DIR/"
+
+$SUDO_CMD cp -r std/* "$SHARE_DIR/"
+if [ -f "flint_rt.c" ]; then
+    $SUDO_CMD cp flint_rt.* "$SHARE_DIR/"
+fi
 
 pipeline "installed to $BIN_DIR/flint"
 echo "" 
@@ -128,3 +124,4 @@ echo ""
 # footer
 divider
 echo -e "${BOLD}flint ${VERSION}${NC} installed. run ${ORANGE}flint --help${NC} to get started."
+echo -e "${GRAY}Note: For ARM64 cross-compilation, install 'gcc-aarch64-linux-gnu' manually.${NC}"

@@ -107,7 +107,7 @@ jobs:
           Section: devel
           Priority: optional
           Architecture: ${ARCH}
-          Depends: libc6-dev, clang | gcc, tcc
+          Depends: libc6-dev, libtcc-dev, libcurl4-openssl-dev, clang | gcc, tcc
           Maintainer: Lucas Paulino Da Silva <lucas.workps@gmail.com>
           Description: Pipeline-oriented systems programming language
            Flint is a statically-typed, pipeline-oriented language that transpiles to C99.
