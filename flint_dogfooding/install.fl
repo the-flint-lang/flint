@@ -42,7 +42,7 @@ if (fs.is_dir(STD_SRC_DIR)) {
     print("WARNING: STD folder not found. Flint was installed without the standard library.");
 }
 
-# Final Validation
+-- Final Validation
 print($"\n{term.CYAN}4{term.RESET}. Running final validation...");
 process.spawn("/usr/local/bin/flint --version", false) 
     ~> process.assert("FATAL: Flint compiled but failed to run. Incorrect architecture?");

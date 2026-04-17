@@ -41,14 +41,15 @@ pub const TypeChecker = struct {
         global.* = SymbolTable.init(allocator, null);
 
         // global built-ins
-        try defineBuiltin(global, allocator, pool, "print", .t_void, &[_]FlintType{.t_any});
-        try defineBuiltin(global, allocator, pool, "printerr", .t_void, &[_]FlintType{.t_any});
+        try defineBuiltin(global, allocator, pool, "print", .t_void, null);
+        try defineBuiltin(global, allocator, pool, "printerr", .t_void, null);
         try defineBuiltin(global, allocator, pool, "range", .t_int_arr, &[_]FlintType{ .t_int, .t_int });
         try defineBuiltin(global, allocator, pool, "if_fail", .t_any, &[_]FlintType{ .t_val, .t_string });
         try defineBuiltin(global, allocator, pool, "fallback", .t_any, &[_]FlintType{ .t_val, .t_any });
         try defineBuiltin(global, allocator, pool, "concat", .t_string, &[_]FlintType{ .t_string, .t_string });
         try defineBuiltin(global, allocator, pool, "to_str", .t_string, &[_]FlintType{.t_any});
         try defineBuiltin(global, allocator, pool, "to_int", .t_int, &[_]FlintType{.t_any});
+        try defineBuiltin(global, allocator, pool, "to_float", .t_float, &[_]FlintType{.t_any});
         try defineBuiltin(global, allocator, pool, "parse_json_as", .t_val, &[_]FlintType{ .t_any, .t_string });
         try defineBuiltin(global, allocator, pool, "parse_json", .t_val, &[_]FlintType{.t_string});
         try defineBuiltin(global, allocator, pool, "ensure", .t_val, &[_]FlintType{ .t_val, .t_bool, .t_string });
@@ -61,12 +62,14 @@ pub const TypeChecker = struct {
         try defineBuiltin(global, allocator, pool, "embed_file", .t_string, &[_]FlintType{.t_string});
         try defineBuiltin(global, allocator, pool, "type_of", .t_string, &[_]FlintType{.t_any});
         try defineBuiltin(global, allocator, pool, "val_keys", .t_str_arr, &[_]FlintType{.t_val});
+        try defineBuiltin(global, allocator, pool, "clone", .t_any, &[_]FlintType{.t_any});
 
         // empty constructors
-        try defineBuiltin(global, allocator, pool, "int_array", .t_int_arr, &[_]FlintType{});
-        try defineBuiltin(global, allocator, pool, "str_array", .t_str_arr, &[_]FlintType{});
-        try defineBuiltin(global, allocator, pool, "bool_array", .t_bool_arr, &[_]FlintType{});
-        try defineBuiltin(global, allocator, pool, "val_array", .t_val_arr, &[_]FlintType{});
+        try defineBuiltin(global, allocator, pool, "int_array", .t_int_arr, null);
+        try defineBuiltin(global, allocator, pool, "float_array", .t_float_arr, null);
+        try defineBuiltin(global, allocator, pool, "str_array", .t_str_arr, null);
+        try defineBuiltin(global, allocator, pool, "bool_array", .t_bool_arr, null);
+        try defineBuiltin(global, allocator, pool, "val_array", .t_val_arr, null);
 
         return .{
             .allocator = allocator,
@@ -671,12 +674,13 @@ pub const TypeChecker = struct {
         var len: u32 = 0;
         self.extractCoords(for_stmt.iterable, &file_id, &line, &col, &len);
 
-        if (iterable_type != .t_int_arr and iterable_type != .t_str_arr and iterable_type != .t_bool_arr and iterable_type != .t_val_arr and iterable_type != .t_string and iterable_type != .t_any and iterable_type != .t_val and iterable_type != .t_error) {
+        if (iterable_type != .t_int_arr and iterable_type != .t_float_arr and iterable_type != .t_str_arr and iterable_type != .t_bool_arr and iterable_type != .t_val_arr and iterable_type != .t_string and iterable_type != .t_any and iterable_type != .t_val and iterable_type != .t_error) {
             try self.reportErrorContext(file_id, line, col, len, "The target of a 'for' loop must be iterable (array or string).");
         }
 
         const element_type: FlintType = switch (iterable_type) {
             .t_int_arr => .t_int,
+            .t_float_arr => .t_float,
             .t_str_arr => .t_string,
             .t_val_arr => .t_val,
             .t_bool_arr => .t_bool,
@@ -965,7 +969,7 @@ pub const TypeChecker = struct {
                     const prop_str = self.pool.get(callee_node.property_access_expr.property_name_id);
 
                     var prefix: []const u8 = "val";
-                    if (symbol.type == .t_val or symbol.type == .t_any or symbol.type == .t_error) { // <-- BLINDADO AQUI
+                    if (symbol.type == .t_val or symbol.type == .t_any or symbol.type == .t_error) {
                         prefix = "val";
                     } else if (symbol.type == .t_string) {
                         prefix = "str";
@@ -999,6 +1003,73 @@ pub const TypeChecker = struct {
                 try self.reportErrorContext(f_id, l, c, ln, msg);
                 return .t_error;
             };
+
+            // check for optional args
+            if (std.mem.eql(u8, func_name, "int_array") or std.mem.eql(u8, func_name, "str_array") or std.mem.eql(u8, func_name, "bool_array") or std.mem.eql(u8, func_name, "val_array") or std.mem.eql(u8, func_name, "float_array")) {
+                if (call.arguments.len > 1) {
+                    var f_id: u32 = 0;
+                    var l: u32 = 0;
+                    var c: u32 = 0;
+                    var ln: u32 = 0;
+                    self.extractCoords(call.callee, &f_id, &l, &c, &ln);
+                    try self.reportErrorContext(f_id, l, c, ln, "Array constructor takes at most 1 argument (capacity).");
+                    return .t_error;
+                }
+                if (call.arguments.len == 1) {
+                    const arg_t = try self.checkNodeIndex(call.arguments[0]);
+                    if (arg_t != .t_int and arg_t != .t_any and arg_t != .t_error) {
+                        var f_id: u32 = 0;
+                        var l: u32 = 0;
+                        var c: u32 = 0;
+                        var ln: u32 = 0;
+                        self.extractCoords(call.arguments[0], &f_id, &l, &c, &ln);
+                        try self.reportErrorContext(f_id, l, c, ln, "Array capacity must be an integer.");
+                        return .t_error;
+                    }
+                }
+                return symbol.type;
+            }
+
+            if (std.mem.eql(u8, func_name, "print") or std.mem.eql(u8, func_name, "printerr")) {
+                if (call.arguments.len > 1) {
+                    var f_id: u32 = 0;
+                    var l: u32 = 0;
+                    var c: u32 = 0;
+                    var ln: u32 = 0;
+                    self.extractCoords(call.callee, &f_id, &l, &c, &ln);
+                    try self.reportErrorContext(f_id, l, c, ln, "Print functions take at most 1 argument.");
+                    return .t_error;
+                }
+                if (call.arguments.len == 1) {
+                    _ = try self.checkNodeIndex(call.arguments[0]);
+                }
+                return .t_void;
+            }
+
+            if (std.mem.eql(u8, func_name, "io_read_line")) {
+                if (call.arguments.len > 1) {
+                    var f_id: u32 = 0;
+                    var l: u32 = 0;
+                    var c: u32 = 0;
+                    var ln: u32 = 0;
+                    self.extractCoords(call.callee, &f_id, &l, &c, &ln);
+                    try self.reportErrorContext(f_id, l, c, ln, "read_line takes at most 1 argument (prompt).");
+                    return .t_error;
+                }
+                if (call.arguments.len == 1) {
+                    const arg_t = try self.checkNodeIndex(call.arguments[0]);
+                    if (arg_t != .t_string and arg_t != .t_any and arg_t != .t_error) {
+                        var f_id: u32 = 0;
+                        var l: u32 = 0;
+                        var c: u32 = 0;
+                        var ln: u32 = 0;
+                        self.extractCoords(call.arguments[0], &f_id, &l, &c, &ln);
+                        try self.reportErrorContext(f_id, l, c, ln, "Prompt must be a string.");
+                        return .t_error;
+                    }
+                }
+                return .t_string;
+            }
 
             var expected_len: usize = 0;
             var has_sig = false;
@@ -1114,7 +1185,7 @@ pub const TypeChecker = struct {
             try defineBuiltin(s, a, p, "env_env", .t_string, &[_]FlintType{.t_string});
         } else if (std.mem.eql(u8, module_name, "io")) {
             try defineBuiltin(s, a, p, "io_write", .t_val, &[_]FlintType{ .t_string, .t_string });
-            try defineBuiltin(s, a, p, "io_read_line", .t_string, &[_]FlintType{.t_string});
+            try defineBuiltin(s, a, p, "io_read_line", .t_string, null);
         } else if (std.mem.eql(u8, module_name, "http")) {
             try defineBuiltin(s, a, p, "http_fetch", .t_val, &[_]FlintType{.t_string});
         } else if (std.mem.eql(u8, module_name, "json")) {
@@ -1190,6 +1261,7 @@ pub const TypeChecker = struct {
         if (array_has_error) return .t_error;
         return switch (first_type) {
             .t_int => .t_int_arr,
+            .t_float => .t_float_arr,
             .t_string => .t_str_arr,
             .t_bool => .t_bool_arr,
             else => .t_str_arr,
@@ -1282,6 +1354,7 @@ pub const TypeChecker = struct {
             .t_bool => "bool",
             .t_val => "val",
             .t_int_arr => "int_array",
+            .t_float_arr => "float_array",
             .t_str_arr => "str_array",
             .t_val_arr => "arr<val>",
             .t_bool_arr => "bool_array",
@@ -1386,6 +1459,7 @@ pub const TypeChecker = struct {
                         const inner_t = self.nodeToFlintType(inner);
                         return switch (inner_t) {
                             .t_int => .t_int_arr,
+                            .t_float => .t_float_arr,
                             .t_string => .t_str_arr,
                             .t_bool => .t_bool_arr,
                             .t_val => .t_val_arr,

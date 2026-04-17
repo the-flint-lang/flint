@@ -1,9 +1,9 @@
-# std/json.jl
+-- std/json.jl
 
 extern fn flint_parse_json(text: string) val;
 extern fn flint_json_lazy_stream(json: string, key: string) val;
 
-# public API
+-- public API
 fn parse(text: string) val { 
     return flint_parse_json(text); 
 }

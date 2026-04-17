@@ -8,11 +8,11 @@ struct ReleaseData {
 
 print("=== CI/CD: Starting Deploy ===");
 
-# 1. Native Fetch with Error Interception in the Pipeline
+-- 1. Native Fetch with Error Interception in the Pipeline
 const payload = http.fetch("https://api.github.com/repos/lucaas-d3v/flint/releases/latest") 
     ~> if_fail("CI error: Failed to fetch Release metadata.");
 
-# 2. AOT deserialization (O(1) memory mapping, without reflection)
+-- 2. AOT deserialization (O(1) memory mapping, without reflection)
 const release = parse_json_as(ReleaseData, str.to_str(payload));
 
 print("Deploying version: {release.tag_name}");

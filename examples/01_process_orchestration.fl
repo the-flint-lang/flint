@@ -1,4 +1,4 @@
-# This script demonstrates how Flint replaces Bash for OS automation.
+-- This script demonstrates how Flint replaces Bash for OS automation.
 import os;
 import str;
 import io;
@@ -8,8 +8,8 @@ print("--- Flint Process Monitor ---");
 const user = os.env("USER");
 print($"Searching processes for the user: {user}");
 
-# Run 'ps aux', filter by user, and save to a file.
-# The pipeline ensures that if the disk fails, the script stops immediately.
+-- Run 'ps aux', filter by user, and save to a file.
+-- The pipeline ensures that if the disk fails, the script stops immediately.
 os.exec("ps aux")
     ~> lines()
     ~> grep(user)

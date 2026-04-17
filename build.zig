@@ -5,7 +5,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const opts = b.addOptions();
-    opts.addOption([]const u8, "flint_version", "1.12.0");
+    opts.addOption([]const u8, "flint_version", "1.13.0-dev");
 
     const mod = b.addModule("flint", .{
         .root_source_file = b.path("src/root.zig"),
@@ -26,20 +26,24 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
+
     mod.addIncludePath(.{ .cwd_relative = "/usr/include" });
     mod.addLibraryPath(.{ .cwd_relative = "/usr/lib/x86_64-linux-gnu" });
-    mod.linkSystemLibrary("tcc", .{ .preferred_link_mode = .static });
 
-    exe.linkLibC();
+    mod.linkSystemLibrary("tcc", .{
+        .preferred_link_mode = .static,
+    });
+
+    exe.root_module.link_libc = true;
 
     // new improvments to low size binary
-    exe.stack_size = 1 * 1024 * 1024;
-    exe.compress_debug_sections = .zstd;
-    exe.root_module.unwind_tables = .none;
+    // exe.stack_size = 1 * 1024 * 1024;
+    // exe.compress_debug_sections = .zstd;
+    // exe.root_module.unwind_tables = .none;
 
-    exe.root_module.strip = true;
-    exe.link_gc_sections = true;
-    exe.want_lto = true;
+    // exe.root_module.strip = true;
+    // exe.link_gc_sections = true;
+    // exe.lto = .full;
 
     b.installArtifact(exe);
 

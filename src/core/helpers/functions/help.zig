@@ -22,3 +22,41 @@ pub fn help(io: anytype) !void {
 
     _ = try io.stdout.flush();
 }
+
+pub fn helpBuild(io: anytype) !void {
+    const orange = "\x1b[38;5;208m";
+    const bold = "\x1b[1m";
+    const reset = "\x1b[0m";
+
+    try io.stdout.print("{s}Usage:{s} flint {s}build{s} [options] <file.fl>\n\n", .{ bold, reset, orange, reset });
+    try io.stdout.print("Compiles a .fl script into a standalone, dependency-free native binary.\n\n", .{});
+
+    try io.stdout.print("{s}Build Options:{s}\n", .{ bold, reset });
+    try io.stdout.print("  -o, --output <name>    Set the output binary name (default: file name).\n", .{});
+    try io.stdout.print("  -c, --cpu <arch>       Target CPU architecture (baseline, x86_64, aarch).\n", .{});
+    try io.stdout.print("  -s, --small            Optimize binary for size (-Os).\n", .{});
+
+    try io.stdout.print("\n{s}Memory Options:{s}\n", .{ bold, reset });
+    try io.stdout.print("  --arena-size <size>    Max capacity for the Arena Allocator (default: 4GB).\n", .{});
+    try io.stdout.print("                         Accepts units: B, K, KB, M, MB, G, GB (e.g., 500MB).\n", .{});
+    try io.stdout.print("  --persist-size <size>  Max capacity for Persistent Memory (default: 1GB).\n", .{});
+
+    try io.stdout.print("\n", .{});
+    _ = try io.stdout.flush();
+}
+
+pub fn helpRun(io: anytype) !void {
+    const orange = "\x1b[38;5;208m";
+    const bold = "\x1b[1m";
+    const reset = "\x1b[0m";
+
+    try io.stdout.print("{s}Usage:{s} flint {s}run{s} <file.fl> [script args...]\n\n", .{ bold, reset, orange, reset });
+    try io.stdout.print("Compiles and executes the script in memory (JIT-like execution).\n", .{});
+    try io.stdout.print("Arguments provided after the file name are passed directly to the script via `os.args()`.\n\n", .{});
+
+    try io.stdout.print("{s}Example:{s}\n", .{ bold, reset });
+    try io.stdout.print("  flint run script.fl --port 8080 --dev\n", .{});
+
+    try io.stdout.print("\n", .{});
+    _ = try io.stdout.flush();
+}

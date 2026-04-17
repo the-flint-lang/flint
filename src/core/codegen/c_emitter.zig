@@ -16,23 +16,26 @@ pub const CEmitter = struct {
     source_file: []const u8,
     is_run: bool,
 
-    built_ins: [18][]const u8,
+    sys_io: std.Io,
+
+    built_ins: [20][]const u8,
 
     node_types: std.AutoHashMap(NodeIndex, FlintType),
     current_placeholder_name: ?[]const u8 = null,
     current_function_struct_name: ?[]const u8 = null,
 
-    pub fn init(allocator: std.mem.Allocator, tree: *const AstTree, pool: *StringPool, node_types: std.AutoHashMap(NodeIndex, FlintType), source_file: []const u8, is_run: bool) CEmitter {
+    pub fn init(allocator: std.mem.Allocator, tree: *const AstTree, pool: *StringPool, node_types: std.AutoHashMap(NodeIndex, FlintType), source_file: []const u8, is_run: bool, sys_io: std.Io) CEmitter {
         return .{
             .allocator = allocator,
             .tree = tree,
             .pool = pool,
             .source_file = source_file,
             .is_run = is_run,
+            .sys_io = sys_io,
             .built_ins = [_][]const u8{
-                "print",  "printerr",          "len",     "push",       "range",  "if_fail", "fallback",
-                "concat", "to_str",            "to_int",  "parse_json", "ensure", "lines",   "grep",
-                "chars",  "os_command_exists", "type_of", "val_keys",
+                "print",  "printerr", "len",               "push",     "range",      "if_fail", "fallback",
+                "concat", "to_str",   "to_int",            "to_float", "parse_json", "ensure",  "lines",
+                "grep",   "chars",    "os_command_exists", "type_of",  "val_keys",   "clone",
             },
             .node_types = node_types,
             .current_placeholder_name = null,
@@ -122,6 +125,7 @@ pub const CEmitter = struct {
             .t_bool => "bool",
             .t_void => "void",
             .t_int_arr => "flint_int_array",
+            .t_float_arr => "flint_float_array",
             .t_str_arr => "flint_str_array",
             .t_bool_arr => "flint_bool_array",
             .t_struct => if (self.current_function_struct_name) |name| name else "void*",
@@ -218,6 +222,7 @@ pub const CEmitter = struct {
             .t_bool => "bool",
             .t_void => "void",
             .t_int_arr => "flint_int_array",
+            .t_float_arr => "flint_float_array",
             .t_str_arr => "flint_str_array",
             .t_bool_arr => "flint_bool_array",
             .t_struct => if (self.current_function_struct_name) |name| name else "void*",
@@ -531,7 +536,12 @@ pub const CEmitter = struct {
         try self.visitNodeIndex(for_node.iterable, writer);
         try writer.writeAll(";\n");
 
-        if (std.mem.eql(u8, inferred_type, "flint_str_array") or std.mem.eql(u8, inferred_type, "flint_int_array") or std.mem.eql(u8, inferred_type, "flint_val_array")) {
+        if (std.mem.eql(u8, inferred_type, "flint_str_array") or
+            std.mem.eql(u8, inferred_type, "flint_int_array") or
+            std.mem.eql(u8, inferred_type, "flint_val_array") or
+            std.mem.eql(u8, inferred_type, "flint_bool_array") or
+            std.mem.eql(u8, inferred_type, "flint_float_array"))
+        {
             try writer.print("        {s}* _arr_{d} = ({s}*)(void*)&_iter_{d};\n", .{ inferred_type, iter_name, inferred_type, iter_name });
 
             if (for_node.is_stream) {
@@ -761,6 +771,22 @@ pub const CEmitter = struct {
                 }
             }
 
+            if (is_module) {
+                const prop_name = self.pool.get(prop_access.property_name_id);
+                const obj_name = self.pool.get(obj_node.identifier.name_id);
+
+                if (std.mem.eql(u8, obj_name, "io") and std.mem.eql(u8, prop_name, "read_line")) {
+                    try writer.writeAll("flint_read_line(");
+                    if (call.arguments.len == 1) {
+                        try self.visitNodeIndex(call.arguments[0], writer);
+                    } else {
+                        try writer.writeAll("FLINT_STR(\"\")");
+                    }
+                    try writer.writeAll(")");
+                    return;
+                }
+            }
+
             if (!is_module) {
                 const prop_name = self.pool.get(prop_access.property_name_id);
                 const obj_type = self.node_types.get(prop_access.object) orelse .t_any;
@@ -804,7 +830,7 @@ pub const CEmitter = struct {
 
                 const file_path = arg_node.literal.token.value;
 
-                const file_content = std.fs.cwd().readFileAlloc(self.allocator, file_path, 10 * 1024 * 1024) catch {
+                const file_content = std.Io.Dir.cwd().readFileAlloc(self.sys_io, file_path, self.allocator, std.Io.Limit.limited(10 * 1024 * 1024)) catch {
                     std.debug.print("[COMPILER PANIC] Falha ao embedar ficheiro: '{s}'\n", .{file_path});
                     return error.FileNotFound;
                 };
@@ -838,27 +864,92 @@ pub const CEmitter = struct {
                 return;
             }
 
-            if (std.mem.eql(u8, func_name, "print") and call.arguments.len == 0) {
-                try writer.print("flint_print(FLINT_STR(\"\"))", .{});
+            if (std.mem.eql(u8, func_name, "print") or std.mem.eql(u8, func_name, "printerr")) {
+                const c_func = if (std.mem.eql(u8, func_name, "print")) "flint_print" else "flint_printerr";
+                if (call.arguments.len == 0) {
+                    try writer.print("{s}(FLINT_STR(\"\"))", .{c_func});
+                } else {
+                    try writer.print("{s}(", .{c_func});
+                    try self.visitNodeIndex(call.arguments[0], writer);
+                    try writer.writeAll(")");
+                }
+                return;
+            }
+            if (std.mem.eql(u8, func_name, "int_array")) {
+                if (call.arguments.len == 1) {
+                    try writer.writeAll("(flint_int_array){.items = flint_alloc_zero((");
+                    try self.visitNodeIndex(call.arguments[0], writer);
+                    try writer.writeAll(") * sizeof(long long)), .count = 0, .capacity = ");
+                    try self.visitNodeIndex(call.arguments[0], writer);
+                    try writer.writeAll("}");
+                } else {
+                    try writer.writeAll("(flint_int_array){.items = NULL, .count = 0, .capacity = 0}");
+                }
                 return;
             }
 
-            if (std.mem.eql(u8, func_name, "int_array")) {
-                try writer.writeAll("(flint_int_array){.items = NULL, .count = 0, .capacity = 0}");
+            if (std.mem.eql(u8, func_name, "float_array")) {
+                if (call.arguments.len == 1) {
+                    try writer.writeAll("(flint_float_array){.items = flint_alloc_zero((");
+                    try self.visitNodeIndex(call.arguments[0], writer);
+                    try writer.writeAll(") * sizeof(double)), .count = 0, .capacity = ");
+                    try self.visitNodeIndex(call.arguments[0], writer);
+                    try writer.writeAll("}");
+                } else {
+                    try writer.writeAll("(flint_float_array){.items = NULL, .count = 0, .capacity = 0}");
+                }
                 return;
             }
+
             if (std.mem.eql(u8, func_name, "str_array")) {
-                try writer.writeAll("(flint_str_array){.items = NULL, .count = 0, .capacity = 0}");
+                if (call.arguments.len == 1) {
+                    try writer.writeAll("(flint_str_array){.items = flint_alloc_zero((");
+                    try self.visitNodeIndex(call.arguments[0], writer);
+                    try writer.writeAll(") * sizeof(flint_str)), .count = 0, .capacity = ");
+                    try self.visitNodeIndex(call.arguments[0], writer);
+                    try writer.writeAll("}");
+                } else {
+                    try writer.writeAll("(flint_str_array){.items = NULL, .count = 0, .capacity = 0}");
+                }
                 return;
             }
 
             if (std.mem.eql(u8, func_name, "val_array")) {
-                try writer.writeAll("(flint_val_array){.items = NULL, .count = 0, .capacity = 0}");
+                if (call.arguments.len == 1) {
+                    try writer.writeAll("(flint_val_array){.items = flint_alloc_zero((");
+                    try self.visitNodeIndex(call.arguments[0], writer);
+                    try writer.writeAll(") * sizeof(FlintValue)), .count = 0, .capacity = ");
+                    try self.visitNodeIndex(call.arguments[0], writer);
+                    try writer.writeAll("}");
+                } else {
+                    try writer.writeAll("(flint_val_array){.items = NULL, .count = 0, .capacity = 0}");
+                }
                 return;
             }
 
             if (std.mem.eql(u8, func_name, "bool_array")) {
-                try writer.writeAll("(flint_bool_array){.items = NULL, .count = 0, .capacity = 0}");
+                if (call.arguments.len == 1) {
+                    try writer.writeAll("(flint_bool_array){.items = flint_alloc_zero((");
+                    try self.visitNodeIndex(call.arguments[0], writer);
+                    try writer.writeAll(") * sizeof(bool)), .count = 0, .capacity = ");
+                    try self.visitNodeIndex(call.arguments[0], writer);
+                    try writer.writeAll("}");
+                } else {
+                    try writer.writeAll("(flint_bool_array){.items = NULL, .count = 0, .capacity = 0}");
+                }
+                return;
+            }
+
+            if (std.mem.eql(u8, func_name, "val_array")) {
+                if (call.arguments.len == 1) {
+                    try writer.writeAll("(flint_val_array){.items = flint_alloc_zero(");
+                    try self.visitNodeIndex(call.arguments[0], writer);
+                    try writer.writeAll(" * sizeof(FlintValue)), .count = 0, .capacity = ");
+                    try self.visitNodeIndex(call.arguments[0], writer);
+                    try writer.writeAll("}");
+                } else {
+                    try writer.writeAll("(flint_val_array){.items = NULL, .count = 0, .capacity = 0}");
+                }
                 return;
             }
 
@@ -951,6 +1042,9 @@ pub const CEmitter = struct {
             } else if (tok._type == .true_literal_token or tok._type == .false_literal_token) {
                 c_type = "bool";
                 struct_name = "flint_bool_array";
+            } else if (tok._type == .float_literal_token) {
+                c_type = "double";
+                struct_name = "flint_float_array";
             }
         }
 
@@ -1137,6 +1231,7 @@ pub const CEmitter = struct {
             .t_string => "flint_str",
             .t_bool => "bool",
             .t_int_arr => "flint_int_array",
+            .t_float_arr => "flint_float_array",
             .t_str_arr => "flint_str_array",
             .t_val_arr => "flint_val_array",
             .t_bool_arr => "flint_bool_array",
@@ -1173,6 +1268,7 @@ pub const CEmitter = struct {
             .t_string => "flint_str",
             .t_bool => "bool",
             .t_int_arr => "flint_int_array",
+            .t_float_arr => "flint_float_array",
             .t_str_arr => "flint_str_array",
             .t_val_arr => "flint_val_array",
             .t_bool_arr => "flint_bool_array",

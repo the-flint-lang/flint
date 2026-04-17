@@ -1,0 +1,18 @@
+fn linear_search(page_count: int, target_page: int) int {
+    if page_count < target_page {
+        print("This page does not exist");
+        return -1;
+    }
+    
+    for page in 1..page_count + 1 {
+        if page == target_page {
+            print($"Found: {page} in 1 attempts");
+            return page;
+        }    
+    }
+
+    print("Page not found in 1 attempts");
+    return -1;
+}
+
+linear_search(100_000_000, 2);

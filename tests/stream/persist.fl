@@ -1,0 +1,18 @@
+import str;
+
+var list = str_array();
+
+const data = "Error 1\nError 2\nError 3";
+
+print("Processing the stream...");
+
+stream line in lines(data) {
+    const msg = "ALERT: " ~> concat(line);
+    
+    push(list, msg ~> clone()); 
+}
+
+print("\nSurviving results outside the loop:");
+print(list[0]);
+print(list[1]);
+print(list[2]);

@@ -1,4 +1,4 @@
-# std/str.fl
+-- std/str.fl
 
 extern fn flint_split(text: string, delim: string) arr<string>;
 extern fn flint_join(a: arr<string>, sep: string) string;
@@ -10,8 +10,9 @@ extern fn flint_int_to_str(num: int) string;
 extern fn flint_concat(a: string, b: string) string;
 extern fn flint_to_int(v: val) int;
 extern fn flint_str_replace_all(s: string, a: arr<string>, b: arr<string>) string;
+extern fn flint_str_repeat(s: string, coutn: int) string;
 
-# public API 
+-- public API 
 fn split(text: string, delim: string) arr<string> {
     return flint_split(text, delim);
 }
@@ -93,6 +94,7 @@ fn contains(text: string, target: string) bool {
     return false;
 }
 
+{-
 fn repeat(s: string, x: int) string {
     if len(s) == 0 {
         return "";
@@ -109,6 +111,11 @@ fn repeat(s: string, x: int) string {
     }
 
     return join(parts, "");
+}
+-}
+
+fn repeat(s: string, count: int) string {
+    return flint_str_repeat(s, count);
 }
 
 fn upper(s: string) string { 

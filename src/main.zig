@@ -3,38 +3,35 @@ const std = @import("std");
 const flint = @import("flint");
 const IoHelper = flint.IoHelper;
 
-pub fn main() !void {
+pub fn main(init: std.process.Init) !void {
     var stdout_buffer: [4096]u8 = undefined;
     var stderr_buffer: [4096]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
-    var stderr_writer = std.fs.File.stderr().writer(&stderr_buffer);
+    var stdout_writer = std.Io.File.stdout().writer(init.io, &stdout_buffer);
+    var stderr_writer = std.Io.File.stderr().writer(init.io, &stderr_buffer);
 
     defer {
-        _ = stdout_writer.interface.flush() catch {};
-        _ = stderr_writer.interface.flush() catch {};
+        stdout_writer.flush() catch {};
+        stderr_writer.flush() catch {};
     }
 
     const io = IoHelper{
+        .sys = init,
         .stdout = &stdout_writer.interface,
         .stderr = &stderr_writer.interface,
     };
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer {
-        const status = gpa.deinit();
-        if (status == .leak) {
-            io.stderr.print("\n\x1b[1;31m[CRITICAL ALERT]\x1b[0m Memory Leak Detected in the Compiler!\n", .{}) catch {};
-        }
-    }
+    const gpa = init.gpa;
 
-    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    var arena = std.heap.ArenaAllocator.init(gpa);
     defer arena.deinit();
 
     const alloc = arena.allocator();
 
-    flint.runCli(alloc, io) catch {
-        _ = stdout_writer.interface.flush() catch {};
-        _ = stderr_writer.interface.flush() catch {};
+    const args = try init.minimal.args.toSlice(alloc);
+
+    flint.runCli(alloc, io, args) catch {
+        stdout_writer.flush() catch {};
+        stderr_writer.flush() catch {};
         std.process.exit(1);
     };
 }

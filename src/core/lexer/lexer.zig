@@ -49,13 +49,6 @@ pub const Lexer = struct {
 
             if (std.ascii.isWhitespace(c)) continue;
 
-            if (c == '#') {
-                while (!self.isAtEnd() and self.peek(0) != '\n') {
-                    _ = self.consume();
-                }
-                continue;
-            }
-
             const start_col = self.column - 1;
 
             if (std.ascii.isAlphabetic(c) or c == '_') {
@@ -169,6 +162,11 @@ pub const Lexer = struct {
                 '-' => {
                     if (self.match('=')) {
                         _type = .minus_equal_token;
+                    } else if (self.match('-')) {
+                        while (!self.isAtEnd() and self.source[self.position] != '\n') {
+                            self.advance();
+                        }
+                        continue;
                     } else {
                         _type = .minus_token;
                     }
@@ -211,7 +209,33 @@ pub const Lexer = struct {
                 },
 
                 '{' => {
-                    _type = .lbrace_token;
+                    if (self.match('-')) {
+                        var nesting: u32 = 1;
+                        const start_line = self.line;
+                        const temp_start_col = self.column - 2;
+
+                        while (nesting > 0 and !self.isAtEnd()) {
+                            if (self.source[self.position] == '{' and self.position + 1 < self.source.len and self.source[self.position + 1] == '-') {
+                                nesting += 1;
+                                self.advance();
+                                self.advance();
+                            } else if (self.source[self.position] == '-' and self.position + 1 < self.source.len and self.source[self.position + 1] == '}') {
+                                nesting -= 1;
+                                self.advance();
+                                self.advance();
+                            } else {
+                                self.advance();
+                            }
+                        }
+
+                        if (nesting > 0) {
+                            try self.reportError("E0004", "Unterminated block comment", start_line, temp_start_col, 2, "block comment starts here but is never closed");
+                            return error.LexicalError;
+                        }
+                        continue;
+                    } else {
+                        _type = .lbrace_token;
+                    }
                 },
 
                 '}' => {

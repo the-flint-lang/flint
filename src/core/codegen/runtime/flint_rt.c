@@ -31,6 +31,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#include <stdarg.h>
 #include <spawn.h>
 #include <limits.h>
 
@@ -43,10 +44,19 @@ static char **global_argv;
 ARENA E RUNTIME
 ========================= */
 
+#ifndef ARENA_CAPACITY
 #define ARENA_CAPACITY (4ULL * 1024 * 1024 * 1024)
+#endif
+
+#ifndef PERSISTENT_CAPACITY
+#define PERSISTENT_CAPACITY (1ULL * 1024 * 1024 * 1024)
+#endif
 
 static char *arena_base = NULL;
 static size_t arena_offset = 0;
+
+static char *persistent_base = NULL;
+static size_t persistent_offset = 0;
 
 void flint_init(int argc, char **argv)
 {
@@ -57,11 +67,31 @@ void flint_init(int argc, char **argv)
     arena_base = mmap(NULL, ARENA_CAPACITY, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
     if (arena_base == MAP_FAILED)
         flint_panic("Fatal flaw: OS refused Virtual Arena.");
+
+    persistent_base = mmap(NULL, PERSISTENT_CAPACITY, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+    if (persistent_base == MAP_FAILED)
+        flint_panic("Fatal flaw: OS refused Persistent Arena.");
 }
 
 void flint_deinit()
 {
     munmap(arena_base, ARENA_CAPACITY);
+    munmap(persistent_base, PERSISTENT_CAPACITY);
+}
+
+// survives flint_arena_release()
+void *flint_alloc_persistent(size_t size)
+{
+    size = (size + 7) & ~7;
+    if (persistent_offset + size > PERSISTENT_CAPACITY)
+    {
+        flint_panic("Persistent Arena out of memory! Capacity (%llu bytes) exceeded.",
+                    (unsigned long long)PERSISTENT_CAPACITY);
+    }
+
+    void *ptr = (void *)(persistent_base + persistent_offset);
+    persistent_offset += size;
+    return ptr;
 }
 
 void flint_arena_reset()
@@ -74,7 +104,8 @@ void *flint_alloc_raw(size_t size)
     size = (size + 7) & ~7;
     if (arena_offset + size > ARENA_CAPACITY)
     {
-        flint_panic("Arena out of memory! Maximum capacity (4GB) exceeded.");
+        flint_panic("Arena out of memory! Maximum capacity (%llu bytes) exceeded.",
+                    (unsigned long long)ARENA_CAPACITY);
     }
     void *ptr = (void *)(arena_base + arena_offset);
     arena_offset += size;
@@ -101,13 +132,20 @@ void flint_arena_release(FlintArenaMark m)
         arena_offset = m;
 }
 
-void flint_panic(const char *msg)
+void flint_panic(const char *format, ...)
 {
     fprintf(stderr, "\n\033[41;37;1m [RUNTIME PANIC] \033[0m\n");
-    fprintf(stderr, "  \033[1;36m~~>\033[0m %s\n", msg);
-    fprintf(stderr, "  \033[1;36m~~>\033[0m Halting execution.\n\n");
+    fprintf(stderr, "  \033[1;36m~~>\033[0m ");
+
+    va_list args;
+    va_start(args, format);
+    vfprintf(stderr, format, args);
+    va_end(args);
+
+    fprintf(stderr, "\n  \033[1;36m~~>\033[0m Halting execution.\n\n");
     exit(1);
 }
+
 void flint_exit(int code)
 {
     flint_deinit();
@@ -1124,7 +1162,7 @@ flint_str flint_trim(flint_str text)
     return FLINT_SLICE(text.ptr + start, (end - start) + 1);
 }
 
-flint_str flint_concat(flint_str a, flint_str b)
+flint_str flint_concat_inner(flint_str a, flint_str b)
 {
     if (a.len == 0 && b.len == 0)
         return FLINT_STR("");
@@ -1336,7 +1374,7 @@ flint_str flint_to_str_func(FlintValue v)
     case FLINT_VAL_NULL:
         return FLINT_STR("null");
     case FLINT_VAL_ERROR:
-        return flint_concat(FLINT_STR("[Error] "), v.as.s);
+        return flint_concat_inner(FLINT_STR("[Error] "), v.as.s);
     default:
         return FLINT_STR("[Object]");
     }
@@ -1422,6 +1460,25 @@ flint_str flint_str_replace_all(flint_str s, flint_str_array targets, flint_str_
     }
     buf[new_len] = '\0';
     return FLINT_SLICE(buf, new_len);
+}
+
+flint_str flint_str_repeat(flint_str s, long long count)
+{
+    if (s.len == 0 || count <= 0)
+        return FLINT_STR("");
+    if (count == 1)
+        return s;
+
+    size_t total_len = s.len * count;
+    char *buf = flint_alloc_raw(total_len + 1); // one alloc
+
+    for (long long i = 0; i < count; i++)
+    {
+        memcpy(buf + (i * s.len), s.ptr, s.len);
+    }
+    buf[total_len] = '\0';
+
+    return FLINT_SLICE(buf, total_len);
 }
 
 flint_str flint_type_of_func(FlintValue v)
@@ -1934,6 +1991,37 @@ long long flint_parse_int_from_str(flint_str s)
     return res * sign;
 }
 
+double flint_parse_float_from_str(flint_str s)
+{
+    if (s.len == 0 || !s.ptr)
+        return 0.0;
+
+    char buf[128];
+    size_t len = s.len < 127 ? s.len : 127;
+    memcpy(buf, s.ptr, len);
+    buf[len] = '\0';
+
+    return strtod(buf, NULL);
+}
+
+double flint_to_float_func(FlintValue v)
+{
+    if (v.type == FLINT_VAL_FLOAT)
+    {
+        double f;
+        memcpy(&f, &v.as.f, sizeof(double));
+        return f;
+    }
+    if (v.type == FLINT_VAL_INT)
+        return (double)v.as.i;
+    if (v.type == FLINT_VAL_STR)
+        return flint_parse_float_from_str(v.as.s);
+    if (v.type == FLINT_VAL_BOOL)
+        return v.as.b ? 1.0 : 0.0;
+
+    return 0.0;
+}
+
 /* =========================
     SYS (System / Kernel)
 ========================= */
@@ -2169,19 +2257,44 @@ FlintValue flint_sys_gpu_name(void)
     return flint_make_str(FLINT_SLICE(buf, l));
 }
 
+/* =========================
+   CLONE & PERSISTENCE
+   ========================= */
+
+flint_str flint_clone_str(flint_str s)
+{
+    if (!s.ptr || s.len == 0)
+        return s;
+    char *persistent_ptr = flint_alloc_persistent(s.len + 1);
+    memcpy(persistent_ptr, s.ptr, s.len);
+    persistent_ptr[s.len] = '\0';
+    return FLINT_SLICE(persistent_ptr, s.len);
+}
+
+FlintValue flint_clone_val(FlintValue v)
+{
+    if (v.type == FLINT_VAL_STR)
+    {
+        return (FlintValue){FLINT_VAL_STR, .as.s = flint_clone_str(v.as.s)};
+    }
+    return v;
+}
+
 // ============================================================================
 // FLINT STANDARD LIBRARY ABI BINDINGS
 // ============================================================================
 
 #define str_to_int(v) flint_to_int(v)
 #define str_int_to_str(n) flint_int_to_str(n)
+#define str_to_float(v) flint_to_float(v)
 #define str_to_str(v) flint_to_str(v)
 #define str_join(a, sep) flint_join(a, sep)
 #define str_trim(text) flint_trim(text)
 #define str_split(t, d) flint_split(t, d)
 #define str_count_matches(t, p) flint_count_matches(t, p)
 #define str_replace(t, tg, r) flint_replace(t, tg, r)
-#define str_concat(a, b) flint_concat(a, b)
+#define str_repeat(s, x) flint_str_repeat(s, x)
+#define str_concat(a, b) flint_concat_inner(a, b)
 
 #define process_exec(cmd) flint_exec(cmd)
 #define process_spawn(cmd, echo) flint_spawn(cmd, echo)

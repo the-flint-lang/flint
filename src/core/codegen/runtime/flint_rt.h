@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <limits.h>
+#include <stdarg.h>
 
 // ==========================================
 // STRING SLICES
@@ -50,6 +51,8 @@ typedef enum
 typedef struct FlintValue FlintValue;
 DECLARE_FLINT_ARRAY(FlintValue, flint_val_array)
 
+DECLARE_FLINT_ARRAY(double, flint_float_array)
+
 typedef struct flint_stream flint_stream;
 typedef flint_str (*flint_next_fn)(flint_stream *);
 
@@ -88,12 +91,23 @@ void flint_arena_reset();
 void *flint_alloc_raw(size_t size);
 void *flint_alloc_zero(size_t size);
 
-void flint_panic(const char *msg);
+void flint_panic(const char *msg, ...);
 void flint_exit(int code);
 
 typedef size_t FlintArenaMark;
 FlintArenaMark flint_arena_mark(void);
 void flint_arena_release(FlintArenaMark m);
+
+// CLONE API
+void *flint_alloc_persistent(size_t size);
+
+flint_str flint_clone_str(flint_str s);
+FlintValue flint_clone_val(FlintValue v);
+
+#define flint_clone(X) _Generic((X), \
+    flint_str: flint_clone_str,      \
+    FlintValue: flint_clone_val,     \
+    default: flint_clone_val)(X)
 
 /* =========================
    ARRAYS
@@ -136,13 +150,18 @@ DECLARE_FLINT_ARRAY(bool, flint_bool_array)
     } while (0)
 
 static inline long long _flint_get_str_len(flint_str s) { return (long long)s.len; }
-static inline long long _flint_get_stra_len(flint_str_array a) { return (long long)a.count; }
-static inline long long _flint_get_inta_len(flint_int_array a) { return (long long)a.count; }
+static inline long long _flint_get_arr_str_len(flint_str_array a) { return (long long)a.count; }
+static inline long long _flint_get_arr_int_len(flint_int_array a) { return (long long)a.count; }
+static inline long long _flint_get_arr_bool_len(flint_bool_array a) { return (long long)a.count; }
+static inline long long _flint_get_arr_float_len(flint_float_array a) { return (long long)a.count; }
+static inline long long _flint_get_arr_val_len(flint_val_array a) { return (long long)a.count; }
 
-#define flint_len(X) _Generic((X),        \
-    flint_str: _flint_get_str_len,        \
-    flint_str_array: _flint_get_stra_len, \
-    flint_int_array: _flint_get_inta_len, \
+#define flint_len(X) _Generic((X),               \
+    flint_int_array: _flint_get_arr_int_len,     \
+    flint_str_array: _flint_get_arr_str_len,     \
+    flint_bool_array: _flint_get_arr_bool_len,   \
+    flint_float_array: _flint_get_arr_float_len, \
+    flint_val_array: _flint_get_arr_val_len,     \
     default: _flint_get_str_len)(X)
 
 flint_str flint_slice_str(flint_str s, long long start, long long end);
@@ -359,7 +378,10 @@ long long flint_count_matches(flint_str text, flint_str pattern);
 
 flint_str flint_to_str_func(FlintValue v);
 flint_str flint_int_to_str(long long num);
-flint_str flint_concat(flint_str a, flint_str b);
+
+flint_str flint_concat_inner(flint_str a, flint_str b);
+#define flint_concat(a, b) flint_concat_inner(flint_to_str(a), flint_to_str(b))
+
 flint_str_array flint_chars(flint_str text);
 
 flint_str flint_build_str_array(flint_str *parts, size_t count);
@@ -388,8 +410,12 @@ static inline long long flint_to_int_func(FlintValue v)
     return 0;
 }
 
-#define flint_to_int(X) flint_to_int_func(FLINT_BOX(X))
-#define flint_to_str(X) flint_to_str_func(FLINT_BOX(X))
+double flint_parse_float_from_str(flint_str s);
+double flint_to_float_func(FlintValue v);
+
+#define flint_to_int(...) flint_to_int_func(FLINT_BOX(__VA_ARGS__))
+#define flint_to_str(...) flint_to_str_func(FLINT_BOX(__VA_ARGS__))
+#define flint_to_float(...) flint_to_float_func(FLINT_BOX(__VA_ARGS__))
 
 /* =========================
    UTIL
@@ -494,6 +520,9 @@ static inline FlintValue flint_fallback_inner(FlintValue v, FlintValue alt)
 static inline long long flint_idx_int_arr(flint_int_array a, FlintValue k) { return a.items[flint_to_int(k)]; }
 static inline flint_str flint_idx_str_arr(flint_str_array a, FlintValue k) { return a.items[flint_to_int(k)]; }
 static inline FlintValue flint_idx_dict(FlintDict *d, FlintValue k) { return flint_dict_get(d, flint_to_str(k)); }
+static inline bool flint_idx_bool_arr(flint_bool_array a, FlintValue k) { return a.items[flint_to_int(k)]; }
+static inline double flint_idx_float_arr(flint_float_array a, FlintValue k) { return a.items[flint_to_int(k)]; }
+static inline FlintValue flint_idx_val_arr(flint_val_array a, FlintValue k) { return a.items[flint_to_int(k)]; }
 
 FlintValue flint_lazy_json_get(flint_str json_str, flint_str key);
 FlintValue flint_dict_get_hashed(FlintDict *d, flint_str key, uint64_t hash);
@@ -533,6 +562,9 @@ static inline FlintValue flint_idx_val_hashed(FlintValue v, flint_str key, uint6
 #define FLINT_INDEX(obj, idx) _Generic((obj), \
     flint_int_array: flint_idx_int_arr,       \
     flint_str_array: flint_idx_str_arr,       \
+    flint_bool_array: flint_idx_bool_arr,     \
+    flint_float_array: flint_idx_float_arr,   \
+    flint_val_array: flint_idx_val_arr,       \
     FlintDict *: flint_idx_dict,              \
     const FlintDict *: flint_idx_dict,        \
     FlintValue: flint_idx_val,                \
@@ -589,6 +621,18 @@ static inline void flint_set_idx_str_arr(flint_str_array a, FlintValue k, FlintV
 {
     a.items[flint_to_int(k)] = flint_to_str(v);
 }
+static inline void flint_set_idx_bool_arr(flint_bool_array a, FlintValue k, FlintValue v)
+{
+    a.items[flint_to_int(k)] = (v.type == FLINT_VAL_BOOL) ? v.as.b : false;
+}
+static inline void flint_set_idx_float_arr(flint_float_array a, FlintValue k, FlintValue v)
+{
+    a.items[flint_to_int(k)] = flint_to_float(v);
+}
+static inline void flint_set_idx_val_arr(flint_val_array a, FlintValue k, FlintValue v)
+{
+    a.items[flint_to_int(k)] = v;
+}
 static inline void flint_set_idx_dict(FlintDict *d, FlintValue k, FlintValue v)
 {
     flint_dict_set(d, flint_to_str(k), v);
@@ -604,6 +648,9 @@ static inline void flint_set_idx_val(FlintValue v, FlintValue k, FlintValue val)
 #define FLINT_SET_INDEX(obj, idx, val) _Generic((obj), \
     flint_int_array: flint_set_idx_int_arr,            \
     flint_str_array: flint_set_idx_str_arr,            \
+    flint_bool_array: flint_set_idx_bool_arr,          \
+    flint_float_array: flint_set_idx_float_arr,        \
+    flint_val_array: flint_set_idx_val_arr,            \
     FlintDict *: flint_set_idx_dict,                   \
     FlintValue: flint_set_idx_val)((obj), FLINT_BOX(idx), FLINT_BOX(val))
 
@@ -620,6 +667,8 @@ FlintValue flint_sys_packages_dpkg(void);
 FlintValue flint_sys_gpu_name(void);
 FlintValue flint_sys_display_res(void);
 flint_str flint_str_replace_all(flint_str s, flint_str_array targets, flint_str_array replacements);
+
+flint_str flint_str_repeat(flint_str s, long long count);
 
 flint_str flint_type_of_func(FlintValue v);
 
@@ -644,6 +693,11 @@ static inline flint_str _flint_type_bool(bool x)
     return FLINT_STR("bool");
 }
 static inline flint_str _flint_type_arr_int(flint_int_array x)
+{
+    (void)x;
+    return FLINT_STR("array");
+}
+static inline flint_str _flint_type_arr_float(flint_float_array x)
 {
     (void)x;
     return FLINT_STR("array");

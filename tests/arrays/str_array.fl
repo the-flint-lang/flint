@@ -1,0 +1,12 @@
+var array = str_array(300);
+
+for i in 0..20 {
+    array ~> push("test");    
+}
+
+for a in array {
+    print(a);    
+}
+
+
+print(len(array));

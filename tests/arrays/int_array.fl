@@ -1,0 +1,9 @@
+var array = int_array(20);
+
+for i in 0..20 {
+    array ~> push(i);    
+}
+
+for a in array {
+    print(a);    
+}
