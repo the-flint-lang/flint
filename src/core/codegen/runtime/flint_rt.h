@@ -640,6 +640,8 @@ FlintValue flint_sys_gpu_name(void);
 FlintValue flint_sys_display_res(void);
 flint_str flint_str_replace_all(flint_str s, flint_str_array targets, flint_str_array replacements);
 
+flint_str flint_str_repeat(flint_str s, long long count);
+
 flint_str flint_type_of_func(FlintValue v);
 
 static inline flint_str _flint_type_int(long long x)

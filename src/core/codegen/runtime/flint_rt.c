@@ -1462,6 +1462,25 @@ flint_str flint_str_replace_all(flint_str s, flint_str_array targets, flint_str_
     return FLINT_SLICE(buf, new_len);
 }
 
+flint_str flint_str_repeat(flint_str s, long long count)
+{
+    if (s.len == 0 || count <= 0)
+        return FLINT_STR("");
+    if (count == 1)
+        return s;
+
+    size_t total_len = s.len * count;
+    char *buf = flint_alloc_raw(total_len + 1); // one alloc
+
+    for (long long i = 0; i < count; i++)
+    {
+        memcpy(buf + (i * s.len), s.ptr, s.len);
+    }
+    buf[total_len] = '\0';
+
+    return FLINT_SLICE(buf, total_len);
+}
+
 flint_str flint_type_of_func(FlintValue v)
 {
     switch (v.type)
@@ -2274,6 +2293,7 @@ FlintValue flint_clone_val(FlintValue v)
 #define str_split(t, d) flint_split(t, d)
 #define str_count_matches(t, p) flint_count_matches(t, p)
 #define str_replace(t, tg, r) flint_replace(t, tg, r)
+#define str_repeat(s, x) flint_str_repeat(s, x)
 #define str_concat(a, b) flint_concat_inner(a, b)
 
 #define process_exec(cmd) flint_exec(cmd)
