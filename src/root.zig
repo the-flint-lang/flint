@@ -22,7 +22,7 @@ const StringPool = ast.StringPool;
 const CEmitter = @import("./core/codegen/c_emitter.zig").CEmitter;
 const AstNode = ast.AstNode;
 const Token = @import("./core/lexer/structs/token.zig").Token;
-const help = @import("./core/helpers/functions/help.zig").help;
+const help = @import("./core/helpers/functions/help.zig");
 const version = @import("./core/helpers/functions/version.zig").version;
 
 const flint_rt_c_content = @embedFile("core/codegen/runtime/flint_rt.c");
@@ -404,7 +404,7 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper, args: []const []const u8) 
 
         if (command == null) {
             if (checker.cliArgsEquals(arg, &.{ "-h", "--help" })) {
-                try help(io);
+                try help.help(io);
                 return;
             }
 
@@ -427,7 +427,18 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper, args: []const []const u8) 
             continue;
         }
 
-        if (file_path == null) {
+        if (checker.cliArgsEquals(arg, &.{ "-h", "--help" })) {
+            if (checker.strEquals(command.?, "build")) {
+                try help.helpBuild(io);
+            } else if (checker.strEquals(command.?, "run")) {
+                try help.helpRun(io);
+            } else {
+                try help.help(io);
+            }
+            return;
+        }
+
+        if (file_path == null and !std.mem.startsWith(u8, arg, "-")) {
             file_path = arg;
             script_args_start = i + 1;
             break;
@@ -435,7 +446,7 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper, args: []const []const u8) 
     }
 
     const cmd = command orelse {
-        try help(io);
+        try help.help(io);
         return;
     };
 
@@ -509,11 +520,12 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper, args: []const []const u8) 
         parseFlags(remaining_args, &flags, io) catch {
             return;
         };
+
         try runner(alloc, remaining_args, file, io, false, flags);
         return;
     }
 
-    try help(io);
+    try help.help(io);
 }
 
 pub fn parseFlags(args: []const []const u8, flags: *FlintFlags, io: IoHelper) !void {
@@ -560,7 +572,7 @@ pub fn parseFlags(args: []const []const u8, flags: *FlintFlags, io: IoHelper) !v
             continue;
         }
 
-        try help(io);
+        try help.help(io);
         try io.stderr.print("Unknown command: '{s}'\n", .{arg});
         try io.stderr.flush();
         return error.unknownCommand;
