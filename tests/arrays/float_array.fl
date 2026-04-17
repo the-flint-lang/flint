@@ -1,0 +1,10 @@
+const CAP = 20;
+var array = float_array(CAP);
+
+for i in 0..CAP {
+    array ~> push(i * 2.0);    
+}
+
+for a in array {
+    print(a);    
+}

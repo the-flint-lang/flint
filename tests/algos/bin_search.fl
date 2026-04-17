@@ -1,0 +1,37 @@
+fn binary_search(page_count: int, target_page: int) int {
+    if page_count < target_page {
+        print("This page does not exist");
+        return -1;
+    }
+
+    var start: int = 1;
+    var last: int = page_count;
+    var pivot: int = 0;
+    var attempts: int = 0;
+    
+    while start <= last {
+        pivot = (last + start) / 2;
+
+        if pivot == target_page {
+            print($"found: {pivot} in {attempts} attempts");
+            return pivot;
+        }
+
+        if pivot > target_page {
+            print($"pivot {pivot}, last {last}");
+            last = pivot - 1;
+        }
+
+        if pivot < target_page {
+            print($"pivot {pivot}, start {start}");
+            start = pivot + 1;
+        }
+
+        attempts += 1;
+    }
+
+    print($"Page not found in {attempts} attempts");
+    return 0;
+}
+
+binary_search(100_000_000, 2);

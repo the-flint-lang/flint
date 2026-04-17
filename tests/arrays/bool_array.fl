@@ -1,0 +1,9 @@
+var array = bool_array(20);
+
+for i in 0..20 {
+    array ~> push(true);    
+}
+
+for a in array {
+    print(a);    
+}
