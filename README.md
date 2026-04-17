@@ -154,7 +154,7 @@ Requeriments:
 run this:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/lucaas-d3v/flint/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/the-flint-lang/flint/main/install.sh | bash
 ``` 
 
 > The [`install.sh`](install.sh) try install requeriments with apt, if you don't have it, install this at your own risk.
@@ -170,7 +170,7 @@ Requeriments:
 Run this:
 
 ```bash
-git clone https://github.com/lucaas-d3v/flint
+git clone https://github.com/the-flint-lang/flint
 cd flint
 chmod +x ignite.sh 
 ./ignite.sh
