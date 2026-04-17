@@ -157,14 +157,14 @@ run this:
 curl -fsSL https://raw.githubusercontent.com/the-flint-lang/flint/main/install.sh | bash
 ``` 
 
-> The [`install.sh`](install.sh) try install requeriments with apt, if you don't have it, install this at your own risk.
+> The [`install.sh`](install.sh) try install requeriments with apt, pacman and dnf, if you don't have it, install this at your own risk.
 
 ### Building from source
 
 Requeriments:
 
-* Zig (0.15.2)
-* Clang, GCC r TCC
+* Zig (0.16.0)
+* Clang, GCC or TCC
 * libcurl & libtcc (Dev headers)
 
 Run this:
