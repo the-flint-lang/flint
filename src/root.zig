@@ -1127,6 +1127,67 @@ const GccCompiler = struct {
     }
 };
 
+const ZigCompiler = struct {
+    pub fn getArgsExtended(self: ZigCompiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool, flags: *FlintFlags) ![]const []const u8 {
+        _ = self;
+        _ = has_pch;
+        var args = std.ArrayList([]const u8).empty;
+
+        try args.append(alloc, "zig");
+        try args.append(alloc, "cc");
+
+        if (!is_run) {
+            try args.append(alloc, "-target");
+            switch (flags.cpu_arch) {
+                .x86_64 => try args.append(alloc, "x86_64-linux-musl"),
+                .aarch => try args.append(alloc, "aarch64-linux-musl"),
+                .baseline => try args.append(alloc, "native-linux-musl"),
+            }
+        }
+
+        try args.append(alloc, rt);
+        try args.append(alloc, "-x");
+        try args.append(alloc, "c");
+        try args.append(alloc, "-");
+
+        try args.append(alloc, "-I.");
+        try args.append(alloc, if (pre) "-I/usr/share/flint" else "-I.");
+
+        const arena_macro = try std.fmt.allocPrint(alloc, "-DARENA_CAPACITY={d}ULL", .{flags.arena_size});
+        try args.append(alloc, arena_macro);
+
+        const persist_macro = try std.fmt.allocPrint(alloc, "-DPERSISTENT_CAPACITY={d}ULL", .{flags.persist_size});
+        try args.append(alloc, persist_macro);
+
+        try args.append(alloc, "-o");
+        try args.append(alloc, out_exe);
+
+        if (is_run) {
+            try args.append(alloc, "-O0");
+        } else {
+            try args.append(alloc, if (flags.is_less_mode) "-Os" else "-O3");
+            try args.append(alloc, "-flto");
+            try args.append(alloc, "-ffunction-sections");
+            try args.append(alloc, "-fdata-sections");
+            try args.append(alloc, "-Wl,--gc-sections");
+            try args.append(alloc, "-fvisibility=hidden");
+            try args.append(alloc, "-s");
+            try args.append(alloc, "-fno-stack-protector");
+            try args.append(alloc, "-static");
+        }
+
+        if (!flags.uses_http) {
+            try args.append(alloc, "-DFLINT_NO_HTTP");
+        } else {
+            try args.append(alloc, "-lcurl");
+        }
+
+        try args.append(alloc, "-Wno-unused-value");
+
+        return args.toOwnedSlice(alloc);
+    }
+};
+
 const TccCompiler = struct {
     pub fn getArgsExtended(self: TccCompiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, flags: *FlintFlags) ![]const []const u8 {
         _ = self;
@@ -1166,12 +1227,14 @@ pub const Compiler = union(enum) {
     clang: ClangCompiler,
     gcc: GccCompiler,
     tcc: TccCompiler,
+    zigcc: ZigCompiler,
 
     pub fn getArgsExtended(self: Compiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool, flags: *FlintFlags) ![]const []const u8 {
         return switch (self) {
             .tcc => |t| t.getArgsExtended(alloc, out_exe, rt, pre, flags),
             .clang => |c| c.getArgsExtended(alloc, out_exe, rt, pre, is_run, has_pch, flags),
             .gcc => |g| g.getArgsExtended(alloc, out_exe, rt, pre, is_run, has_pch, flags),
+            .zigcc => |z| z.getArgsExtended(alloc, out_exe, rt, pre, is_run, has_pch, flags),
         };
     }
 };
@@ -1191,6 +1254,7 @@ fn getBestCCompiler(alloc: std.mem.Allocator, is_run: bool, io_sys: std.Io) Comp
     }
 
     const result: Compiler = blk: {
+        if (isCompilerPresent(alloc, io_sys, "zig")) break :blk .{ .zigcc = ZigCompiler{} };
         if (isCompilerPresent(alloc, io_sys, "clang")) break :blk .{ .clang = ClangCompiler{} };
         if (isCompilerPresent(alloc, io_sys, "gcc")) break :blk .{ .gcc = GccCompiler{} };
         if (isCompilerPresent(alloc, io_sys, "tcc")) break :blk .{ .tcc = TccCompiler{} };
