@@ -524,9 +524,58 @@ pub const CEmitter = struct {
 
     fn visitForStmt(self: *CEmitter, node: AstNode, writer: anytype) !void {
         const for_node = node.for_stmt;
+        const target_iter_name = self.pool.get(for_node.iterator_name_id);
+
+        const iterable_node = self.tree.getNode(for_node.iterable);
+        var is_range_optimizable = false;
+        var range_start: NodeIndex = undefined;
+        var range_end: NodeIndex = undefined;
+
+        if (iterable_node == .call_expr) {
+            const call = iterable_node.call_expr;
+            const callee_node = self.tree.getNode(call.callee);
+            if (callee_node == .identifier) {
+                const func_name = self.pool.get(callee_node.identifier.name_id);
+                if (std.mem.eql(u8, func_name, "range") and call.arguments.len == 2) {
+                    is_range_optimizable = true;
+                    range_start = call.arguments[0];
+                    range_end = call.arguments[1];
+                }
+            }
+        } else if (iterable_node == .binary_expr and iterable_node.binary_expr.operator._type == .dot_dot_token) {
+            is_range_optimizable = true;
+            range_start = iterable_node.binary_expr.left;
+            range_end = iterable_node.binary_expr.right;
+        }
+
+        if (is_range_optimizable) {
+            self.temp_counter += 1;
+            const r_id = self.temp_counter;
+
+            try writer.writeAll("    {\n");
+
+            try writer.print("        long long _start_{d} = ", .{r_id});
+            try self.visitNodeIndex(range_start, writer);
+            try writer.writeAll(";\n");
+
+            try writer.print("        long long _end_{d} = ", .{r_id});
+            try self.visitNodeIndex(range_end, writer);
+            try writer.writeAll(";\n");
+
+            try writer.print("        for (long long {s} = _start_{d}; {s} < _end_{d}; {s}++) {{\n", .{ target_iter_name, r_id, target_iter_name, r_id, target_iter_name });
+
+            for (for_node.body) |stmt_idx| {
+                try writer.writeAll("            ");
+                try self.visitNodeIndex(stmt_idx, writer);
+                try writer.writeAll(";\n");
+            }
+
+            try writer.writeAll("        }\n    }\n");
+            return;
+        }
+
         self.temp_counter += 1;
         const iter_name = self.temp_counter;
-        const target_iter_name = self.pool.get(for_node.iterator_name_id);
 
         const inferred_type = self.inferCType(for_node.iterable) orelse "flint_str_array";
 
@@ -642,6 +691,16 @@ pub const CEmitter = struct {
         }
 
         if (bin.operator._type == .equal_token or bin.operator._type == .bang_equal_token) {
+            const left_type = self.node_types.get(bin.left) orelse .t_any;
+
+            if (left_type == .t_int or left_type == .t_float or left_type == .t_bool) {
+                const op_str = if (bin.operator._type == .equal_token) " == " else " != ";
+                try self.visitNodeIndex(bin.left, writer);
+                try writer.writeAll(op_str);
+                try self.visitNodeIndex(bin.right, writer);
+                return;
+            }
+
             const macro_name = if (bin.operator._type == .equal_token) "FLINT_EQ(" else "FLINT_NEQ(";
             try writer.writeAll(macro_name);
             try self.visitNodeIndex(bin.left, writer);

@@ -12,14 +12,22 @@ sudo mkdir -p $LIB_DEST_DIR
 sudo cp src/core/codegen/runtime/flint_rt.h $LIB_DEST_DIR/flint_rt.h
 sudo cp src/core/codegen/runtime/flint_rt.c $LIB_DEST_DIR/flint_rt.c
 
+# runtime base (sem curl) — vai em todo binário
 sudo clang -O3 \
--ffunction-sections \
--fdata-sections \
--fvisibility=hidden \
--march=native \
--fno-semantic-interposition \
--c src/core/codegen/runtime/flint_rt.c \
--o $LIB_DEST_DIR/flint_rt.o
+  -ffunction-sections -fdata-sections \
+  -fvisibility=hidden -march=native \
+  -fno-semantic-interposition \
+  -DFLINT_NO_HTTP \
+  -c src/core/codegen/runtime/flint_rt.c \
+  -o $LIB_DEST_DIR/flint_rt.o
+
+# runtime com http — só linkado quando import http; está presente
+sudo clang -O3 \
+  -ffunction-sections -fdata-sections \
+  -fvisibility=hidden -march=native \
+  -fno-semantic-interposition \
+  -c src/core/codegen/runtime/flint_rt.c \
+  -o $LIB_DEST_DIR/flint_rt_http.o
 
 sudo clang -O3 -x c-header src/core/codegen/runtime/flint_rt.h -o $LIB_DEST_DIR/flint_rt.h.pch
 

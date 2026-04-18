@@ -91,8 +91,9 @@ const Linker = struct {
     source_mgr: *SourceManager,
     io: IoHelper,
     has_error: bool = false,
+    flags: *FlintFlags,
 
-    pub fn init(alloc: std.mem.Allocator, tree: *AstTree, pool: *StringPool, source_mgr: *SourceManager, io: IoHelper) Linker {
+    pub fn init(alloc: std.mem.Allocator, tree: *AstTree, pool: *StringPool, source_mgr: *SourceManager, io: IoHelper, flags: *FlintFlags) Linker {
         return .{
             .allocator = alloc,
             .tree = tree,
@@ -102,6 +103,7 @@ const Linker = struct {
             .statements = std.ArrayList(NodeIndex).empty,
             .results = std.ArrayList(*PipelineResult).empty,
             .io = io,
+            .flags = flags,
         };
     }
 
@@ -159,6 +161,9 @@ const Linker = struct {
                 const import_raw = stmt.import_stmt.path;
                 const next_alias_id = stmt.import_stmt.alias_id;
 
+                if (checker.strEquals(import_raw, "http")) {
+                    self.flags.uses_http = true;
+                }
                 const next_alias_str = if (next_alias_id) |id| self.pool.get(id) else null;
 
                 const basename = std.fs.path.basename(import_raw);
@@ -368,6 +373,7 @@ const FlintFlags = struct {
     is_less_mode: bool,
     is_test: bool,
     cpu_arch: CpuArchs,
+    uses_http: bool,
 
     arena_size: u64 = 4 * 1024 * 1024 * 1024, // 4GB
     persist_size: u64 = 1 * 1024 * 1024 * 1024, // 1GB
@@ -395,6 +401,7 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper, args: []const []const u8) 
         .is_less_mode = false,
         .is_test = false,
         .cpu_arch = .baseline,
+        .uses_http = false,
     };
     flags.cpu_arch = flags.getDefaultArch();
 
@@ -512,7 +519,7 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper, args: []const []const u8) 
     }
 
     if (checker.strEquals(cmd, "run")) {
-        try runner(alloc, remaining_args, file, io, true, flags);
+        try runner(alloc, remaining_args, file, io, true, &flags);
         return;
     }
 
@@ -521,7 +528,7 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper, args: []const []const u8) 
             return;
         };
 
-        try runner(alloc, remaining_args, file, io, false, flags);
+        try runner(alloc, remaining_args, file, io, false, &flags);
         return;
     }
 
@@ -579,7 +586,7 @@ pub fn parseFlags(args: []const []const u8, flags: *FlintFlags, io: IoHelper) !v
     }
 }
 
-fn runner(alloc: std.mem.Allocator, args: []const []const u8, file_path: []const u8, io: anytype, is_run: bool, flags: FlintFlags) !void {
+fn runner(alloc: std.mem.Allocator, args: []const []const u8, file_path: []const u8, io: anytype, is_run: bool, flags: *FlintFlags) !void {
     var global_tree = AstTree.init();
     defer global_tree.deinit(alloc);
 
@@ -589,7 +596,7 @@ fn runner(alloc: std.mem.Allocator, args: []const []const u8, file_path: []const
     var source_manager = SourceManager.init(alloc);
     defer source_manager.deinit();
 
-    var linker = Linker.init(alloc, &global_tree, &pool, &source_manager, io);
+    var linker = Linker.init(alloc, &global_tree, &pool, &source_manager, io, flags);
     defer linker.deinit();
 
     linker.linkFile(file_path, null) catch {};
@@ -616,15 +623,22 @@ fn runner(alloc: std.mem.Allocator, args: []const []const u8, file_path: []const
         break :blk std.fmt.bufPrint(&exe_name_buf, ".test_bin_{x}", .{hash}) catch "test_bin";
     } else std.fs.path.stem(file_path);
 
-    const system_rt_c = "/usr/share/flint/flint_rt.c";
     const system_rt_h = "/usr/share/flint/flint_rt.h";
 
+    const rt_base_o = "/usr/share/flint/flint_rt.o";
+    const rt_http_o = "/usr/share/flint/flint_rt_http.o";
+
     const precompiled = blk: {
-        std.Io.Dir.cwd().access(io.sys.io, system_rt_c, .{}) catch break :blk false;
+        std.Io.Dir.cwd().access(io.sys.io, rt_base_o, .{}) catch break :blk false;
+        std.Io.Dir.cwd().access(io.sys.io, rt_http_o, .{}) catch break :blk false;
         std.Io.Dir.cwd().access(io.sys.io, system_rt_h, .{}) catch break :blk false;
         break :blk true;
     };
-    const rt_path: []const u8 = if (precompiled) system_rt_c else "flint_rt.c";
+
+    const rt_path: []const u8 = if (precompiled)
+        (if (flags.uses_http) rt_http_o else rt_base_o)
+    else
+        "flint_rt.c";
 
     if (!precompiled) {
         const h_f = try std.Io.Dir.cwd().createFile(io.sys.io, "flint_rt.h", .{});
@@ -673,8 +687,12 @@ fn runner(alloc: std.mem.Allocator, args: []const []const u8, file_path: []const
             _ = tcc.tcc_add_library_path(tcc_state, "/usr/lib");
             _ = tcc.tcc_add_library_path(tcc_state, "/usr/local/lib");
 
-            if (tcc.tcc_add_library(tcc_state, "curl") == -1) {
-                try io.stderr.print("JIT Warning: Could not explicitly link libcurl.\n", .{});
+            if (flags.uses_http) {
+                if (tcc.tcc_add_library(tcc_state, "curl") == -1) {
+                    try io.stderr.print("JIT Warning: Could not explicitly link libcurl.\n", .{});
+                }
+            } else {
+                tcc.tcc_define_symbol(tcc_state, "FLINT_NO_HTTP", "1");
             }
 
             const rt_path_z = try alloc.dupeZ(u8, rt_path);
@@ -734,7 +752,11 @@ fn runner(alloc: std.mem.Allocator, args: []const []const u8, file_path: []const
                 if (precompiled) try cmd.append(alloc, "-I/usr/share/flint");
 
                 try cmd.append(alloc, "-O0");
-                try cmd.append(alloc, "-lcurl");
+                if (flags.uses_http) {
+                    try cmd.append(alloc, "-lcurl");
+                } else {
+                    try cmd.append(alloc, "-DFLINT_NO_HTTP");
+                }
                 try cmd.append(alloc, "-Wno-unused-value");
 
                 var child = try io.sys.io.vtable.processSpawn(io.sys.io.userdata, .{
@@ -969,7 +991,7 @@ pub fn runTests(alloc: std.mem.Allocator, io: IoHelper) !void {
 }
 
 const ClangCompiler = struct {
-    pub fn getArgsExtended(self: ClangCompiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool, flags: FlintFlags) ![]const []const u8 {
+    pub fn getArgsExtended(self: ClangCompiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool, flags: *FlintFlags) ![]const []const u8 {
         _ = self;
         var args = std.ArrayList([]const u8).empty;
 
@@ -1033,14 +1055,20 @@ const ClangCompiler = struct {
             try args.append(alloc, if (pre) "/usr/share/flint/flint_rt.h.pch" else "flint_rt.h.pch");
         }
 
-        try args.append(alloc, "-lcurl");
+        if (!flags.uses_http) {
+            try args.append(alloc, "-DFLINT_NO_HTTP");
+        }
+
+        if (flags.uses_http) {
+            try args.append(alloc, "-lcurl");
+        }
 
         return args.toOwnedSlice(alloc);
     }
 };
 
 const GccCompiler = struct {
-    pub fn getArgsExtended(self: GccCompiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool, flags: FlintFlags) ![]const []const u8 {
+    pub fn getArgsExtended(self: GccCompiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool, flags: *FlintFlags) ![]const []const u8 {
         _ = self;
         _ = has_pch;
         var args = std.ArrayList([]const u8).empty;
@@ -1089,6 +1117,10 @@ const GccCompiler = struct {
             try args.append(alloc, "-fwhole-program");
         }
 
+        if (!flags.uses_http) {
+            try args.append(alloc, "-DFLINT_NO_HTTP");
+        }
+
         try args.append(alloc, "-Wno-unused-value");
 
         return args.toOwnedSlice(alloc);
@@ -1096,13 +1128,13 @@ const GccCompiler = struct {
 };
 
 const TccCompiler = struct {
-    pub fn getArgsExtended(self: TccCompiler, alloc: std.mem.Allocator, out_exe: []const u8, pre: bool, flags: FlintFlags) ![]const []const u8 {
+    pub fn getArgsExtended(self: TccCompiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, flags: *FlintFlags) ![]const []const u8 {
         _ = self;
 
         var args = std.ArrayList([]const u8).empty;
 
         try args.append(alloc, "tcc");
-        try args.append(alloc, if (pre) "/usr/share/flint/flint_rt.c" else "flint_rt.c");
+        try args.append(alloc, rt);
         try args.append(alloc, "-x");
         try args.append(alloc, "c");
         try args.append(alloc, "-");
@@ -1117,7 +1149,12 @@ const TccCompiler = struct {
 
         try args.append(alloc, "-o");
         try args.append(alloc, out_exe);
-        try args.append(alloc, "-lcurl");
+
+        if (flags.uses_http) {
+            try args.append(alloc, "-lcurl");
+        } else {
+            try args.append(alloc, "-DFLINT_NO_HTTP");
+        }
         try args.append(alloc, "-s");
         try args.append(alloc, "-b");
 
@@ -1130,9 +1167,9 @@ pub const Compiler = union(enum) {
     gcc: GccCompiler,
     tcc: TccCompiler,
 
-    pub fn getArgsExtended(self: Compiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool, flags: FlintFlags) ![]const []const u8 {
+    pub fn getArgsExtended(self: Compiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool, flags: *FlintFlags) ![]const []const u8 {
         return switch (self) {
-            .tcc => |t| t.getArgsExtended(alloc, out_exe, pre, flags),
+            .tcc => |t| t.getArgsExtended(alloc, out_exe, rt, pre, flags),
             .clang => |c| c.getArgsExtended(alloc, out_exe, rt, pre, is_run, has_pch, flags),
             .gcc => |g| g.getArgsExtended(alloc, out_exe, rt, pre, is_run, has_pch, flags),
         };

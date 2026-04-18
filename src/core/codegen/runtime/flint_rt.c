@@ -17,7 +17,6 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <ctype.h>
-#include <curl/curl.h>
 #include <dirent.h>
 #include <errno.h>
 #include <sys/sendfile.h>
@@ -75,8 +74,8 @@ void flint_init(int argc, char **argv)
 
 void flint_deinit()
 {
-    munmap(arena_base, ARENA_CAPACITY);
-    munmap(persistent_base, PERSISTENT_CAPACITY);
+    // munmap(arena_base, ARENA_CAPACITY);
+    // munmap(persistent_base, PERSISTENT_CAPACITY);
 }
 
 // survives flint_arena_release()
@@ -1705,6 +1704,10 @@ static size_t flint_fetch_callback(void *contents, size_t size, size_t nmemb, vo
 }
 
 static bool curl_initialized = false;
+
+#ifndef FLINT_NO_HTTP
+#include <curl/curl.h>
+
 FlintValue flint_fetch(flint_str url)
 {
     if (url.len == 0 || !url.ptr)
@@ -1748,6 +1751,13 @@ FlintValue flint_fetch(flint_str url)
     free(chunk.memory);
     return flint_make_str(FLINT_SLICE(buf, chunk.size));
 }
+
+#else
+FlintValue flint_fetch(flint_str url)
+{
+    return flint_make_error(FLINT_STR("http module not available (compiled without HTTP support)"));
+}
+#endif
 
 /* =========================
 
