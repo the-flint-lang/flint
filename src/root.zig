@@ -433,22 +433,6 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper, args: []const []const u8) 
                 return;
             }
 
-            if (checker.cliArgsEquals(arg, &.{ "-s", "--small" })) {
-                flags.is_less_mode = true;
-                if (flags.arena_size == 4 * 1024 * 1024 * 1024) flags.arena_size = 16 * 1024 * 1024;
-                if (flags.persist_size == 1 * 1024 * 1024 * 1024) flags.persist_size = 4 * 1024 * 1024;
-                continue;
-            }
-
-            if (checker.cliArgsEquals(arg, &.{ "-S", "--static" })) {
-                flags.is_static = true;
-                flags.is_less_mode = true;
-
-                if (flags.arena_size == 4 * 1024 * 1024 * 1024) flags.arena_size = 16 * 1024 * 1024;
-                if (flags.persist_size == 1 * 1024 * 1024 * 1024) flags.persist_size = 4 * 1024 * 1024;
-                continue;
-            }
-
             if (checker.cliArgsEquals(arg, &.{ "-t", "--test" })) {
                 flags.is_test = true;
                 continue;
@@ -591,6 +575,22 @@ pub fn parseFlags(args: []const []const u8, flags: *FlintFlags, io: IoHelper) !v
             continue;
         }
 
+        if (checker.cliArgsEquals(arg, &.{ "-s", "--small" })) {
+            flags.is_less_mode = true;
+            if (flags.arena_size == 4 * 1024 * 1024 * 1024) flags.arena_size = 16 * 1024 * 1024;
+            if (flags.persist_size == 1 * 1024 * 1024 * 1024) flags.persist_size = 4 * 1024 * 1024;
+            continue;
+        }
+
+        if (checker.cliArgsEquals(arg, &.{ "-S", "--static" })) {
+            flags.is_static = true;
+            flags.is_less_mode = true;
+
+            if (flags.arena_size == 4 * 1024 * 1024 * 1024) flags.arena_size = 16 * 1024 * 1024;
+            if (flags.persist_size == 1 * 1024 * 1024 * 1024) flags.persist_size = 4 * 1024 * 1024;
+            continue;
+        }
+
         if (checker.cliArgsEquals(arg, &.{ "-c", "--cpu" })) {
             i += 1;
             if (i >= args.len) return error.MissingCpuArch;
@@ -679,6 +679,8 @@ fn runner(alloc: std.mem.Allocator, args: []const []const u8, file_path: []const
     const rt_http_o = "/usr/share/flint/flint_rt_http.o";
 
     const precompiled = blk: {
+        if (flags.cpu_arch != flags.getDefaultArch()) break :blk false;
+
         std.Io.Dir.cwd().access(io.sys.io, rt_base_o, .{}) catch break :blk false;
         std.Io.Dir.cwd().access(io.sys.io, rt_http_o, .{}) catch break :blk false;
         std.Io.Dir.cwd().access(io.sys.io, system_rt_h, .{}) catch break :blk false;

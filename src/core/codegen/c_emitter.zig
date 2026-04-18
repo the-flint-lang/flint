@@ -1169,8 +1169,23 @@ pub const CEmitter = struct {
                 try self.visitNodeIndex(index, writer);
                 try writer.writeAll(")");
             }
+        } else if (node == .call_expr) {
+            const callee_node = self.tree.getNode(node.call_expr.callee);
+            if (callee_node == .identifier) {
+                const func_name = self.pool.get(callee_node.identifier.name_id);
+                if (std.mem.eql(u8, func_name, "embed_file") or std.mem.eql(u8, func_name, "to_str")) {
+                    try writer.writeAll("flint_make_str(");
+                    try self.visitNodeIndex(index, writer);
+                    try writer.writeAll(")");
+                    return;
+                }
+            }
+
+            try writer.writeAll("FLINT_BOX(");
+            try self.visitNodeIndex(index, writer);
+            try writer.writeAll(")");
         } else {
-            try writer.writeAll("flint_make_int(");
+            try writer.writeAll("FLINT_BOX(");
             try self.visitNodeIndex(index, writer);
             try writer.writeAll(")");
         }
