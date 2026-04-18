@@ -243,7 +243,6 @@ static inline FlintValue flint_identity(FlintValue v) { return v; }
     long long: flint_make_int,     \
     bool: flint_make_bool,         \
     char *: flint_make_str,        \
-    const char *: flint_make_str,  \
     FlintValue: flint_identity)(X)
 
 static inline void flint_dict_set_from_val(FlintValue v, flint_str key, FlintValue val)
@@ -566,9 +565,7 @@ static inline FlintValue flint_idx_val_hashed(FlintValue v, flint_str key, uint6
     flint_float_array: flint_idx_float_arr,   \
     flint_val_array: flint_idx_val_arr,       \
     FlintDict *: flint_idx_dict,              \
-    const FlintDict *: flint_idx_dict,        \
-    FlintValue: flint_idx_val,                \
-    const FlintValue: flint_idx_val)((obj), FLINT_BOX(idx))
+    FlintValue: flint_idx_val)((obj), FLINT_BOX(idx))
 
 #define FLINT_GET_HASHED(obj, key, hash) _Generic((obj), \
     FlintDict *: flint_dict_get_hashed,                  \

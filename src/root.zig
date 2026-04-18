@@ -369,10 +369,19 @@ const CpuArchs = enum {
     baseline, // fallback
 };
 
+const Compilers = enum {
+    tcc,
+    clang,
+    gcc,
+    zig,
+};
+
 const FlintFlags = struct {
     is_less_mode: bool,
+    is_static: bool,
     is_test: bool,
     cpu_arch: CpuArchs,
+    compiler: Compilers,
     uses_http: bool,
 
     arena_size: u64 = 4 * 1024 * 1024 * 1024, // 4GB
@@ -399,8 +408,10 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper, args: []const []const u8) 
 
     var flags = FlintFlags{
         .is_less_mode = false,
+        .is_static = false,
         .is_test = false,
         .cpu_arch = .baseline,
+        .compiler = .tcc,
         .uses_http = false,
     };
     flags.cpu_arch = flags.getDefaultArch();
@@ -421,6 +432,11 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper, args: []const []const u8) 
             }
 
             if (checker.cliArgsEquals(arg, &.{ "-s", "--small" })) {
+                flags.is_less_mode = true;
+                continue;
+            }
+
+            if (checker.cliArgsEquals(arg, &.{ "-S", "--static" })) {
                 flags.is_less_mode = true;
                 continue;
             }
@@ -1016,7 +1032,7 @@ const ClangCompiler = struct {
         if (is_run) {
             try args.append(alloc, "-O0");
         } else {
-            try args.append(alloc, if (flags.is_less_mode) "-Os" else if (flags.cpu_arch == .baseline) "-O2" else "-O3");
+            try args.append(alloc, if (flags.is_less_mode) "-Oz" else if (flags.cpu_arch == .baseline) "-O2" else "-O3");
             try args.append(alloc, "-flto");
             try args.append(alloc, "-finline-functions");
             try args.append(alloc, "-ffunction-sections");
@@ -1090,12 +1106,11 @@ const GccCompiler = struct {
 
         try args.append(alloc, "-o");
         try args.append(alloc, out_exe);
+        try args.append(alloc, if (flags.is_less_mode) "-Oz" else if (flags.cpu_arch == .baseline) "-O2" else "-O3");
 
         if (is_run) {
             try args.append(alloc, "-O0");
         } else {
-            try args.append(alloc, if (flags.is_less_mode) "-Os" else if (flags.cpu_arch == .baseline) "-O2" else "-O3");
-
             try args.append(alloc, "-flto");
             try args.append(alloc, "-mtune=native");
             try args.append(alloc, "-finline-functions");
@@ -1165,15 +1180,22 @@ const ZigCompiler = struct {
         if (is_run) {
             try args.append(alloc, "-O0");
         } else {
-            try args.append(alloc, if (flags.is_less_mode) "-Os" else "-O3");
+            try args.append(alloc, if (flags.is_less_mode) "-Oz" else "-O3");
+
             try args.append(alloc, "-flto");
             try args.append(alloc, "-ffunction-sections");
             try args.append(alloc, "-fdata-sections");
             try args.append(alloc, "-Wl,--gc-sections");
+
+            try args.append(alloc, "-fno-unwind-tables");
+            try args.append(alloc, "-fno-asynchronous-unwind-tables");
+
+            try args.append(alloc, "-fno-ident");
+            try args.append(alloc, "-Wl,--build-id=none");
+            try args.append(alloc, "-fno-stack-protector");
+
             try args.append(alloc, "-fvisibility=hidden");
             try args.append(alloc, "-s");
-            try args.append(alloc, "-fno-stack-protector");
-            try args.append(alloc, "-static");
         }
 
         if (!flags.uses_http) {
@@ -1254,9 +1276,9 @@ fn getBestCCompiler(alloc: std.mem.Allocator, is_run: bool, io_sys: std.Io) Comp
     }
 
     const result: Compiler = blk: {
-        if (isCompilerPresent(alloc, io_sys, "zig")) break :blk .{ .zigcc = ZigCompiler{} };
         if (isCompilerPresent(alloc, io_sys, "clang")) break :blk .{ .clang = ClangCompiler{} };
         if (isCompilerPresent(alloc, io_sys, "gcc")) break :blk .{ .gcc = GccCompiler{} };
+        if (isCompilerPresent(alloc, io_sys, "zig")) break :blk .{ .zigcc = ZigCompiler{} };
         if (isCompilerPresent(alloc, io_sys, "tcc")) break :blk .{ .tcc = TccCompiler{} };
         break :blk .{ .clang = ClangCompiler{} };
     };

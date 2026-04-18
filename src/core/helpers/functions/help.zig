@@ -4,7 +4,7 @@ pub fn help(io: anytype) !void {
     const reset = "\x1b[0m";
     const dim = "\x1b[2m";
 
-    try io.stdout.print("{s}Usage:{s} flint <command> [options] <file.fl>\n\n", .{ bold, reset });
+    try io.stdout.print("{s}Usage:{s} flint [options] <command> <file.fl>\n\n", .{ bold, reset });
 
     try io.stdout.print("{s}Commands:{s}\n", .{ bold, reset });
     try io.stdout.print("  {s}{s}run{s}       Compile a .fl script and execute it in memory\n", .{ bold, orange, reset });
@@ -34,6 +34,7 @@ pub fn helpBuild(io: anytype) !void {
     try io.stdout.print("{s}Build Options:{s}\n", .{ bold, reset });
     try io.stdout.print("  -o, --output <name>    Set the output binary name (default: file name).\n", .{});
     try io.stdout.print("  -c, --cpu <arch>       Target CPU architecture (baseline, x86_64, aarch).\n", .{});
+    try io.stdout.print("  -S, --static           Compile a .fl script for statically linked binary.\n", .{});
     try io.stdout.print("  -s, --small            Optimize binary for size (-Os).\n", .{});
 
     try io.stdout.print("\n{s}Memory Options:{s}\n", .{ bold, reset });
