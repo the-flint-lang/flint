@@ -133,16 +133,18 @@ void flint_arena_release(FlintArenaMark m)
 
 void flint_panic(const char *format, ...)
 {
-    fprintf(stderr, "\n\033[41;37;1m [RUNTIME PANIC] \033[0m\n");
-    fprintf(stderr, "  \033[1;36m~~>\033[0m ");
-
+    char buf[1024];
     va_list args;
     va_start(args, format);
-    vfprintf(stderr, format, args);
+    int len = vsnprintf(buf, sizeof(buf), format, args);
     va_end(args);
 
-    fprintf(stderr, "\n  \033[1;36m~~>\033[0m Halting execution.\n\n");
-    exit(1);
+    write(STDERR_FILENO, "\n\033[41;37;1m [RUNTIME PANIC] \033[0m\n  \033[1;36m~~>\033[0m ", 52);
+    if (len > 0)
+        write(STDERR_FILENO, buf, len);
+    write(STDERR_FILENO, "\n  \033[1;36m~~>\033[0m Halting execution.\n\n", 39);
+
+    flint_exit(1);
 }
 
 void flint_exit(int code)
@@ -183,119 +185,74 @@ static inline FlintValue flint_make_stream(flint_stream s)
 }
 
 /* =========================
+   FORWARD DECLARATIONS
+   ========================= */
+
+flint_str flint_int_to_str(long long num);
+flint_str flint_float_to_str(double num);
+flint_str flint_to_str_func(FlintValue v);
+
+/* =========================
    PRINT
    ========================= */
 
 void flint_print_str(flint_str text)
 {
-    printf("%.*s\n", (int)text.len, text.ptr);
-    fflush(stdout);
+    if (text.len > 0)
+        write(STDOUT_FILENO, text.ptr, text.len);
+    write(STDOUT_FILENO, "\n", 1);
 }
-void flint_print_int(long long v) { printf("%lld\n", v); }
-void flint_print_float(double v) { printf("%g\n", v); }
-void flint_print_dict(FlintDict *d) { printf("[Flint Dictionary: %zu keys]\n", d ? d->count : 0); }
+
+void flint_print_int(long long v) { flint_print_str(flint_int_to_str(v)); }
+void flint_print_float(double v) { flint_print_str(flint_float_to_str(v)); }
+
+void flint_print_dict(FlintDict *d)
+{
+    char buf[64];
+    int len = snprintf(buf, sizeof(buf), "[Flint Dictionary: %zu keys]", d ? d->count : 0);
+    if (len > 0)
+        write(STDOUT_FILENO, buf, len);
+    write(STDOUT_FILENO, "\n", 1);
+}
 
 void flint_print_val(FlintValue v)
 {
-    switch (v.type)
-    {
-    case FLINT_VAL_NULL:
-        printf("null\n");
-        break;
-    case FLINT_VAL_INT:
-        printf("%lld\n", v.as.i);
-        break;
-    case FLINT_VAL_FLOAT:
-    {
-        double real_f;
-        memcpy(&real_f, &v.as.f, sizeof(double));
-        printf("%g\n", real_f);
-        break;
-    }
-    case FLINT_VAL_BOOL:
-        printf("%s\n", v.as.b ? "true" : "false");
-        break;
-    case FLINT_VAL_STR:
-        printf("%.*s\n", (int)v.as.s.len, v.as.s.ptr);
-        break;
-    case FLINT_VAL_DICT:
-        printf("[Dict]\n");
-        break;
-    case FLINT_VAL_STREAM:
-        printf("[Stream]\n");
-        break;
-    case FLINT_VAL_ARRAY:
-        printf("[Array]\n");
-        break;
-    case FLINT_VAL_JSON_LAZY:
-        printf("[Lazy JSON Document]\n");
-        break;
-    case FLINT_VAL_ERROR:
-        printf("\033[1;31mERROR\033[0m: %.*s\n", (int)v.as.s.len, v.as.s.ptr);
-        break;
-    }
+    flint_print_str(flint_to_str_func(v));
 }
 
 void flint_print_bool(bool b)
 {
-    printf("%s\n", b ? "true" : "false");
+    flint_print_str(b ? FLINT_STR("true") : FLINT_STR("false"));
 }
 
 // stderr
 void flint_printerr_str(flint_str text)
 {
-    fprintf(stderr, "%.*s\n", (int)text.len, text.ptr);
-    fflush(stderr);
+    if (text.len > 0)
+        write(STDERR_FILENO, text.ptr, text.len);
+    write(STDERR_FILENO, "\n", 1);
 }
 
-void flint_printerr_int(long long v) { fprintf(stderr, "%lld\n", v); }
-void flint_printerr_float(double v) { fprintf(stderr, "%g\n", v); }
-void flint_printerr_dict(FlintDict *d) { fprintf(stderr, "[Flint Dictionary: %zu keys]\n", d ? d->count : 0); }
+void flint_printerr_int(long long v) { flint_printerr_str(flint_int_to_str(v)); }
+void flint_printerr_float(double v) { flint_printerr_str(flint_float_to_str(v)); }
+
+void flint_printerr_dict(FlintDict *d)
+{
+    char buf[64];
+    int len = snprintf(buf, sizeof(buf), "[Flint Dictionary: %zu keys]", d ? d->count : 0);
+    if (len > 0)
+        write(STDERR_FILENO, buf, len);
+    write(STDERR_FILENO, "\n", 1);
+}
 
 void flint_printerr_val(FlintValue v)
 {
-    switch (v.type)
-    {
-    case FLINT_VAL_NULL:
-        fprintf(stderr, "null\n");
-        break;
-    case FLINT_VAL_INT:
-        fprintf(stderr, "%lld\n", v.as.i);
-        break;
-    case FLINT_VAL_FLOAT:
-    {
-        double real_f;
-        memcpy(&real_f, &v.as.f, sizeof(double));
-        fprintf(stderr, "%g\n", real_f);
-        break;
-    }
-    case FLINT_VAL_BOOL:
-        fprintf(stderr, "%s\n", v.as.b ? "true" : "false");
-        break;
-    case FLINT_VAL_STR:
-        fprintf(stderr, "%.*s\n", (int)v.as.s.len, v.as.s.ptr);
-        break;
-    case FLINT_VAL_DICT:
-        fprintf(stderr, "[Dict]\n");
-        break;
-    case FLINT_VAL_STREAM:
-        fprintf(stderr, "[Stream]\n");
-        break;
-    case FLINT_VAL_ARRAY:
-        fprintf(stderr, "[Array]\n");
-        break;
-    case FLINT_VAL_JSON_LAZY:
-        fprintf(stderr, "[Lazy JSON Document]\n");
-        break;
-    case FLINT_VAL_ERROR:
-        fprintf(stderr, "\033[1;31mERROR\033[0m: %.*s\n", (int)v.as.s.len, v.as.s.ptr);
-        break;
-    }
+    flint_printerr_str(flint_to_str_func(v));
 }
 
 void flint_printerr_bool(bool b)
 {
-    fprintf(stderr, "%s\n", b ? "true" : "false");
+    flint_printerr_str(b ? FLINT_STR("true") : FLINT_STR("false"));
 }
 
 /* =========================
@@ -304,33 +261,30 @@ void flint_printerr_bool(bool b)
 
 flint_str flint_read_line(flint_str s)
 {
-    char buffer[1024];
-
     if (s.len > 0)
     {
-        fprintf(stdout, "%.*s", (int)s.len, s.ptr);
+        write(STDOUT_FILENO, s.ptr, s.len);
     }
 
-    // read to a temp buffer
-    if (fgets(buffer, sizeof(buffer), stdin) != NULL)
-    {
-        size_t len = strlen(buffer);
+    char buffer[1024];
+    ssize_t n = read(STDIN_FILENO, buffer, sizeof(buffer));
 
-        if (len > 0 && buffer[len - 1] == '\n')
+    if (n > 0)
+    {
+        if (buffer[n - 1] == '\n')
         {
-            len--;
-            if (len > 0 && buffer[len - 1] == '\r')
+            n--;
+            if (n > 0 && buffer[n - 1] == '\r')
             {
-                len--;
+                n--;
             }
         }
 
-        char *arena_buf = flint_alloc_raw(len + 1);
-        memcpy(arena_buf, buffer, len);
-        arena_buf[len] = '\0';
+        char *arena_buf = flint_alloc_raw(n + 1);
+        memcpy(arena_buf, buffer, n);
+        arena_buf[n] = '\0';
 
-        // return the flint str slice
-        return FLINT_SLICE(arena_buf, len);
+        return FLINT_SLICE(arena_buf, n);
     }
 
     return FLINT_STR("");
@@ -540,13 +494,11 @@ void flint_write(flint_str way, flint_str msg)
 
         if (memcmp(way.ptr, FLINT_STR("stdout").ptr, 6) == 0)
         {
-            fprintf(stdout, "%.*s", (int)msg.len, msg.ptr);
-            fflush(stdout);
+            write(STDOUT_FILENO, msg.ptr, msg.len);
         }
         else if (memcmp(way.ptr, FLINT_STR("stderr").ptr, 6) == 0)
         {
-            fprintf(stderr, "%.*s", (int)msg.len, msg.ptr);
-            fflush(stderr);
+            write(STDERR_FILENO, msg.ptr, msg.len);
         }
         else
         {
@@ -935,22 +887,42 @@ FlintValue flint_mv(flint_str old_path, flint_str new_path)
 
 flint_str _flint_stream_next_line(flint_stream *stream)
 {
-    size_t start = stream->current_pos;
-    size_t end = start;
-    while (end < stream->source.len && stream->source.ptr[end] != '\n')
+    while (stream->current_pos < stream->source.len)
     {
-        end++;
+        size_t start = stream->current_pos;
+        size_t end = start;
+        while (end < stream->source.len && stream->source.ptr[end] != '\n')
+        {
+            end++;
+        }
+
+        flint_str line = {.ptr = stream->source.ptr + start, .len = end - start};
+        if (line.len > 0 && line.ptr[line.len - 1] == '\r')
+            line.len--;
+
+        if (end < stream->source.len)
+            stream->current_pos = end + 1;
+        else
+        {
+            stream->current_pos = stream->source.len;
+            stream->has_next = false;
+        }
+
+        if (stream->filter_pattern.len > 0 && stream->filter_pattern.ptr != NULL)
+        {
+            if (memmem(line.ptr, line.len, stream->filter_pattern.ptr, stream->filter_pattern.len) == NULL)
+            {
+                if (!stream->has_next)
+                    return FLINT_STR("");
+                continue;
+            }
+        }
+
+        return line;
     }
-    flint_str line = {.ptr = stream->source.ptr + start, .len = end - start};
-    if (line.len > 0 && line.ptr[line.len - 1] == '\r')
-        line.len--;
 
-    if (end < stream->source.len)
-        stream->current_pos = end + 1;
-    else
-        stream->has_next = false;
-
-    return line;
+    stream->has_next = false;
+    return FLINT_STR("");
 }
 
 flint_str _flint_stream_next_json_object(flint_stream *stream)
@@ -1012,7 +984,8 @@ flint_stream flint_str_stream(flint_str text)
         .source = text,
         .current_pos = 0,
         .has_next = (text.len > 0),
-        .next = _flint_stream_next_line};
+        .next = _flint_stream_next_line,
+        .filter_pattern = FLINT_STR("")};
 }
 
 FlintValue flint_json_lazy_stream(flint_str json, flint_str key)
@@ -2350,13 +2323,7 @@ FlintValue flint_clone_val(FlintValue v)
 #define utils_is_err(v) flint_is_err(FLINT_BOX(v))
 #define utils_get_err(v) flint_get_err(FLINT_BOX(v))
 
-#define term_clear()            \
-    do                          \
-    {                           \
-        printf("\033[H\033[J"); \
-        fflush(stdout);         \
-    } while (0)
-
+#define term_clear() write(STDOUT_FILENO, "\033[H\033[J", 6)
 #define sys_disk_usage(p) flint_sys_disk_usage(p)
 
 #define sys_ram_usage() flint_sys_ram_usage()

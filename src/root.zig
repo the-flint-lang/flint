@@ -373,7 +373,7 @@ const Compilers = enum {
     tcc,
     clang,
     gcc,
-    zig,
+    zigcc,
 };
 
 const FlintFlags = struct {
@@ -381,6 +381,8 @@ const FlintFlags = struct {
     is_static: bool,
     is_test: bool,
     cpu_arch: CpuArchs,
+    is_release: bool = false,
+    compiler_forced: bool = false,
     compiler: Compilers,
     uses_http: bool,
 
@@ -411,8 +413,8 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper, args: []const []const u8) 
         .is_static = false,
         .is_test = false,
         .cpu_arch = .baseline,
-        .compiler = .tcc,
         .uses_http = false,
+        .compiler = .clang,
     };
     flags.cpu_arch = flags.getDefaultArch();
 
@@ -433,11 +435,17 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper, args: []const []const u8) 
 
             if (checker.cliArgsEquals(arg, &.{ "-s", "--small" })) {
                 flags.is_less_mode = true;
+                if (flags.arena_size == 4 * 1024 * 1024 * 1024) flags.arena_size = 16 * 1024 * 1024;
+                if (flags.persist_size == 1 * 1024 * 1024 * 1024) flags.persist_size = 4 * 1024 * 1024;
                 continue;
             }
 
             if (checker.cliArgsEquals(arg, &.{ "-S", "--static" })) {
+                flags.is_static = true;
                 flags.is_less_mode = true;
+
+                if (flags.arena_size == 4 * 1024 * 1024 * 1024) flags.arena_size = 16 * 1024 * 1024;
+                if (flags.persist_size == 1 * 1024 * 1024 * 1024) flags.persist_size = 4 * 1024 * 1024;
                 continue;
             }
 
@@ -556,6 +564,32 @@ pub fn parseFlags(args: []const []const u8, flags: *FlintFlags, io: IoHelper) !v
 
     while (i < args.len) : (i += 1) {
         const arg = args[i];
+
+        if (checker.cliArgsEquals(arg, &.{ "-C", "--compiler" })) {
+            i += 1;
+            if (i >= args.len) return error.MissingCompiler;
+
+            const comp_arg = args[i];
+            if (checker.strEquals(comp_arg, "zigcc")) {
+                flags.compiler = .zigcc;
+            } else if (checker.strEquals(comp_arg, "tcc")) {
+                flags.compiler = .tcc;
+            } else if (checker.strEquals(comp_arg, "clang")) {
+                flags.compiler = .clang;
+            } else if (checker.strEquals(comp_arg, "gcc")) {
+                flags.compiler = .gcc;
+            } else {
+                try io.stderr.print("Invalid compiler. Use: zigcc, tcc, clang or gcc.\n", .{});
+                return error.InvalidCompiler;
+            }
+            flags.compiler_forced = true;
+            continue;
+        }
+
+        if (checker.cliArgsEquals(arg, &.{"--release"})) {
+            flags.is_release = true;
+            continue;
+        }
 
         if (checker.cliArgsEquals(arg, &.{ "-c", "--cpu" })) {
             i += 1;
@@ -842,7 +876,7 @@ fn runner(alloc: std.mem.Allocator, args: []const []const u8, file_path: []const
         break :blk true;
     };
 
-    const compiler = getBestCCompiler(alloc, false, io.sys.io);
+    const compiler = getBestCCompiler(alloc, false, io.sys.io, flags);
 
     const c_args = try compiler.getArgsExtended(alloc, exe_name, rt_path, precompiled, false, has_pch, flags);
     defer alloc.free(c_args);
@@ -1051,6 +1085,12 @@ const ClangCompiler = struct {
             try args.append(alloc, "-fno-plt");
             try args.append(alloc, "-fmerge-all-constants");
 
+            try args.append(alloc, "-fno-exceptions");
+            try args.append(alloc, "-fno-rtti");
+            try args.append(alloc, "-pipe");
+            try args.append(alloc, "-mllvm");
+            try args.append(alloc, "-inline-threshold=500");
+
             switch (flags.cpu_arch) {
                 .x86_64 => {
                     try args.append(alloc, "--target=x86_64-linux-gnu");
@@ -1061,6 +1101,23 @@ const ClangCompiler = struct {
                     try args.append(alloc, "-mcpu=generic");
                 },
                 .baseline => {},
+            }
+
+            if (flags.is_release) {
+                try args.append(alloc, if (flags.is_less_mode) "-Oz" else "-O3");
+                try args.append(alloc, "-flto");
+                try args.append(alloc, "-ffunction-sections");
+                try args.append(alloc, "-fdata-sections");
+                try args.append(alloc, "-Wl,--gc-sections");
+                try args.append(alloc, "-fno-unwind-tables");
+                try args.append(alloc, "-fno-asynchronous-unwind-tables");
+                try args.append(alloc, "-fno-ident");
+                try args.append(alloc, "-Wl,--build-id=none");
+                try args.append(alloc, "-fno-stack-protector");
+                try args.append(alloc, "-fvisibility=hidden");
+                try args.append(alloc, "-s");
+            } else {
+                try args.append(alloc, if (flags.is_less_mode) "-Os" else "-O1");
             }
         }
 
@@ -1130,6 +1187,23 @@ const GccCompiler = struct {
             try args.append(alloc, "-fno-plt");
             try args.append(alloc, "-fmerge-all-constants");
             try args.append(alloc, "-fwhole-program");
+
+            if (flags.is_release) {
+                try args.append(alloc, if (flags.is_less_mode) "-Oz" else "-O3");
+                try args.append(alloc, "-flto");
+                try args.append(alloc, "-ffunction-sections");
+                try args.append(alloc, "-fdata-sections");
+                try args.append(alloc, "-Wl,--gc-sections");
+                try args.append(alloc, "-fno-unwind-tables");
+                try args.append(alloc, "-fno-asynchronous-unwind-tables");
+                try args.append(alloc, "-fno-ident");
+                try args.append(alloc, "-Wl,--build-id=none");
+                try args.append(alloc, "-fno-stack-protector");
+                try args.append(alloc, "-fvisibility=hidden");
+                try args.append(alloc, "-s");
+            } else {
+                try args.append(alloc, if (flags.is_less_mode) "-Os" else "-O1");
+            }
         }
 
         if (!flags.uses_http) {
@@ -1180,22 +1254,22 @@ const ZigCompiler = struct {
         if (is_run) {
             try args.append(alloc, "-O0");
         } else {
-            try args.append(alloc, if (flags.is_less_mode) "-Oz" else "-O3");
-
-            try args.append(alloc, "-flto");
-            try args.append(alloc, "-ffunction-sections");
-            try args.append(alloc, "-fdata-sections");
-            try args.append(alloc, "-Wl,--gc-sections");
-
-            try args.append(alloc, "-fno-unwind-tables");
-            try args.append(alloc, "-fno-asynchronous-unwind-tables");
-
-            try args.append(alloc, "-fno-ident");
-            try args.append(alloc, "-Wl,--build-id=none");
-            try args.append(alloc, "-fno-stack-protector");
-
-            try args.append(alloc, "-fvisibility=hidden");
-            try args.append(alloc, "-s");
+            if (flags.is_release) {
+                try args.append(alloc, if (flags.is_less_mode) "-Oz" else "-O3");
+                try args.append(alloc, "-flto");
+                try args.append(alloc, "-ffunction-sections");
+                try args.append(alloc, "-fdata-sections");
+                try args.append(alloc, "-Wl,--gc-sections");
+                try args.append(alloc, "-fno-unwind-tables");
+                try args.append(alloc, "-fno-asynchronous-unwind-tables");
+                try args.append(alloc, "-fno-ident");
+                try args.append(alloc, "-Wl,--build-id=none");
+                try args.append(alloc, "-fno-stack-protector");
+                try args.append(alloc, "-fvisibility=hidden");
+                try args.append(alloc, "-s");
+            } else {
+                try args.append(alloc, if (flags.is_less_mode) "-Os" else "-O1");
+            }
         }
 
         if (!flags.uses_http) {
@@ -1261,27 +1335,36 @@ pub const Compiler = union(enum) {
     }
 };
 
-fn getBestCCompiler(alloc: std.mem.Allocator, is_run: bool, io_sys: std.Io) Compiler {
+fn getBestCCompiler(alloc: std.mem.Allocator, is_run: bool, io_sys: std.Io, flags: *FlintFlags) Compiler {
     if (cached_compiler) |c| return c;
 
     if (is_run) {
         if (isCompilerPresent(alloc, io_sys, "tcc")) {
-            const r = Compiler{
-                .tcc = TccCompiler{},
-            };
-
+            const r = Compiler{ .tcc = TccCompiler{} };
             cached_compiler = r;
             return r;
         }
     }
 
     const result: Compiler = blk: {
+        if (flags.compiler_forced) {
+            switch (flags.compiler) {
+                .zigcc => break :blk .{ .zigcc = ZigCompiler{} },
+                .clang => break :blk .{ .clang = ClangCompiler{} },
+                .gcc => break :blk .{ .gcc = GccCompiler{} },
+                .tcc => break :blk .{ .tcc = TccCompiler{} },
+            }
+        }
+
+        if (flags.is_static and isCompilerPresent(alloc, io_sys, "zig")) break :blk .{ .zigcc = ZigCompiler{} };
+
         if (isCompilerPresent(alloc, io_sys, "clang")) break :blk .{ .clang = ClangCompiler{} };
         if (isCompilerPresent(alloc, io_sys, "gcc")) break :blk .{ .gcc = GccCompiler{} };
         if (isCompilerPresent(alloc, io_sys, "zig")) break :blk .{ .zigcc = ZigCompiler{} };
         if (isCompilerPresent(alloc, io_sys, "tcc")) break :blk .{ .tcc = TccCompiler{} };
         break :blk .{ .clang = ClangCompiler{} };
     };
+
     cached_compiler = result;
     return result;
 }

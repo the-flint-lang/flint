@@ -1,4 +1,4 @@
-const version = "1.13.0";
+const version = "1.13.1-dev";
 const msg = $`
 Flint v{version}
 AOT compiled, zero-copy.
