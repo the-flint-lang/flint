@@ -158,3 +158,35 @@ Description: Pipeline-oriented systems programming language
  Flint is a statically-typed, pipeline-oriented language that transpiles to C99.
  Designed as a fast, dependency-free replacement for Bash and Python.
 
+Package: flint
+Version: 1.13.1-dev
+Architecture: arm64
+Maintainer: Lucas Paulino Da Silva <lucas.workps@gmail.com>
+Depends: libc6-dev, libtcc-dev, libcurl4-openssl-dev, clang | gcc, tcc
+Filename: pool/main/flint_1.13.1-dev_arm64.deb
+Size: 251432
+MD5sum: 5c38d807a985b0aa95e40f785950c38b
+SHA1: 88a4d15e7f48e556c54809889d4da34dbb7d03c6
+SHA256: 056516fad2c7ecfe6270a92b9c2b96d0e27c3561411e38a7271fade0eed6b584
+Section: devel
+Priority: optional
+Description: Pipeline-oriented systems programming language
+ Flint is a statically-typed, pipeline-oriented language that transpiles to C99.
+ Designed as a fast, dependency-free replacement for Bash and Python.
+
+Package: flint
+Version: 1.13.1-dev
+Architecture: amd64
+Maintainer: Lucas Paulino Da Silva <lucas.workps@gmail.com>
+Depends: libc6-dev, libtcc-dev, libcurl4-openssl-dev, clang | gcc, tcc
+Filename: pool/main/flint_1.13.1-dev_amd64.deb
+Size: 268388
+MD5sum: 9e44d539d49124ca970b2214adf85e93
+SHA1: 9c9ed7bef039ca4bb073afa69a73543b41891509
+SHA256: 45528ed60db79a02d6670f3fff3bab867098b7a2e02915c0173b09618b861337
+Section: devel
+Priority: optional
+Description: Pipeline-oriented systems programming language
+ Flint is a statically-typed, pipeline-oriented language that transpiles to C99.
+ Designed as a fast, dependency-free replacement for Bash and Python.
+
