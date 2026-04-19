@@ -12,9 +12,9 @@ step() { echo -e "${BOLD}${WHITE}$1${NC}"; }
 pipeline() { echo -e "    ${BOLD}${ORANGE}~>${NC} ${GRAY}$1${NC}"; } 
 
 # header 
-echo -e "${BOLD}${ORANGE}Flint${NC} ${BOLD}installer${NC}  ${GRAY}github.com/lucaas-d3v/flint${NC}"
+echo -e "${BOLD}${ORANGE}Flint${NC} ${BOLD}installer${NC}  ${GRAY}github.com/the-flint-lang/flint${NC}"
 divider
-echo -e "${GRAY}deps ~> download ~> install${NC}\n"
+echo -e "${GRAY}deps ~> download ~> install ~> compile cache${NC}\n"
 
 # get os and arch
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
@@ -108,12 +108,12 @@ echo ""
 step "installing"
 
 $SUDO_CMD mkdir -p "$BIN_DIR"
-$SUDO_CMD mkdir -p "$SHARE_DIR"
+$SUDO_CMD mkdir -p "$SHARE_DIR/std"
 
 chmod +x bin/flint
 $SUDO_CMD mv bin/flint "$BIN_DIR/flint"
 
-$SUDO_CMD cp -r std/* "$SHARE_DIR/"
+$SUDO_CMD cp -r std/* "$SHARE_DIR/std/"
 if [ -f "flint_rt.c" ]; then
     $SUDO_CMD cp flint_rt.* "$SHARE_DIR/"
 fi
@@ -121,7 +121,39 @@ fi
 pipeline "installed to $BIN_DIR/flint"
 echo "" 
 
+# compile cache (Bare-Metal/Runtime Tuning)
+step "building optimized runtime for your CPU"
+
+RT_C="$SHARE_DIR/flint_rt.c"
+RT_H="$SHARE_DIR/flint_rt.h"
+RT_O="$SHARE_DIR/flint_rt.o"
+RT_HTTP_O="$SHARE_DIR/flint_rt_http.o"
+RT_PCH="$SHARE_DIR/flint_rt.h.pch"
+
+if command -v clang > /dev/null 2>&1; then
+    CC=clang
+elif command -v gcc > /dev/null 2>&1; then
+    CC=gcc
+else
+    pipeline "warning: clang/gcc not found, runtime not precompiled."
+    CC=""
+fi
+
+if [ -n "$CC" ]; then
+    pipeline "compiling base runtime ($CC)..."
+    $SUDO_CMD "$CC" -O3 -ffunction-sections -fdata-sections -fvisibility=hidden -march=native -fno-semantic-interposition -DFLINT_NO_HTTP -c "$RT_C" -o "$RT_O"
+    
+    pipeline "compiling http runtime ($CC)..."
+    $SUDO_CMD "$CC" -O3 -ffunction-sections -fdata-sections -fvisibility=hidden -march=native -fno-semantic-interposition -c "$RT_C" -o "$RT_HTTP_O"
+
+    if [ "$CC" = "clang" ]; then
+        pipeline "generating precompiled header..."
+        $SUDO_CMD clang -O3 -x c-header "$RT_H" -o "$RT_PCH" || $SUDO_CMD rm -f "$RT_PCH"
+    fi
+fi
+echo ""
+
 # footer
 divider
 echo -e "${BOLD}flint ${VERSION}${NC} installed. run ${ORANGE}flint --help${NC} to get started."
-echo -e "${GRAY}Note: For ARM64 cross-compilation, install 'gcc-aarch64-linux-gnu' manually.${NC}"
+echo -e "${GRAY}Note: For ARM64 cross-compilation, install 'zig' manually.${NC}"

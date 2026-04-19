@@ -121,6 +121,7 @@ jobs:
           RT_C="${RT_DIR}/flint_rt.c"
           RT_H="${RT_DIR}/flint_rt.h"
           RT_O="${RT_DIR}/flint_rt.o"
+          RT_HTTP_O="${RT_DIR}/flint_rt_http.o"
           RT_PCH="${RT_DIR}/flint_rt.h.pch"
 
           if command -v clang > /dev/null 2>&1; then
@@ -132,9 +133,14 @@ jobs:
               exit 0
           fi
 
-          echo "flint: compilando runtime com ${CC}..."
-          "${CC}" -O3 -ffunction-sections -fdata-sections -fvisibility=hidden -c "${RT_C}" -o "${RT_O}"
+          echo "flint: compilando runtime base com ${CC}..."
+          "${CC}" -O3 -ffunction-sections -fdata-sections -fvisibility=hidden -march=native -fno-semantic-interposition -DFLINT_NO_HTTP -c "${RT_C}" -o "${RT_O}"
+          
+          echo "flint: compilando runtime HTTP com ${CC}..."
+          "${CC}" -O3 -ffunction-sections -fdata-sections -fvisibility=hidden -march=native -fno-semantic-interposition -c "${RT_C}" -o "${RT_HTTP_O}"
+
           if [ "${CC}" = "clang" ]; then
+              echo "flint: gerando precompiled header..."
               clang -O3 -x c-header "${RT_H}" -o "${RT_PCH}" || rm -f "${RT_PCH}"
           fi
           POSTINST
@@ -146,6 +152,7 @@ jobs:
           case "$1" in
               remove|purge)
                   rm -f /usr/share/flint/flint_rt.o
+                  rm -f /usr/share/flint/flint_rt_http.o
                   rm -f /usr/share/flint/flint_rt.h.pch
                   ;;
           esac
