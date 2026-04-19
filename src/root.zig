@@ -1062,6 +1062,10 @@ const ClangCompiler = struct {
         const persist_macro = try std.fmt.allocPrint(alloc, "-DPERSISTENT_CAPACITY={d}ULL", .{flags.persist_size});
         try args.append(alloc, persist_macro);
 
+        if (flags.is_static) {
+            try args.append(alloc, "-static");
+        }
+
         try args.append(alloc, "-o");
         try args.append(alloc, out_exe);
 
@@ -1163,6 +1167,11 @@ const GccCompiler = struct {
         const persist_macro = try std.fmt.allocPrint(alloc, "-DPERSISTENT_CAPACITY={d}ULL", .{flags.persist_size});
         try args.append(alloc, persist_macro);
 
+        if (flags.is_static) {
+            try args.append(alloc, "-static");
+            try args.append(alloc, "-static-libgcc");
+        }
+
         try args.append(alloc, "-o");
         try args.append(alloc, out_exe);
         try args.append(alloc, if (flags.is_less_mode) "-Oz" else if (flags.cpu_arch == .baseline) "-O2" else "-O3");
@@ -1229,10 +1238,13 @@ const ZigCompiler = struct {
 
         if (!is_run) {
             try args.append(alloc, "-target");
+
+            const is_http = flags.uses_http;
+
             switch (flags.cpu_arch) {
-                .x86_64 => try args.append(alloc, "x86_64-linux-musl"),
-                .aarch => try args.append(alloc, "aarch64-linux-musl"),
-                .baseline => try args.append(alloc, "native-linux-musl"),
+                .x86_64 => try args.append(alloc, if (is_http) "x86_64-linux-gnu" else "x86_64-linux-musl"),
+                .aarch => try args.append(alloc, if (is_http) "aarch64-linux-gnu" else "aarch64-linux-musl"),
+                .baseline => try args.append(alloc, if (is_http) "native-linux-gnu" else "native-linux-musl"),
             }
         }
 

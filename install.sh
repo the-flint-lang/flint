@@ -42,13 +42,13 @@ else
     
     if command -v apt-get >/dev/null; then
         PKG_MGR="sudo apt-get install -y"
-        DEPS="clang libcurl4-openssl-dev libtcc-dev" 
+        DEPS="clang libcurl4-openssl-dev libtcc-dev musl-tools" 
     elif command -v pacman >/dev/null; then
         PKG_MGR="sudo pacman -S --noconfirm"
-        DEPS="clang curl"
+        DEPS="clang curl musl"
     elif command -v dnf >/dev/null; then
         PKG_MGR="sudo dnf install -y"
-        DEPS="clang libcurl-devel"
+        DEPS="clang libcurl-devel musl-gcc"
     else
         PKG_MGR=""
     fi
