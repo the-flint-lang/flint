@@ -374,6 +374,7 @@ const Compilers = enum {
     clang,
     gcc,
     zigcc,
+    musl,
 };
 
 const FlintFlags = struct {
@@ -554,7 +555,9 @@ pub fn parseFlags(args: []const []const u8, flags: *FlintFlags, io: IoHelper) !v
             if (i >= args.len) return error.MissingCompiler;
 
             const comp_arg = args[i];
-            if (checker.strEquals(comp_arg, "zigcc")) {
+            if (checker.strEquals(comp_arg, "musl")) {
+                flags.compiler = .musl;
+            } else if (checker.strEquals(comp_arg, "zigcc")) {
                 flags.compiler = .zigcc;
             } else if (checker.strEquals(comp_arg, "tcc")) {
                 flags.compiler = .tcc;
@@ -778,14 +781,14 @@ fn runner(alloc: std.mem.Allocator, args: []const []const u8, file_path: []const
         }
 
         if (!jit_success) {
-            try io.stderr.print("\x1b[33m[COMPILATION FALLBACK]\x1b[0m TCC limit reached. Deferring to Clang/GCC pipeline...\n\n", .{});
+            try io.stderr.print("\x1b[33m[COMPILATION FALLBACK]\x1b[0m TCC limit reached. Deferring to Clang/GCC/Musl/Zig pipeline...\n\n", .{});
             _ = io.stderr.flush() catch {};
 
             const tmp_exe = try std.fmt.allocPrint(alloc, ".{s}_tmp_run", .{exe_name});
             defer alloc.free(tmp_exe);
 
             var compiled = false;
-            const compilers = [_][]const u8{ "clang", "gcc" };
+            const compilers = [_][]const u8{ "clang", "gcc", "zig cc", "musl-gcc" };
 
             for (compilers) |comp_name| {
                 if (!isCompilerPresent(alloc, io.sys.io, comp_name)) continue;
@@ -834,7 +837,7 @@ fn runner(alloc: std.mem.Allocator, args: []const []const u8, file_path: []const
             }
 
             if (!compiled) {
-                try io.stderr.print("\x1b[1;31m[FATAL ERROR]\x1b[0m All backend compilers (TCC, Clang, GCC) failed. Syntax tree is heavily broken.\n", .{});
+                try io.stderr.print("\x1b[1;31m[FATAL ERROR]\x1b[0m All backend compilers (TCC, Clang, GCC, Zig cc, Musl-gcc) failed. Syntax tree is heavily broken.\n", .{});
                 return error.FallbackCompilationFailed;
             }
 
@@ -867,6 +870,11 @@ fn runner(alloc: std.mem.Allocator, args: []const []const u8, file_path: []const
             }
             return;
         }
+    }
+
+    if (flags.compiler_forced and flags.compiler == .musl and flags.uses_http) {
+        try io.stderr.print("\x1b[1;31m[FATAL ERROR]\x1b[0m The 'musl-gcc' compiler does not support the 'http' module natively on Linux (requires static libcurl for musl).\nRemove the '-C musl' flag to use automatic fallback (GCC/Clang).\n", .{});
+        return error.IncompatibleCompiler;
     }
 
     try io.stdout.print("\x1b[38;5;208m[FLINT]\x1b[0m Transpiling and compiling native binary...\n", .{});
@@ -1227,6 +1235,74 @@ const GccCompiler = struct {
     }
 };
 
+const MuslCompiler = struct {
+    pub fn getArgsExtended(self: MuslCompiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool, flags: *FlintFlags) ![]const []const u8 {
+        _ = self;
+        _ = has_pch;
+        var args = std.ArrayList([]const u8).empty;
+
+        try args.append(alloc, "musl-gcc");
+        try args.append(alloc, rt);
+        try args.append(alloc, "-x");
+        try args.append(alloc, "c");
+        try args.append(alloc, "-");
+
+        try args.append(alloc, "-I.");
+        try args.append(alloc, if (pre) "-I/usr/share/flint" else "-I.");
+
+        const arena_macro = try std.fmt.allocPrint(alloc, "-DARENA_CAPACITY={d}ULL", .{flags.arena_size});
+        try args.append(alloc, arena_macro);
+
+        const persist_macro = try std.fmt.allocPrint(alloc, "-DPERSISTENT_CAPACITY={d}ULL", .{flags.persist_size});
+        try args.append(alloc, persist_macro);
+
+        if (flags.is_static) {
+            try args.append(alloc, "-static");
+        }
+        try args.append(alloc, "-o");
+        try args.append(alloc, out_exe);
+
+        if (is_run) {
+            try args.append(alloc, "-O0");
+        } else {
+            if (flags.is_release) {
+                try args.append(alloc, if (flags.is_less_mode) "-Os" else "-O3");
+                try args.append(alloc, "-flto");
+                try args.append(alloc, "-mtune=native");
+                try args.append(alloc, "-finline-functions");
+                try args.append(alloc, "-ffunction-sections");
+                try args.append(alloc, "-fdata-sections");
+                try args.append(alloc, "-Wl,--gc-sections");
+                try args.append(alloc, "-fno-stack-protector");
+                try args.append(alloc, "-fno-unwind-tables");
+                try args.append(alloc, "-fno-asynchronous-unwind-tables");
+                try args.append(alloc, "-fno-ident");
+                try args.append(alloc, "-Wl,--build-id=none");
+                try args.append(alloc, "-fvisibility=hidden");
+                try args.append(alloc, "-s");
+                try args.append(alloc, "-fomit-frame-pointer");
+                try args.append(alloc, "-fstrict-aliasing");
+                try args.append(alloc, "-fno-semantic-interposition");
+                try args.append(alloc, "-fno-plt");
+                try args.append(alloc, "-fmerge-all-constants");
+                try args.append(alloc, "-fwhole-program");
+            } else {
+                try args.append(alloc, if (flags.is_less_mode) "-Os" else "-O1");
+            }
+        }
+
+        if (!flags.uses_http) {
+            try args.append(alloc, "-DFLINT_NO_HTTP");
+        } else {
+            try args.append(alloc, "-lcurl");
+        }
+
+        try args.append(alloc, "-Wno-unused-value");
+
+        return args.toOwnedSlice(alloc);
+    }
+};
+
 const ZigCompiler = struct {
     pub fn getArgsExtended(self: ZigCompiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool, flags: *FlintFlags) ![]const []const u8 {
         _ = self;
@@ -1262,6 +1338,10 @@ const ZigCompiler = struct {
         const persist_macro = try std.fmt.allocPrint(alloc, "-DPERSISTENT_CAPACITY={d}ULL", .{flags.persist_size});
         try args.append(alloc, persist_macro);
 
+        if (flags.is_static) {
+            try args.append(alloc, "-static");
+        }
+
         try args.append(alloc, "-o");
         try args.append(alloc, out_exe);
 
@@ -1286,11 +1366,7 @@ const ZigCompiler = struct {
             }
         }
 
-        if (!flags.uses_http) {
-            try args.append(alloc, "-DFLINT_NO_HTTP");
-        } else {
-            try args.append(alloc, "-lcurl");
-        }
+        try args.append(alloc, "-DFLINT_NO_HTTP");
 
         try args.append(alloc, "-Wno-unused-value");
 
@@ -1338,6 +1414,7 @@ pub const Compiler = union(enum) {
     gcc: GccCompiler,
     tcc: TccCompiler,
     zigcc: ZigCompiler,
+    musl: MuslCompiler,
 
     pub fn getArgsExtended(self: Compiler, alloc: std.mem.Allocator, out_exe: []const u8, rt: []const u8, pre: bool, is_run: bool, has_pch: bool, flags: *FlintFlags) ![]const []const u8 {
         return switch (self) {
@@ -1345,6 +1422,7 @@ pub const Compiler = union(enum) {
             .clang => |c| c.getArgsExtended(alloc, out_exe, rt, pre, is_run, has_pch, flags),
             .gcc => |g| g.getArgsExtended(alloc, out_exe, rt, pre, is_run, has_pch, flags),
             .zigcc => |z| z.getArgsExtended(alloc, out_exe, rt, pre, is_run, has_pch, flags),
+            .musl => |m| m.getArgsExtended(alloc, out_exe, rt, pre, is_run, has_pch, flags),
         };
     }
 };
@@ -1363,6 +1441,7 @@ fn getBestCCompiler(alloc: std.mem.Allocator, is_run: bool, io_sys: std.Io, flag
     const result: Compiler = blk: {
         if (flags.compiler_forced) {
             switch (flags.compiler) {
+                .musl => break :blk .{ .musl = MuslCompiler{} },
                 .zigcc => break :blk .{ .zigcc = ZigCompiler{} },
                 .clang => break :blk .{ .clang = ClangCompiler{} },
                 .gcc => break :blk .{ .gcc = GccCompiler{} },
@@ -1370,12 +1449,14 @@ fn getBestCCompiler(alloc: std.mem.Allocator, is_run: bool, io_sys: std.Io, flag
             }
         }
 
+        if (flags.is_static and !flags.uses_http and isCompilerPresent(alloc, io_sys, "musl-gcc")) break :blk .{ .musl = MuslCompiler{} };
         if (flags.is_static and isCompilerPresent(alloc, io_sys, "zig")) break :blk .{ .zigcc = ZigCompiler{} };
 
         if (isCompilerPresent(alloc, io_sys, "clang")) break :blk .{ .clang = ClangCompiler{} };
         if (isCompilerPresent(alloc, io_sys, "gcc")) break :blk .{ .gcc = GccCompiler{} };
-        if (isCompilerPresent(alloc, io_sys, "zig")) break :blk .{ .zigcc = ZigCompiler{} };
         if (isCompilerPresent(alloc, io_sys, "tcc")) break :blk .{ .tcc = TccCompiler{} };
+        if (isCompilerPresent(alloc, io_sys, "zig")) break :blk .{ .zigcc = ZigCompiler{} };
+        if (isCompilerPresent(alloc, io_sys, "musl-gcc")) break :blk .{ .musl = MuslCompiler{} };
         break :blk .{ .clang = ClangCompiler{} };
     };
 
