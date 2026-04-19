@@ -59,6 +59,10 @@ jobs:
           sudo cp src/core/codegen/runtime/flint_rt.* /usr/share/flint/
           sudo cp -r std/* /usr/share/flint/std/
 
+          sudo clang -O3 -ffunction-sections -fdata-sections -fvisibility=hidden -DFLINT_NO_HTTP -c src/core/codegen/runtime/flint_rt.c -o /usr/share/flint/flint_rt.o
+          sudo clang -O3 -ffunction-sections -fdata-sections -fvisibility=hidden -c src/core/codegen/runtime/flint_rt.c -o /usr/share/flint/flint_rt_http.o
+          sudo clang -O3 -x c-header src/core/codegen/runtime/flint_rt.h -o /usr/share/flint/flint_rt.h.pch
+
       - name: Run Sanity Tests
         run: |
           ./out-x86_64/bin/flint test
