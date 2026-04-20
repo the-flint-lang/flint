@@ -822,3 +822,11 @@ static inline FlintValue _flint_choice_val(FlintValue a)
     flint_bool_array: _flint_choice_bool,      \
     flint_val_array: _flint_choice_val_arr,    \
     FlintValue: _flint_choice_val)(arr)
+
+/* =========================
+   TIME
+   ========================= */
+
+void flint_time_sleep(double seconds);
+long long flint_time_now(void);
+flint_str flint_time_format(flint_str fmt, long long ms_timestamp);

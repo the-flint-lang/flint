@@ -30,6 +30,8 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <time.h>
+#include <time.h>
+#include <sys/time.h>
 
 #include <stdarg.h>
 #include <spawn.h>
@@ -2321,6 +2323,52 @@ double flint_rand_float(double min, double max)
         return min;
     double r = (flint_rand_next() >> 11) * 0x1.0p-53;
     return min + r * (max - min);
+}
+
+/* =========================
+   TIME
+   ========================= */
+
+void flint_time_sleep(double seconds)
+{
+    if (seconds <= 0.0)
+        return;
+    struct timespec ts;
+    ts.tv_sec = (time_t)seconds;
+    ts.tv_nsec = (long)((seconds - ts.tv_sec) * 1e9);
+    nanosleep(&ts, NULL);
+}
+
+long long flint_time_now(void)
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (long long)tv.tv_sec * 1000 + (long long)tv.tv_usec / 1000;
+}
+
+flint_str flint_time_format(flint_str fmt, long long ms_timestamp)
+{
+    time_t rawtime;
+    if (ms_timestamp <= 0)
+    {
+        time(&rawtime);
+    }
+    else
+    {
+        rawtime = (time_t)(ms_timestamp / 1000);
+    }
+
+    struct tm info;
+    localtime_r(&rawtime, &info);
+
+    char *buf = flint_alloc_zero(256);
+
+    char c_fmt[128];
+    snprintf(c_fmt, sizeof(c_fmt), "%.*s", (int)fmt.len, fmt.ptr);
+
+    size_t len = strftime(buf, 256, c_fmt, &info);
+
+    return (flint_str){.ptr = buf, .len = len};
 }
 
 // ============================================================================

@@ -1,0 +1,21 @@
+-- std/time.fl
+extern fn flint_time_sleep(seconds: float);
+extern fn flint_time_now() int;
+extern fn flint_time_format(fmt: string, ms_timestamp: int) string;
+
+-- Public API
+fn sleep(seconds: float) {
+    flint_time_sleep(seconds);
+}
+
+fn now() int {
+    return flint_time_now();
+}
+
+fn format(fmt: string) string {
+    return flint_time_format(fmt, 0);
+}
+
+fn format_ts(fmt: string, timestamp: int) string {
+    return flint_time_format(fmt, timestamp);
+}

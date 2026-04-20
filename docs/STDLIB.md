@@ -156,7 +156,7 @@ Direct access to hardware and kernel metrics without external parsing overhead.
 * **`sys.local_ip() string`** — Resolves the IPv4 address of the active network interface (ignores loopback).
 * **`sys.packages_dpkg() val`** — Returns installed package count from the dpkg state database.
 
-## 13. `rand` — Random Number Generator
+## 12. `rand` — Random Number Generator
 
 PRNG powered by Xoshiro256**. Seeded via ASLR and time — zero I/O on startup.
 
@@ -164,35 +164,44 @@ PRNG powered by Xoshiro256**. Seeded via ASLR and time — zero I/O on startup.
 * **`rand.float(min: float, max: float) float`** — Random float between `min` (inclusive) and `max` (exclusive).
 * **`rand.choice(array: arr) any`** — Random element from array. Empty array causes runtime panic. Compiler intrinsic — `arr<int>` returns `int`, zero allocation overhead.
 
+## 13. `time` — Time & Date
+
+Utilities for timestamping, formatting, and pausing execution.
+
+* **`time.sleep(seconds: float)`** — Pause execution. Accepts floats for sub-second precision (`0.5` = 500ms). Uses `nanosleep` directly.
+* **`time.now() int`** — Current Unix timestamp in milliseconds.
+* **`time.format(fmt: string) string`** — Format current local time using `strftime` strings (e.g. `"%Y-%m-%d %H:%M:%S"`).
+* **`time.format_ts(fmt: string, timestamp: int) string`** — Format a specific millisecond timestamp.
+
 ---
 
-## 12. Built-ins (No Import Required)
+## 14. Built-ins (No Import Required)
 
 Injected by the compiler. Available globally.
 
-### 12.1 Text & Stream Processing
+### 14.1 Text & Stream Processing
 
 * **`lines(text: string) arr<string>`** — Split string by newline.
 * **`chars(text: string) arr<string>`** — Iterate over string characters.
 * **`grep(lines: arr<string>, pattern: string) arr<string>`** — Filter array keeping lines that contain pattern.
 
-### 12.2 Pipeline Safety (Railway-Oriented)
+### 14.2 Pipeline Safety (Railway-Oriented)
 
 * **`if_fail(val: any, msg: string) val`** — Halt pipeline if value is an error.
 * **`fallback(val: any, alt: any) val`** — Replace failure with fallback value.
 * **`ensure(val: any, condition: bool, msg: string) val`** — Validate condition during pipeline execution.
 
-### 12.3 Core & Types
+### 14.3 Core & Types
 
 * **`print(val: any)`** — Print to stdout.
 * **`printerr(val: any)`** — Print to stderr.
 * **`len(obj: any) int`** — Return size of array, string, or dict.
 
-### 12.4 Arrays & Iteration
+### 14.4 Arrays & Iteration
 
 * **`push(arr: arr, val: any)`** — Append element to dynamic array.
 * **`range(start: int, end: int) arr<int>`** — Generate integer sequence.
 
-### 12.5 Compile-Time
+### 14.5 Compile-Time
 
 * **`embed_file(path: string) string`** — Reads file at compile-time and embeds its content directly into the compiled native binary.
