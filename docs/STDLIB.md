@@ -156,6 +156,14 @@ Direct access to hardware and kernel metrics without external parsing overhead.
 * **`sys.local_ip() string`** — Resolves the IPv4 address of the active network interface (ignores loopback).
 * **`sys.packages_dpkg() val`** — Returns installed package count from the dpkg state database.
 
+## 13. `rand` — Random Number Generator
+
+PRNG powered by Xoshiro256**. Seeded via ASLR and time — zero I/O on startup.
+
+* **`rand.int(min: int, max: int) int`** — Random integer between `min` and `max` (inclusive).
+* **`rand.float(min: float, max: float) float`** — Random float between `min` (inclusive) and `max` (exclusive).
+* **`rand.choice(array: arr) any`** — Random element from array. Empty array causes runtime panic. Compiler intrinsic — `arr<int>` returns `int`, zero allocation overhead.
+
 ---
 
 ## 12. Built-ins (No Import Required)
