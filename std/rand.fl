@@ -1,0 +1,14 @@
+-- std/rand.fl
+
+extern fn flint_rand_int(min: int, max: int) int;
+extern fn flint_rand_float(min: float, max: float) float;
+-- extern fn flint_rand_choice(code: int) void;
+
+-- public API
+fn int(min: int, max: int) int {
+    return flint_rand_int(min, max); 
+}
+
+fn float(min: float, max: float) float {
+    return flint_rand_float(min, max); 
+}

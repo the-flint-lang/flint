@@ -1004,6 +1004,50 @@ pub const TypeChecker = struct {
                 return .t_error;
             };
 
+            if (std.mem.eql(u8, func_name, "rand_choice")) {
+                if (call.arguments.len != 1) {
+                    var f_id: u32 = 0;
+                    var l: u32 = 0;
+                    var c: u32 = 0;
+                    var ln: u32 = 0;
+                    self.extractCoords(call.callee, &f_id, &l, &c, &ln);
+                    try self.reportErrorContext(f_id, l, c, ln, "rand.choice() expects exactly 1 argument (an array).");
+                    return .t_error;
+                }
+
+                const arg_t = try self.checkNodeIndex(call.arguments[0]);
+
+                if (arg_t != .t_int_arr and arg_t != .t_float_arr and arg_t != .t_str_arr and arg_t != .t_bool_arr and arg_t != .t_val_arr and arg_t != .t_any and arg_t != .t_error) {
+                    var f_id: u32 = 0;
+                    var l: u32 = 0;
+                    var c: u32 = 0;
+                    var ln: u32 = 0;
+                    self.extractCoords(call.arguments[0], &f_id, &l, &c, &ln);
+
+                    const f = self.source_manager.getFile(f_id).?;
+                    var diag = DiagnosticBuilder.init(self.allocator, "SEMANTIC ERROR", "E0308", "Invalid argument for rand.choice()", f.content, f.path);
+                    defer diag.deinit();
+
+                    const msg = try std.fmt.allocPrint(self.allocator, "expected array, found `{s}`", .{self.flintTypeToStr(arg_t)});
+                    try diag.addLabel(l, c, ln, msg, true);
+                    diag.note("rand.choice() requires an array to select a random element");
+                    try diag.emit(self.io);
+                    self.allocator.free(msg);
+
+                    self.had_error = true;
+                    return .t_error;
+                }
+
+                return switch (arg_t) {
+                    .t_int_arr => .t_int,
+                    .t_float_arr => .t_float,
+                    .t_str_arr => .t_string,
+                    .t_bool_arr => .t_bool,
+                    .t_val_arr => .t_val,
+                    else => .t_any,
+                };
+            }
+
             // check for optional args
             if (std.mem.eql(u8, func_name, "int_array") or std.mem.eql(u8, func_name, "str_array") or std.mem.eql(u8, func_name, "bool_array") or std.mem.eql(u8, func_name, "val_array") or std.mem.eql(u8, func_name, "float_array")) {
                 if (call.arguments.len > 1) {
@@ -1203,6 +1247,10 @@ pub const TypeChecker = struct {
             try defineBuiltin(s, a, p, "sys_local_ip", .t_string, &[_]FlintType{});
             try defineBuiltin(s, a, p, "sys_display_res", .t_string, &[_]FlintType{});
             try defineBuiltin(s, a, p, "sys_gpu_name", .t_string, &[_]FlintType{});
+        } else if (std.mem.eql(u8, module_name, "rand")) {
+            try defineBuiltin(s, a, p, "rand_int", .t_int, &[_]FlintType{ .t_int, .t_int });
+            try defineBuiltin(s, a, p, "rand_float", .t_float, &[_]FlintType{ .t_float, .t_float });
+            try defineBuiltin(s, a, p, "rand_choice", .t_any, null);
         }
     }
 

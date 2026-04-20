@@ -18,7 +18,7 @@ pub const CEmitter = struct {
 
     sys_io: std.Io,
 
-    built_ins: [20][]const u8,
+    built_ins: [21][]const u8,
 
     node_types: std.AutoHashMap(NodeIndex, FlintType),
     current_placeholder_name: ?[]const u8 = null,
@@ -35,7 +35,7 @@ pub const CEmitter = struct {
             .built_ins = [_][]const u8{
                 "print",  "printerr", "len",               "push",     "range",      "if_fail", "fallback",
                 "concat", "to_str",   "to_int",            "to_float", "parse_json", "ensure",  "lines",
-                "grep",   "chars",    "os_command_exists", "type_of",  "val_keys",   "clone",
+                "grep",   "chars",    "os_command_exists", "type_of",  "val_keys",   "clone",   "rand_choice",
             },
             .node_types = node_types,
             .current_placeholder_name = null,
@@ -821,7 +821,7 @@ pub const CEmitter = struct {
 
             if (obj_node == .identifier) {
                 const obj_name = self.pool.get(obj_node.identifier.name_id);
-                const modules = [_][]const u8{ "os", "io", "http", "str", "json", "process", "fs", "term", "utils", "env", "sys" };
+                const modules = [_][]const u8{ "os", "io", "http", "str", "json", "process", "fs", "term", "utils", "env", "sys", "rand" };
                 for (modules) |m| {
                     if (std.mem.eql(u8, obj_name, m)) {
                         is_module = true;
@@ -833,6 +833,13 @@ pub const CEmitter = struct {
             if (is_module) {
                 const prop_name = self.pool.get(prop_access.property_name_id);
                 const obj_name = self.pool.get(obj_node.identifier.name_id);
+
+                if (std.mem.eql(u8, obj_name, "rand") and std.mem.eql(u8, prop_name, "choice")) {
+                    try writer.writeAll("flint_rand_choice(");
+                    try self.visitNodeIndex(call.arguments[0], writer);
+                    try writer.writeAll(")");
+                    return;
+                }
 
                 if (std.mem.eql(u8, obj_name, "io") and std.mem.eql(u8, prop_name, "read_line")) {
                     try writer.writeAll("flint_read_line(");
@@ -878,6 +885,13 @@ pub const CEmitter = struct {
 
         if (callee_node == .identifier) {
             const func_name = self.pool.get(callee_node.identifier.name_id);
+
+            if (std.mem.eql(u8, func_name, "choice") or std.mem.eql(u8, func_name, "rand_choice")) {
+                try writer.writeAll("flint_rand_choice(");
+                try self.visitNodeIndex(call.arguments[0], writer);
+                try writer.writeAll(")");
+                return;
+            }
 
             if (std.mem.eql(u8, func_name, "embed_file")) {
                 const arg_node = self.tree.getNode(call.arguments[0]);

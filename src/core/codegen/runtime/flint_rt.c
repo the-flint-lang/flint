@@ -29,6 +29,7 @@
 #include <ifaddrs.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <time.h>
 
 #include <stdarg.h>
 #include <spawn.h>
@@ -2261,6 +2262,65 @@ FlintValue flint_clone_val(FlintValue v)
         return (FlintValue){FLINT_VAL_STR, .as.s = flint_clone_str(v.as.s)};
     }
     return v;
+}
+
+/* =========================
+   RAND
+   ========================= */
+
+static uint64_t flint_rand_state[4];
+static bool flint_rand_initialized = false;
+
+static inline uint64_t flint_rotl(const uint64_t x, int k)
+{
+    return (x << k) | (x >> (64 - k));
+}
+
+static uint64_t flint_rand_next(void)
+{
+    if (!flint_rand_initialized)
+    {
+        uint64_t seed = (uint64_t)time(NULL) ^ (uint64_t)(void *)&flint_rand_initialized;
+
+        for (int i = 0; i < 4; i++)
+        {
+            seed += 0x9e3779b97f4a7c15;
+            uint64_t z = seed;
+            z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9;
+            z = (z ^ (z >> 27)) * 0x94d049bb133111eb;
+            flint_rand_state[i] = z ^ (z >> 31);
+        }
+        flint_rand_initialized = true;
+    }
+
+    const uint64_t result = flint_rotl(flint_rand_state[1] * 5, 7) * 9;
+    const uint64_t t = flint_rand_state[1] << 17;
+
+    flint_rand_state[2] ^= flint_rand_state[0];
+    flint_rand_state[3] ^= flint_rand_state[1];
+    flint_rand_state[1] ^= flint_rand_state[2];
+    flint_rand_state[0] ^= flint_rand_state[3];
+
+    flint_rand_state[2] ^= t;
+    flint_rand_state[3] = flint_rotl(flint_rand_state[3], 45);
+
+    return result;
+}
+
+long long flint_rand_int(long long min, long long max)
+{
+    if (min >= max)
+        return min;
+    uint64_t range = (uint64_t)(max - min + 1);
+    return min + (long long)(flint_rand_next() % range);
+}
+
+double flint_rand_float(double min, double max)
+{
+    if (min >= max)
+        return min;
+    double r = (flint_rand_next() >> 11) * 0x1.0p-53;
+    return min + r * (max - min);
 }
 
 // ============================================================================

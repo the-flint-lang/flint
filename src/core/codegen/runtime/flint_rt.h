@@ -654,7 +654,7 @@ static inline void flint_set_idx_val(FlintValue v, FlintValue k, FlintValue val)
 #endif
 
 /* =========================
-    SYS (System / Kernel)
+    SYS
 ========================= */
 
 FlintValue flint_sys_disk_usage(flint_str path);
@@ -740,3 +740,20 @@ static inline flint_str _flint_type_stream(flint_stream x)
     FlintDict *: _flint_type_dict,                 \
     flint_stream: _flint_type_stream,              \
     FlintValue: flint_type_of_func)(__VA_ARGS__)
+
+/* =========================
+   RAND
+   ========================= */
+long long flint_rand_int(long long min, long long max);
+double flint_rand_float(double min, double max);
+
+#define FLINT_RAND_CHOICE_SAFE(a)                                                                           \
+    ((a).count == 0 ? (flint_panic("Runtime Error: rand.choice() called on an empty array!"), (a).items[0]) \
+                    : (a).items[flint_rand_int(0, (a).count - 1)])
+
+#define flint_rand_choice(arr) _Generic((arr),      \
+    flint_int_array: FLINT_RAND_CHOICE_SAFE(arr),   \
+    flint_float_array: FLINT_RAND_CHOICE_SAFE(arr), \
+    flint_str_array: FLINT_RAND_CHOICE_SAFE(arr),   \
+    flint_bool_array: FLINT_RAND_CHOICE_SAFE(arr),  \
+    flint_val_array: FLINT_RAND_CHOICE_SAFE(arr))
