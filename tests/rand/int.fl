@@ -1,0 +1,3 @@
+import rand;
+
+rand.int(0, 10) ~> print();

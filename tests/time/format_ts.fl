@@ -1,0 +1,3 @@
+import time;
+
+time.format_ts("%Y-%m-%d %H:%M:%S", 12) ~> print();

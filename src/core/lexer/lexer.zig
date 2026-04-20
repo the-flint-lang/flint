@@ -460,8 +460,8 @@ pub const Lexer = struct {
     }
 
     fn readNumber(self: *Lexer, already_has_dot: *bool) ![]const u8 {
-        const init = if (already_has_dot.*) self.position - 2 else self.position - 1;
-        const start_col = if (already_has_dot.*) self.column - 2 else self.column - 1;
+        const init = self.position - 1;
+        const start_col = self.column - 1;
         var has_dot: bool = already_has_dot.*;
 
         while (!self.isAtEnd()) {

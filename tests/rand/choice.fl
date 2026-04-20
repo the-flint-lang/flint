@@ -1,0 +1,9 @@
+import rand;
+
+var a = str_array(3);
+
+a ~> push("a");
+a ~> push("b");
+a ~> push("c");
+
+rand.choice(a) ~> print();

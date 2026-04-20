@@ -384,7 +384,7 @@ pub const CEmitter = struct {
             const obj_name = self.pool.get(obj_node.identifier.name_id);
             const prop_name = self.pool.get(prop_access.property_name_id);
 
-            const modules = [_][]const u8{ "os", "io", "http", "str", "json", "process", "fs", "term", "utils", "env", "sys" };
+            const modules = [_][]const u8{ "os", "io", "http", "str", "json", "process", "fs", "term", "utils", "env", "sys", "rand", "time" };
             var is_module = false;
             for (modules) |m| {
                 if (std.mem.eql(u8, obj_name, m)) {
@@ -799,7 +799,17 @@ pub const CEmitter = struct {
                 }
             }
             try writer.writeAll("\")");
-        } else if (tok._type == .integer_literal_token or tok._type == .float_literal_token) {
+        } else if (tok._type == .float_literal_token) {
+            if (tok.value[0] == '.') try writer.writeAll("0");
+
+            for (tok.value) |char| {
+                if (char != '_') {
+                    const str = [_]u8{char};
+                    try writer.writeAll(&str);
+                }
+            }
+            if (tok.value.len > 0 and tok.value[tok.value.len - 1] == '.') try writer.writeAll("0");
+        } else if (tok._type == .integer_literal_token) {
             for (tok.value) |char| {
                 if (char != '_') {
                     const str = [_]u8{char};
@@ -823,7 +833,7 @@ pub const CEmitter = struct {
 
             if (obj_node == .identifier) {
                 const obj_name = self.pool.get(obj_node.identifier.name_id);
-                const modules = [_][]const u8{ "os", "io", "http", "str", "json", "process", "fs", "term", "utils", "env", "sys", "rand" };
+                const modules = [_][]const u8{ "os", "io", "http", "str", "json", "process", "fs", "term", "utils", "env", "sys", "rand", "time" };
                 for (modules) |m| {
                     if (std.mem.eql(u8, obj_name, m)) {
                         is_module = true;
