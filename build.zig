@@ -5,7 +5,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const opts = b.addOptions();
-    opts.addOption([]const u8, "flint_version", "1.13.1-dev");
+    opts.addOption([]const u8, "flint_version", "1.14.0-dev");
 
     const mod = b.addModule("flint", .{
         .root_source_file = b.path("src/root.zig"),
