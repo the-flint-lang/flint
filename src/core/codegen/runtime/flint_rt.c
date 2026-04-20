@@ -140,7 +140,7 @@ void flint_panic(const char *format, ...)
     int len = vsnprintf(buf, sizeof(buf), format, args);
     va_end(args);
 
-    write(STDERR_FILENO, "\n\033[41;37;1m [RUNTIME PANIC] \033[0m\n  \033[1;36m~~>\033[0m ", 52);
+    write(STDERR_FILENO, "\n\033[41;37;1m [RUNTIME PANIC] \033[0m\n  \033[1;36m~~>\033[0m ", 50);
     if (len > 0)
         write(STDERR_FILENO, buf, len);
     write(STDERR_FILENO, "\n  \033[1;36m~~>\033[0m Halting execution.\n\n", 39);

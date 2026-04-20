@@ -121,6 +121,7 @@ pub const CEmitter = struct {
 
         const c_ret_type = switch (flint_ret_type) {
             .t_int => "long long",
+            .t_float => "double",
             .t_string => "flint_str",
             .t_bool => "bool",
             .t_void => "void",
@@ -218,6 +219,7 @@ pub const CEmitter = struct {
 
         const ret_type = switch (flint_ret_type) {
             .t_int => "long long",
+            .t_float => "double",
             .t_string => "flint_str",
             .t_bool => "bool",
             .t_void => "void",
@@ -1316,6 +1318,7 @@ pub const CEmitter = struct {
         _ = self;
         return switch (f_type) {
             .t_int => "long long",
+            .t_float => "double",
             .t_string => "flint_str",
             .t_bool => "bool",
             .t_int_arr => "flint_int_array",

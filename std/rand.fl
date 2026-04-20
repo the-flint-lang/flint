@@ -2,9 +2,12 @@
 
 extern fn flint_rand_int(min: int, max: int) int;
 extern fn flint_rand_float(min: float, max: float) float;
--- extern fn flint_rand_choice(code: int) void;
+extern fn flint_rand_choice(array: any) any;
 
--- public API
+fn choice(array: any) any {
+    return flint_rand_choice(array); 
+}
+
 fn int(min: int, max: int) int {
     return flint_rand_int(min, max); 
 }

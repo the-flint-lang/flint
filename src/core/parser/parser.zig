@@ -180,14 +180,34 @@ pub const Parser = struct {
 
         if (is_extern) _ = try self.consume(.fn_token, "'fn' expected after extern");
 
-        const name_token = try self.consume(.identifier_token, "function name expected");
+        var name_token: Token = undefined;
+        if (self.match(&.{ .identifier_token, .integer_type_token, .float_type_token, .string_type_token, .boolean_type_token, .value_type_token, .array_type_token, .char_type_token, .void_token })) {
+            name_token = self.previous();
+        } else {
+            return self.reportError(self.peek(), "function name expected");
+        }
         const name_id = try self.pool.intern(self.allocator, name_token.value);
 
         _ = try self.consume(.lparen_token, "'(' expected after function name");
         const args = try self.parseArgs();
         _ = try self.consumeDelimiter(.rparen_token, "')' expected after function arguments");
 
-        const return_type = try self.parseType();
+        var return_type: NodeIndex = undefined;
+
+        if (self.check(.lbrace_token) or self.check(.semicolon_token)) {
+            return_type = try self.tree.addNode(self.allocator, .{ .type_expr = .{
+                .base_token = .{
+                    ._type = .void_token,
+                    .value = "void",
+                    .line = self.previous().line,
+                    .column = self.previous().column,
+                    .file_id = self.file_id,
+                },
+                .inner_type = null,
+            } });
+        } else {
+            return_type = try self.parseType();
+        }
 
         var body: []const NodeIndex = &.{};
 
@@ -341,7 +361,13 @@ pub const Parser = struct {
                     expr_idx = try self.tree.addNode(self.allocator, .{ .index_expr = .{ .left = expr_idx, .index = start_idx.? } });
                 }
             } else if (self.match(&.{.dot_token})) {
-                const property_token = try self.consume(.identifier_token, "Expected property name after '.'.");
+                var property_token: Token = undefined;
+                if (self.match(&.{ .identifier_token, .integer_type_token, .float_type_token, .string_type_token, .boolean_type_token, .value_type_token, .array_type_token, .char_type_token, .void_token })) {
+                    property_token = self.previous();
+                } else {
+                    return self.reportError(self.peek(), "Expected property name after '.'.");
+                }
+
                 const prop_id = try self.pool.intern(self.allocator, property_token.value);
 
                 expr_idx = try self.tree.addNode(self.allocator, .{ .property_access_expr = .{
@@ -539,7 +565,7 @@ pub const Parser = struct {
     }
 
     fn parseType(self: *Parser) anyerror!NodeIndex {
-        if (!self.match(&.{ .integer_type_token, .string_type_token, .char_type_token, .boolean_type_token, .value_type_token, .array_type_token, .identifier_token, .void_token })) {
+        if (!self.match(&.{ .integer_type_token, .float_type_token, .string_type_token, .char_type_token, .boolean_type_token, .value_type_token, .array_type_token, .identifier_token, .void_token })) {
             return self.reportError(self.peek(), "Expected type name.");
         }
 

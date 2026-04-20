@@ -155,6 +155,18 @@ static inline long long _flint_get_arr_int_len(flint_int_array a) { return (long
 static inline long long _flint_get_arr_bool_len(flint_bool_array a) { return (long long)a.count; }
 static inline long long _flint_get_arr_float_len(flint_float_array a) { return (long long)a.count; }
 static inline long long _flint_get_arr_val_len(flint_val_array a) { return (long long)a.count; }
+static inline long long _flint_get_val_any_len(FlintValue v)
+{
+    switch (v.type)
+    {
+    case FLINT_VAL_STR:
+        return (long long)v.as.s.len;
+    case FLINT_VAL_ARRAY:
+        return (long long)v.as.arr->count;
+    default:
+        return 0;
+    }
+}
 
 #define flint_len(X) _Generic((X),               \
     flint_int_array: _flint_get_arr_int_len,     \
@@ -162,6 +174,7 @@ static inline long long _flint_get_arr_val_len(flint_val_array a) { return (long
     flint_bool_array: _flint_get_arr_bool_len,   \
     flint_float_array: _flint_get_arr_float_len, \
     flint_val_array: _flint_get_arr_val_len,     \
+    FlintValue: _flint_get_val_any_len,          \
     default: _flint_get_str_len)(X)
 
 flint_str flint_slice_str(flint_str s, long long start, long long end);
@@ -751,9 +764,61 @@ double flint_rand_float(double min, double max);
     ((a).count == 0 ? (flint_panic("Runtime Error: rand.choice() called on an empty array!"), (a).items[0]) \
                     : (a).items[flint_rand_int(0, (a).count - 1)])
 
-#define flint_rand_choice(arr) _Generic((arr),      \
-    flint_int_array: FLINT_RAND_CHOICE_SAFE(arr),   \
-    flint_float_array: FLINT_RAND_CHOICE_SAFE(arr), \
-    flint_str_array: FLINT_RAND_CHOICE_SAFE(arr),   \
-    flint_bool_array: FLINT_RAND_CHOICE_SAFE(arr),  \
-    flint_val_array: FLINT_RAND_CHOICE_SAFE(arr))
+/* =========================
+   RAND MODULE INTRINSICS
+   ========================= */
+
+static inline long long _flint_choice_int(flint_int_array a)
+{
+    if (a.count == 0)
+        flint_panic("Runtime Error: rand.choice() called on an empty array!");
+    return a.items[flint_rand_int(0, a.count - 1)];
+}
+
+static inline double _flint_choice_float(flint_float_array a)
+{
+    if (a.count == 0)
+        flint_panic("Runtime Error: rand.choice() called on an empty array!");
+    return a.items[flint_rand_int(0, a.count - 1)];
+}
+
+static inline flint_str _flint_choice_str(flint_str_array a)
+{
+    if (a.count == 0)
+        flint_panic("Runtime Error: rand.choice() called on an empty array!");
+    return a.items[flint_rand_int(0, a.count - 1)];
+}
+
+static inline bool _flint_choice_bool(flint_bool_array a)
+{
+    if (a.count == 0)
+        flint_panic("Runtime Error: rand.choice() called on an empty array!");
+    return a.items[flint_rand_int(0, a.count - 1)];
+}
+
+static inline FlintValue _flint_choice_val_arr(flint_val_array a)
+{
+    if (a.count == 0)
+        flint_panic("Runtime Error: rand.choice() called on an empty array!");
+    return a.items[flint_rand_int(0, a.count - 1)];
+}
+
+static inline FlintValue _flint_choice_val(FlintValue a)
+{
+    if (a.type != FLINT_VAL_ARRAY)
+        flint_panic("Runtime Error: rand.choice() requires an array!");
+
+    long long count = (long long)flint_len(a);
+    if (count == 0)
+        flint_panic("Runtime Error: rand.choice() called on an empty array!");
+
+    return flint_val_get_index(a, flint_rand_int(0, count - 1));
+}
+
+#define flint_rand_choice(arr) _Generic((arr), \
+    flint_int_array: _flint_choice_int,        \
+    flint_float_array: _flint_choice_float,    \
+    flint_str_array: _flint_choice_str,        \
+    flint_bool_array: _flint_choice_bool,      \
+    flint_val_array: _flint_choice_val_arr,    \
+    FlintValue: _flint_choice_val)(arr)

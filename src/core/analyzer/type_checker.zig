@@ -1247,10 +1247,6 @@ pub const TypeChecker = struct {
             try defineBuiltin(s, a, p, "sys_local_ip", .t_string, &[_]FlintType{});
             try defineBuiltin(s, a, p, "sys_display_res", .t_string, &[_]FlintType{});
             try defineBuiltin(s, a, p, "sys_gpu_name", .t_string, &[_]FlintType{});
-        } else if (std.mem.eql(u8, module_name, "rand")) {
-            try defineBuiltin(s, a, p, "rand_int", .t_int, &[_]FlintType{ .t_int, .t_int });
-            try defineBuiltin(s, a, p, "rand_float", .t_float, &[_]FlintType{ .t_float, .t_float });
-            try defineBuiltin(s, a, p, "rand_choice", .t_any, null);
         }
     }
 
@@ -1498,6 +1494,7 @@ pub const TypeChecker = struct {
             .type_expr => |t| {
                 const base_val = t.base_token.value;
                 if (std.mem.eql(u8, base_val, "int")) return .t_int;
+                if (std.mem.eql(u8, base_val, "float")) return .t_float;
                 if (std.mem.eql(u8, base_val, "string")) return .t_string;
                 if (std.mem.eql(u8, base_val, "bool")) return .t_bool;
                 if (std.mem.eql(u8, base_val, "val")) return .t_val;
