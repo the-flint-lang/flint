@@ -61,3 +61,18 @@ pub fn helpRun(io: anytype) !void {
     try io.stdout.print("\n", .{});
     _ = try io.stdout.flush();
 }
+
+pub fn helpTest(io: anytype) !void {
+    const orange = "\x1b[38;5;208m";
+    const bold = "\x1b[1m";
+    const reset = "\x1b[0m";
+
+    try io.stdout.print("{s}Usage:{s} flint {s}test{s}\n\n", .{ bold, reset, orange, reset });
+    try io.stdout.print("Run all .fl in a `tests` directory\n\n", .{});
+
+    try io.stdout.print("{s}Example:{s}\n", .{ bold, reset });
+    try io.stdout.print("  flint test\n", .{});
+
+    try io.stdout.print("\n", .{});
+    _ = try io.stdout.flush();
+}

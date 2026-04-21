@@ -4,7 +4,7 @@ import process;
 import str;
 import term;
 
-term.clear();
+term.clear_all();
 print($"{term.CYAN}========================================{term.RESET}");
 print("      FLINT COMPILER INSTALLER          ");
 print($"{term.CYAN}========================================{term.RESET}");

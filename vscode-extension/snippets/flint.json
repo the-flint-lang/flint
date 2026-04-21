@@ -11,7 +11,7 @@
     "Import Module": {
         "prefix": "import",
         "body": [
-            "import ${1|os,fs,io,process,str,http,json,term,utils,env,sys|};"
+            "import ${1|os,fs,io,process,str,http,json,term,utils,env,sys,rand,time|};"
         ],
         "description": "Imports a Flint stdlib module"
     },
@@ -130,8 +130,29 @@
     "Print": {
         "prefix": "print",
         "body": [
-            "print(\"${1}\");"
+            "print(${1});"
         ],
-        "description": "If/else block (optional parentheses in Flint)"
+        "description": "Prints to stdout"
+    },
+    "Time Sleep": {
+        "prefix": "sleep",
+        "body": [
+            "time.sleep(${1:.5});$0"
+        ],
+        "description": "Pauses execution using high-precision sleep"
+    },
+    "Format Time": {
+        "prefix": "time_fmt",
+        "body": [
+            "time.format(\"${1:%Y-%m-%d %H:%M:%S}\")$0"
+        ],
+        "description": "Formats current time"
+    },
+    "Random Choice": {
+        "prefix": "choice",
+        "body": [
+            "rand.choice(${1:array})$0"
+        ],
+        "description": "Selects a random element from an array"
     }
 }

@@ -448,6 +448,8 @@ pub fn runCli(alloc: std.mem.Allocator, io: IoHelper, args: []const []const u8) 
                 try help.helpBuild(io);
             } else if (checker.strEquals(command.?, "run")) {
                 try help.helpRun(io);
+            } else if (checker.strEquals(command.?, "test")) {
+                try help.helpTest(io);
             } else {
                 try help.help(io);
             }

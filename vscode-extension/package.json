@@ -2,18 +2,18 @@
     "name": "flint-lang",
     "displayName": "Flint Language Support",
     "description": "Official syntax highlighting, snippets and file icons for the Flint programming language.",
-    "version": "1.14.0-dev",
+    "version": "1.14.0",
     "repository": {
         "type": "git",
-        "url": "https://github.com/lucaas-d3v/flint.git"
+        "url": "https://github.com/the-flint-lang/flint.git"
     },
     "bugs": {
-        "url": "https://github.com/lucaas-d3v/flint/issues"
+        "url": "https://github.com/the-flint-lang/flint/issues"
     },
-    "homepage": "https://useflint.vercel.app",
-    "license": "MIT",
+    "homepage": "https://github.com/the-flint-lang/flint",
+    "license": "Apache-2.0",
     "icon": "assets/favicon_transparent_bg.png",
-    "publisher": "lucaas-d3v",
+    "publisher": "the-flint-lang",
     "engines": {
         "vscode": "^1.75.0"
     },
@@ -33,6 +33,7 @@
         "languages": [
             {
                 "id": "flint",
+                "semanticHighlighting": false,
                 "aliases": [
                     "Flint",
                     "flint"
