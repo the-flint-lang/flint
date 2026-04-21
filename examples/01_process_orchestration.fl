@@ -1,20 +1,25 @@
 -- This script demonstrates how Flint replaces Bash for OS automation.
-import os;
+import process;
+import env;
 import str;
-import io;
+import fs;
 
 print("--- Flint Process Monitor ---");
 
-const user = os.env("USER");
-print($"Searching processes for the user: {user}");
+const user = env.get("USER");
+"Searching processes for the user: " ~> concat(user) ~> print();
+
+var my_procs = str_array();
+
+for line in process.exec("ps aux") ~> lines() ~> grep(user) {
+    my_procs ~> push(to_str(line));
+}
 
 -- Run 'ps aux', filter by user, and save to a file.
 -- The pipeline ensures that if the disk fails, the script stops immediately.
-os.exec("ps aux")
-    ~> lines()
-    ~> grep(user)
-    ~> str.join("\n")
-    ~> io.write_file("my_processes.log")
+my_procs 
+    ~> str.join("\n") 
+    ~> fs.write_file("my_processes.log") 
     ~> if_fail("Fatal error: No permission to write to disk.");
 
-print("Processes saved in 'my_processes.log' successfully!");
+"Processes saved in 'my_processes.log' successfully!" ~> print();

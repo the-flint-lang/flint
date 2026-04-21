@@ -3,29 +3,29 @@ import io;
 
 -- public API
 
-const RESET = "\033[0m";
+const RESET: string = "\033[0m";
 
 -- colors
-const WHITE = "\033[37m";
-const RED = "\033[31m";
-const GREEN = "\033[32m";
-const BLUE = "\033[34m";
-const CYAN = "\033[36m";
-const YELLOW = "\033[33m";
-const BLACK = "\033[30m";
+const WHITE: string = "\033[37m";
+const RED: string = "\033[31m";
+const GREEN: string = "\033[32m";
+const BLUE: string = "\033[34m";
+const CYAN: string = "\033[36m";
+const YELLOW: string = "\033[33m";
+const BLACK: string = "\033[30m";
 
 -- dark variants
-const DARK_RED = "\033[2;31m";
-const DARK_GREEN = "\033[2;32m";
-const DARK_BLUE = "\033[2;34m";
-const DARK_CYAN = "\033[2;36m";
-const DARK_YELLOW = "\033[38;5;136m";
-const DARK_BLACK = "\033[38;5;234m";
+const DARK_RED: string = "\033[2;31m";
+const DARK_GREEN: string = "\033[2;32m";
+const DARK_BLUE: string = "\033[2;34m";
+const DARK_CYAN: string = "\033[2;36m";
+const DARK_YELLOW: string = "\033[38;5;136m";
+const DARK_BLACK: string = "\033[38;5;234m";
 
 -- style
-const BOLD = "\033[1m";
-const ITALIC = "\033[3m";
-const UNDERLINED = "\033[4m";
+const BOLD: string = "\033[1m";
+const ITALIC: string = "\033[3m";
+const UNDERLINED: string = "\033[4m";
 
 fn clear() void {
     io.write("stdout", "\033[H\033[2J");

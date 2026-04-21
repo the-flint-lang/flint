@@ -6,13 +6,14 @@ struct ReleaseData {
     tarball_url: string
 }
 
-print("=== CI/CD: Starting Deploy ===");
+"=== CI/CD: Starting Deploy ===" ~> print();
 
 -- 1. Native Fetch with Error Interception in the Pipeline
-const payload = http.fetch("https://api.github.com/repos/lucaas-d3v/flint/releases/latest") 
+const payload = "https://api.github.com/repos/lucaas-d3v/flint/releases/latest"
+    ~> http.fetch() 
     ~> if_fail("CI error: Failed to fetch Release metadata.");
 
 -- 2. AOT deserialization (O(1) memory mapping, without reflection)
-const release = parse_json_as(ReleaseData, str.to_str(payload));
+const release = parse_json_as(ReleaseData, payload ~> to_str());
 
-print("Deploying version: {release.tag_name}");
+"Deploying version: " ~> concat(release.tag_name) ~> print();

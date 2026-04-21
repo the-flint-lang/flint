@@ -840,6 +840,7 @@ fn runner(alloc: std.mem.Allocator, args: []const []const u8, file_path: []const
 
             if (!compiled) {
                 try io.stderr.print("\x1b[1;31m[FATAL ERROR]\x1b[0m All backend compilers (TCC, Clang, GCC, Zig cc, Musl-gcc) failed. Syntax tree is heavily broken.\n", .{});
+                try io.stderr.print("\x1b[1;34m[HINT]\x1b[0m Run '\x1b[36mflint build {s}\x1b[34m' to see C compiler output.\n", .{file_path});
                 return error.FallbackCompilationFailed;
             }
 

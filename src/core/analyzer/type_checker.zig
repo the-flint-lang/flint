@@ -330,6 +330,8 @@ pub const TypeChecker = struct {
         const decl = node.var_decl;
         const expr_type = try self.checkNodeIndex(decl.value);
 
+        var safe_expr_type = expr_type;
+
         if (expr_type == .t_void) {
             self.had_error = true;
             var err_f_id: u32 = 0;
@@ -365,11 +367,12 @@ pub const TypeChecker = struct {
             } else if (declared_type != expr_type and expr_type != .t_any and expr_type != .t_error) {
                 self.had_error = true;
 
-                var v_f_id: u32 = 0;
-                var v_line: u32 = 0;
+                var v_f_id: u32 = decl.file_id;
+                var v_line: u32 = decl.line;
                 var v_col: u32 = 0;
-                var v_len: u32 = 0;
+                var v_len: u32 = 1;
                 self.extractCoords(decl.value, &v_f_id, &v_line, &v_col, &v_len);
+
                 const target_file = self.source_manager.getFile(v_f_id).?;
 
                 var diag = DiagnosticBuilder.init(self.allocator, "TYPE ERROR", "E0012", "Type mismatch", target_file.content, target_file.path);
@@ -397,7 +400,8 @@ pub const TypeChecker = struct {
                 diag.help(help_str);
 
                 try diag.emit(self.io);
-                return .t_error;
+
+                safe_expr_type = .t_error;
             }
         }
 
@@ -417,7 +421,7 @@ pub const TypeChecker = struct {
             }
         }
 
-        const success = self.current_scope.define(decl.name_id, expr_type, decl.is_const, decl.line, name_col, null, null);
+        const success = self.current_scope.define(decl.name_id, safe_expr_type, decl.is_const, decl.line, name_col, null, null);
 
         if (!success) {
             const original_sym = self.current_scope.lookup(decl.name_id).?;
@@ -1481,7 +1485,7 @@ pub const TypeChecker = struct {
         if (std.mem.eql(u8, val, "int")) return .t_int;
         if (std.mem.eql(u8, val, "string")) return .t_string;
         if (std.mem.eql(u8, val, "bool")) return .t_bool;
-        if (std.mem.eql(u8, val, "val")) return .t_val;
+        if (std.mem.eql(u8, val, "val") or std.mem.eql(u8, val, "dict")) return .t_val;
         if (std.mem.eql(u8, val, "arr")) return .t_str_arr;
         if (std.mem.eql(u8, val, "void")) return .t_void;
         if (token._type == .identifier_token) return .t_struct;
@@ -1497,7 +1501,7 @@ pub const TypeChecker = struct {
                 if (std.mem.eql(u8, base_val, "float")) return .t_float;
                 if (std.mem.eql(u8, base_val, "string")) return .t_string;
                 if (std.mem.eql(u8, base_val, "bool")) return .t_bool;
-                if (std.mem.eql(u8, base_val, "val")) return .t_val;
+                if (std.mem.eql(u8, base_val, "val") or std.mem.eql(u8, base_val, "dict")) return .t_val;
                 if (std.mem.eql(u8, base_val, "void")) return .t_void;
                 if (std.mem.eql(u8, base_val, "arr")) {
                     if (t.inner_type) |inner| {

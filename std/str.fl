@@ -74,8 +74,8 @@ fn starts_with(s: string, p: string) bool {
 }
 
 fn contains(text: string, target: string) bool {
-    const text_len = len(text);
-    const target_len = len(target);
+    const text_len: int = len(text);
+    const target_len: int = len(target);
 
     if target_len == 0 {
         return true;
@@ -94,33 +94,13 @@ fn contains(text: string, target: string) bool {
     return false;
 }
 
-{-
-fn repeat(s: string, x: int) string {
-    if len(s) == 0 {
-        return "";
-    }
-
-    if x == 0 {
-        return s;
-    }
-
-    var parts = str_array();
-
-    for i in range(0, x) {
-        push(parts, s);
-    }
-
-    return join(parts, "");
-}
--}
-
 fn repeat(s: string, count: int) string {
     return flint_str_repeat(s, count);
 }
 
 fn upper(s: string) string { 
-    var new_str_temp = str_array(); 
-    const little_ones = {
+    var new_str_temp: arr<string> = str_array(); 
+    const little_ones: dict = {
         "a": "A",
         "b": "B",
         "c": "C",
@@ -150,16 +130,16 @@ fn upper(s: string) string {
     }; 
 
     for c in s ~> chars() { 
-        const c_n = to_str(little_ones[c] ~> fallback(c)); 
-        push(new_str_temp, c_n); 
+        const c_n: string = little_ones[c] ~> fallback(c) ~> to_str(); 
+        new_str_temp ~> push(c_n); 
     } 
     
     return new_str_temp ~> join("");
 }
 
 fn lower(s: string) string { 
-    var new_str_temp = str_array(); 
-    const little_ones = {
+    var new_str_temp: arr<string> = s ~> len() ~> str_array(); 
+    const little_ones: dict = {
         "A": "a",
         "B": "b",
         "C": "c",
@@ -189,16 +169,16 @@ fn lower(s: string) string {
     }; 
 
     for c in s ~> chars() { 
-        const c_n = to_str(little_ones[c] ~> fallback(c)); 
-        push(new_str_temp, c_n); 
+        const c_n: string = little_ones[c] ~> fallback(c) ~> to_str(); 
+        new_str_temp ~> push(c_n); 
     } 
     
     return new_str_temp ~> join("");
 }
 
 fn index_of(s: string, c: string) int {
-    const s_len = len(s);
-    const c_len = len(c);
+    const s_len: int = len(s);
+    const c_len: int = len(c);
 
     if c_len == 0 or c_len > s_len {
         return -1;

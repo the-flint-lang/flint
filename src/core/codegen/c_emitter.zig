@@ -349,14 +349,15 @@ pub const CEmitter = struct {
         try writer.writeAll("static ");
         try emitSafeName(writer, s_name);
         try writer.print(" __parse_{s}_from_val(FlintValue v_envelope) {{\n", .{s_name});
-        try writer.writeAll("    FlintDict* d = (v_envelope.type == FLINT_VAL_DICT) ? v_envelope.as.d : NULL;\n");
         try writer.writeAll("    ");
         try emitSafeName(writer, s_name);
         try writer.writeAll(" _obj;\n");
 
         for (struct_node.fields) |field| {
             const f_name = self.pool.get(field.name_id);
-            try writer.print("    FlintValue _v_{s} = d ? flint_dict_get(d, FLINT_STR(\"{s}\")) : (FlintValue){{FLINT_VAL_NULL}};\n", .{ f_name, f_name });
+            const hash_val = computeFnv1aHash(f_name);
+
+            try writer.print("    FlintValue _v_{s} = FLINT_GET_HASHED(v_envelope, \"{s}\", {d}ULL);\n", .{ f_name, f_name, hash_val });
 
             try writer.writeAll("    _obj.");
             try emitSafeName(writer, f_name);
@@ -466,20 +467,46 @@ pub const CEmitter = struct {
             self.current_placeholder_name = prev_placeholder;
             try writer.writeAll("    })");
         } else {
-            try self.visitNodeIndex(right_call.callee, writer);
-            try writer.writeAll("(");
-            try self.visitNodeIndex(pipe.left, writer);
+            const callee_node = self.tree.getNode(right_call.callee);
+            var is_array_constructor = false;
+            var func_name_str: []const u8 = "";
 
-            if (right_call.arguments.len > 0) {
-                try writer.writeAll(", ");
-                for (right_call.arguments, 0..) |arg_idx, i| {
-                    try self.visitNodeIndex(arg_idx, writer);
-                    if (i < right_call.arguments.len - 1) {
-                        try writer.writeAll(", ");
-                    }
+            if (callee_node == .identifier) {
+                func_name_str = self.pool.get(callee_node.identifier.name_id);
+                if (std.mem.eql(u8, func_name_str, "str_array") or
+                    std.mem.eql(u8, func_name_str, "int_array") or
+                    std.mem.eql(u8, func_name_str, "float_array") or
+                    std.mem.eql(u8, func_name_str, "bool_array") or
+                    std.mem.eql(u8, func_name_str, "val_array"))
+                {
+                    is_array_constructor = true;
                 }
             }
-            try writer.writeAll(")");
+
+            if (is_array_constructor) {
+                const c_type = if (std.mem.eql(u8, func_name_str, "str_array")) "flint_str" else if (std.mem.eql(u8, func_name_str, "int_array")) "long long" else if (std.mem.eql(u8, func_name_str, "bool_array")) "bool" else if (std.mem.eql(u8, func_name_str, "float_array")) "double" else "FlintValue";
+
+                try writer.print("(flint_{s}){{.items = flint_alloc_zero((", .{func_name_str});
+                try self.visitNodeIndex(pipe.left, writer);
+                try writer.print(") * sizeof({s})), .count = 0, .capacity = ", .{c_type});
+                try self.visitNodeIndex(pipe.left, writer);
+                try writer.writeAll("}");
+            } else {
+                try self.visitNodeIndex(right_call.callee, writer);
+                try writer.writeAll("(");
+                try self.visitNodeIndex(pipe.left, writer);
+
+                if (right_call.arguments.len > 0) {
+                    try writer.writeAll(", ");
+                    for (right_call.arguments, 0..) |arg_idx, i| {
+                        try self.visitNodeIndex(arg_idx, writer);
+                        if (i < right_call.arguments.len - 1) {
+                            try writer.writeAll(", ");
+                        }
+                    }
+                }
+                try writer.writeAll(")");
+            }
         }
     }
 
@@ -1048,7 +1075,13 @@ pub const CEmitter = struct {
             if (std.mem.eql(u8, func_name, "parse_json_as")) {
                 if (call.arguments.len != 2) return error.InvalidArgumentCount;
                 const struct_arg_node = self.tree.getNode(call.arguments[0]);
-                const struct_name = self.pool.get(struct_arg_node.identifier.name_id);
+
+                var struct_name: []const u8 = "";
+                if (struct_arg_node == .identifier) {
+                    struct_name = self.pool.get(struct_arg_node.identifier.name_id);
+                } else if (struct_arg_node == .type_expr) {
+                    struct_name = struct_arg_node.type_expr.base_token.value;
+                }
 
                 try writer.writeAll("__parse_");
                 try writer.writeAll(struct_name);
@@ -1356,6 +1389,8 @@ pub const CEmitter = struct {
                         const struct_arg = self.tree.getNode(call.arguments[0]);
                         if (struct_arg == .identifier) {
                             return self.pool.get(struct_arg.identifier.name_id);
+                        } else if (struct_arg == .type_expr) {
+                            return struct_arg.type_expr.base_token.value;
                         }
                     }
                 }

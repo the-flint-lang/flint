@@ -19,17 +19,17 @@ fn exit(code: int) void {
 }
 
 fn assert(proc: val, error_msg: string) val {
-    const code = str.to_int(proc["exit_code"]);
+    const code: int = proc["exit_code"] ~> to_int();
     
     if (code != 0) {
         print("[FLINT] FATAL PROCESS ASSERTION FAILED ");
         print($"Message: {error_msg}");
         
-        const code_str = str.int_to_str(code);
+        const code_str = code ~> str.int_to_str();
         print($"Exit Code: {code_str}");
         
         print("STDERR:");
-        print(str.to_str(proc["stderr"]));
+        proc["stderr"] ~> to_str() ~> print();
         exit(code);
     }
     
