@@ -1,8 +1,8 @@
-import io;
+import fs;
 import str;
-import os;
 
-(io.read_file("bench_data.log") catch |err| { print(err); os.exit(1); }) 
-    ~> str.to_str()
+fs.read_file("bench_data.log")
+    ~> if_fail("Error to read 'bench_data.log'")
+    ~> to_str()
     ~> str.count_matches("ERROR")
     ~> print();
